@@ -2818,6 +2818,119 @@ function renderDashboard() {
   `;
 }
 
+// Date-range + stats panel shown above the clients table when the user drills down to the
+// execution stage (either on its own or alongside archive). Scope = year + month filter.
+// window._execStatsFilter persists the selected year/month across renders.
+if (typeof window._execStatsFilter === 'undefined') window._execStatsFilter = { year: 'all', month: 'all' };
+function _executionStatsPanelHtml(filteredClients, stagesFilter) {
+  // Show whenever the user drills down ONLY on execution / archive (or both)
+  const showStages = ['execution', 'archive'];
+  const activeExecOrArchive = Array.isArray(stagesFilter) && stagesFilter.length > 0
+    && stagesFilter.every(s => showStages.includes(s))
+    && stagesFilter.some(s => showStages.includes(s));
+  if (!activeExecOrArchive) return '';
+  // Includes archived files too — any client that ever reached execution counts, regardless of
+  // their current stage (they may have been archived after execution).
+  const executedClients = (state.clients || []).filter(c => (c.stageHistory || []).some(h => h.stage === 'execution'));
+  const periodFilter = window._execStatsFilter;
+  const inPeriod = (iso) => {
+    if (!iso) return false;
+    if (periodFilter.year === 'all' && periodFilter.month === 'all') return true;
+    const d = new Date(iso);
+    if (isNaN(d)) return false;
+    if (periodFilter.year !== 'all' && d.getFullYear() !== Number(periodFilter.year)) return false;
+    if (periodFilter.month !== 'all' && (d.getMonth() + 1) !== Number(periodFilter.month)) return false;
+    return true;
+  };
+  const inScope = executedClients.filter(c => {
+    const execEntry = (c.stageHistory || []).find(h => h.stage === 'execution');
+    return execEntry && inPeriod(execEntry.enteredAt);
+  });
+  // Collect years that appear in any execution entry — for the year dropdown
+  const yearSet = new Set();
+  executedClients.forEach(c => {
+    const e = (c.stageHistory || []).find(h => h.stage === 'execution');
+    if (e && e.enteredAt) { const y = new Date(e.enteredAt).getFullYear(); if (!isNaN(y)) yearSet.add(y); }
+  });
+  const years = Array.from(yearSet).sort((a, b) => b - a);
+  const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  // Compute stats
+  const totalCount = inScope.length;
+  let totalAmount = 0; let totalDays = 0; let daysCount = 0;
+  const byPurpose = {}; const byBank = {};
+  inScope.forEach(c => {
+    const amt = Number(c.executedAmount) || Number((c.approvals || []).find(a => a.accepted)?.amount) || 0;
+    totalAmount += amt;
+    const leadAt = c.leadAt || c.createdAt;
+    const execEntry = (c.stageHistory || []).find(h => h.stage === 'execution');
+    if (leadAt && execEntry && execEntry.enteredAt) {
+      const days = Math.round((new Date(execEntry.enteredAt) - new Date(leadAt)) / (1000 * 60 * 60 * 24));
+      if (days >= 0 && days < 3650) { totalDays += days; daysCount++; }
+    }
+    const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : ['לא מוגדר']);
+    purposes.forEach(p => { byPurpose[p] = (byPurpose[p] || 0) + 1; });
+    const acc = (c.approvals || []).find(a => a.accepted);
+    const bankName = (acc && (acc.bankName || acc.bank)) || '';
+    if (bankName) {
+      byBank[bankName] = byBank[bankName] || { count: 0, amount: 0 };
+      byBank[bankName].count++;
+      byBank[bankName].amount += amt;
+    }
+  });
+  const avgDays = daysCount > 0 ? Math.round(totalDays / daysCount) : 0;
+  const avgAmount = totalCount > 0 ? Math.round(totalAmount / totalCount) : 0;
+  const yearOptions = ['<option value="all"' + (periodFilter.year === 'all' ? ' selected' : '') + '>כל השנים</option>']
+    .concat(years.map(y => '<option value="' + y + '"' + (String(periodFilter.year) === String(y) ? ' selected' : '') + '>' + y + '</option>')).join('');
+  const monthOptions = ['<option value="all"' + (periodFilter.month === 'all' ? ' selected' : '') + '>כל החודשים</option>']
+    .concat(monthNames.map((n, i) => '<option value="' + (i + 1) + '"' + (String(periodFilter.month) === String(i + 1) ? ' selected' : '') + '>' + n + '</option>')).join('');
+  const purposeRows = Object.entries(byPurpose).sort((a, b) => b[1] - a[1]).map(([p, n]) => '<tr><td style="padding:4px 8px">' + escapeHtml(p) + '</td><td style="padding:4px 8px;text-align:center;font-weight:700">' + n + '</td></tr>').join('');
+  const bankRows = Object.entries(byBank).sort((a, b) => b[1].amount - a[1].amount).map(([b, v]) => '<tr><td style="padding:4px 8px">' + escapeHtml(b) + '</td><td style="padding:4px 8px;text-align:center">' + v.count + '</td><td style="padding:4px 8px;text-align:end;font-weight:700">' + fmtMoney(v.amount) + '</td></tr>').join('');
+  return `
+    <div class="panel" style="margin-bottom:12px;background:linear-gradient(135deg,#f0fdf4,#eff6ff);border:1px solid #86efac">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <h3 class="panel-title" style="margin:0;color:#166534">📊 סטטיסטיקת ביצוע</h3>
+        <div style="display:flex;gap:6px;align-items:center">
+          <label style="font-size:12px;color:#166534">תקופה:</label>
+          <select onchange="window._execStatsFilter.year=this.value;renderClientsList()" style="padding:5px 8px;font-size:12px;border:1px solid #86efac;border-radius:6px;background:white">${yearOptions}</select>
+          <select onchange="window._execStatsFilter.month=this.value;renderClientsList()" style="padding:5px 8px;font-size:12px;border:1px solid #86efac;border-radius:6px;background:white">${monthOptions}</select>
+        </div>
+      </div>
+      ${totalCount === 0 ? '<div style="padding:16px;text-align:center;color:#166534">אין תיקים שבוצעו בתקופה שנבחרה.</div>' : `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+        <div style="background:white;padding:10px;border-radius:8px;border:1px solid #86efac;text-align:center">
+          <div style="font-size:11px;color:#166534;font-weight:700">תיקים שבוצעו</div>
+          <div style="font-size:22px;font-weight:800;color:#166534">${totalCount}</div>
+        </div>
+        <div style="background:white;padding:10px;border-radius:8px;border:1px solid #86efac;text-align:center">
+          <div style="font-size:11px;color:#166534;font-weight:700">סה"כ סכום שבוצע</div>
+          <div style="font-size:18px;font-weight:800;color:#166534">${fmtMoney(totalAmount)}</div>
+          <div style="font-size:10px;color:var(--muted)">ממוצע: ${fmtMoney(avgAmount)}</div>
+        </div>
+        <div style="background:white;padding:10px;border-radius:8px;border:1px solid #86efac;text-align:center">
+          <div style="font-size:11px;color:#166534;font-weight:700">זמן ממוצע לתיק</div>
+          <div style="font-size:22px;font-weight:800;color:#166534">${avgDays}</div>
+          <div style="font-size:10px;color:var(--muted)">ימים מיצירת ליד עד ביצוע</div>
+        </div>
+        <div style="background:white;padding:10px;border-radius:8px;border:1px solid #86efac;text-align:center">
+          <div style="font-size:11px;color:#166534;font-weight:700">סוגי עסקה</div>
+          <div style="font-size:22px;font-weight:800;color:#166534">${Object.keys(byPurpose).length}</div>
+          <div style="font-size:10px;color:var(--muted)">סוגים שונים</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1.5fr;gap:12px">
+        <div style="background:white;padding:10px;border-radius:8px;border:1px solid #86efac">
+          <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:6px;border-bottom:1px solid #d1fae5;padding-bottom:4px">פילוח לפי סוג עסקה</div>
+          <table style="width:100%;font-size:12px"><thead><tr><th style="text-align:right;padding:4px 8px;color:#166534">סוג</th><th style="text-align:center;padding:4px 8px;color:#166534">תיקים</th></tr></thead><tbody>${purposeRows || '<tr><td colspan="2" style="padding:8px;text-align:center;color:var(--muted)">—</td></tr>'}</tbody></table>
+        </div>
+        <div style="background:white;padding:10px;border-radius:8px;border:1px solid #86efac">
+          <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:6px;border-bottom:1px solid #d1fae5;padding-bottom:4px">פילוח לפי בנק מבצע</div>
+          <table style="width:100%;font-size:12px"><thead><tr><th style="text-align:right;padding:4px 8px;color:#166534">בנק</th><th style="text-align:center;padding:4px 8px;color:#166534">תיקים</th><th style="text-align:end;padding:4px 8px;color:#166534">סה"כ ₪</th></tr></thead><tbody>${bankRows || '<tr><td colspan="3" style="padding:8px;text-align:center;color:var(--muted)">אין מידע על בנק מבצע</td></tr>'}</tbody></table>
+        </div>
+      </div>`}
+    </div>
+  `;
+}
+
 function renderClientsList() {
   const el = document.getElementById('tabClients');
   const search = clientFilter.search.toLowerCase();
@@ -2902,6 +3015,7 @@ function renderClientsList() {
           <div class="chip ${reqFilter==='at-banker'?'active':''}" onclick="clientFilter.reqFilter='at-banker';renderClientsList()">אצל הבנקאי</div>
         </div>
       </div>
+      ${_executionStatsPanelHtml(clients, stagesFilter)}
       ${clients.length === 0 ? '<div class="empty">לא נמצאו תיקים</div>' : `
       <table class="clients-table">
         <thead>
