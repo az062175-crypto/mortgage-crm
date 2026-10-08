@@ -2858,13 +2858,19 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
   const totalCount = inScope.length;
   let totalAmount = 0; let totalDays = 0; let daysCount = 0;
   const byPurpose = {}; const byBank = {};
+  // Measures client → execution duration (not lead → execution): time starts when the file became
+  // a real client, not when the lead first appeared.
+  const _clientStart = (c) => {
+    const clientEntry = (c.stageHistory || []).find(h => h.stage === 'client');
+    return (clientEntry && clientEntry.enteredAt) || c.clientAt || null;
+  };
   inScope.forEach(c => {
     const amt = Number(c.executedAmount) || Number((c.approvals || []).find(a => a.accepted)?.amount) || 0;
     totalAmount += amt;
-    const leadAt = c.leadAt || c.createdAt;
+    const startAt = _clientStart(c);
     const execEntry = (c.stageHistory || []).find(h => h.stage === 'execution');
-    if (leadAt && execEntry && execEntry.enteredAt) {
-      const days = Math.round((new Date(execEntry.enteredAt) - new Date(leadAt)) / (1000 * 60 * 60 * 24));
+    if (startAt && execEntry && execEntry.enteredAt) {
+      const days = Math.round((new Date(execEntry.enteredAt) - new Date(startAt)) / (1000 * 60 * 60 * 24));
       if (days >= 0 && days < 3650) { totalDays += days; daysCount++; }
     }
     const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : ['לא מוגדר']);
@@ -2882,10 +2888,10 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
   // Longest / shortest file time — collected inline above alongside totalDays
   let minDays = Infinity, maxDays = 0, minClient = null, maxClient = null;
   inScope.forEach(c => {
-    const leadAt = c.leadAt || c.createdAt;
+    const startAt = _clientStart(c);
     const execEntry = (c.stageHistory || []).find(h => h.stage === 'execution');
-    if (leadAt && execEntry && execEntry.enteredAt) {
-      const days = Math.round((new Date(execEntry.enteredAt) - new Date(leadAt)) / (1000 * 60 * 60 * 24));
+    if (startAt && execEntry && execEntry.enteredAt) {
+      const days = Math.round((new Date(execEntry.enteredAt) - new Date(startAt)) / (1000 * 60 * 60 * 24));
       if (days >= 0 && days < 3650) {
         if (days < minDays) { minDays = days; minClient = c; }
         if (days > maxDays) { maxDays = days; maxClient = c; }
@@ -2923,7 +2929,7 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
         <div style="background:white;padding:10px;border-radius:8px;border:1px solid #86efac;text-align:center">
           <div style="font-size:11px;color:#166534;font-weight:700">זמן ממוצע לתיק</div>
           <div style="font-size:22px;font-weight:800;color:#166534">${avgDays}</div>
-          <div style="font-size:10px;color:var(--muted)">ימים מיצירת ליד עד ביצוע</div>
+          <div style="font-size:10px;color:var(--muted)">ימים מהפיכה ללקוח עד ביצוע</div>
           ${daysCount > 0 ? `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #d1fae5;font-size:10px;line-height:1.5">
             <div style="color:#dc2626"><strong>הכי ארוך:</strong> ${maxDays} ימים${maxClient ? ' · ' + escapeHtml((maxClient.name || '').slice(0, 20)) : ''}</div>
             <div style="color:#16a34a"><strong>הכי קצר:</strong> ${minDays} ימים${minClient ? ' · ' + escapeHtml((minClient.name || '').slice(0, 20)) : ''}</div>
