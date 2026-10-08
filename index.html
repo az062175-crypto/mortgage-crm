@@ -1117,6 +1117,9 @@ function now() { return new Date().toISOString(); }
 function fmtDate(iso) { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'}); }
 function fmtShort(iso) { if (!iso) return '—'; return new Date(iso).toLocaleDateString('he-IL'); }
 function daysBetween(a, b) { if (!a) return 0; const t1 = new Date(a).getTime(); const t2 = b ? new Date(b).getTime() : Date.now(); return Math.floor((t2 - t1) / (1000*60*60*24)); }
+function clientClockEnd(c) { if (!c) return null; const execEntry = (c.stageHistory || []).find(h => h.stage === 'execution'); return (execEntry && execEntry.enteredAt) ? execEntry.enteredAt : null; }
+function daysInFile(c) { if (!c || !c.leadAt) return 0; const end = clientClockEnd(c); return daysBetween(c.leadAt, end); }
+function daysInStage(c) { if (!c || !c.stageEnteredAt) return 0; if (c.stage === 'execution' || c.stage === 'archive') return 0; return daysBetween(c.stageEnteredAt); }
 function stageInfo(id) { return STAGES.find(s => s.id === id) || STAGES[0]; }
 
 // ============================
@@ -3069,8 +3072,8 @@ function renderClientsList() {
               <td>${escapeHtml(c.purpose||'—')}</td>
               <td>${banker ? escapeHtml(banker.name) : '—'}</td>
               <td><span class="stage-pill" style="background:${stageInfo(c.stage).color}">${stageInfo(c.stage).label}</span></td>
-              <td>${daysBetween(c.stageEnteredAt)}</td>
-              <td>${daysBetween(c.leadAt)}</td>
+              <td>${(c.stage==='execution'||c.stage==='archive') ? '—' : daysBetween(c.stageEnteredAt)}</td>
+              <td>${daysInFile(c)}</td>
               <td onclick="event.stopPropagation();${reqPending>0?`openMissingDocsPopup('${c.id}')`:''}" style="${reqPending>0?'cursor:pointer':''}" title="${reqPending>0?'לחץ להצגת המסמכים החסרים':''}">${reqPending > 0 ? `<span style="color:var(--warning);font-weight:600">חסר ${reqPending}</span>` : `<span style="color:var(--success);font-weight:600">${reqProvided} ✓</span>`}</td>
             </tr>`;
           }).join('')}
@@ -3841,18 +3844,18 @@ function renderClientDetail() {
       <div class="timers">
         <div class="timer-card">
           <div class="timer-label">בשלב הנוכחי</div>
-          <div class="timer-value">${daysBetween(c.stageEnteredAt)} ימים</div>
+          <div class="timer-value">${(c.stage==='execution'||c.stage==='archive') ? '— (נעצר בביצוע)' : daysBetween(c.stageEnteredAt)+' ימים'}</div>
           <div class="timer-sub">מ־${fmtShort(c.stageEnteredAt)}</div>
         </div>
         <div class="timer-card">
           <div class="timer-label">מכניסת ליד</div>
-          <div class="timer-value">${daysBetween(c.leadAt)} ימים</div>
-          <div class="timer-sub">מ־${fmtShort(c.leadAt)}</div>
+          <div class="timer-value">${daysInFile(c)} ימים${clientClockEnd(c) ? ' ⛳' : ''}</div>
+          <div class="timer-sub">${clientClockEnd(c) ? 'עד כניסה לביצוע ('+fmtShort(clientClockEnd(c))+')' : 'מ־'+fmtShort(c.leadAt)}</div>
         </div>
         <div class="timer-card">
           <div class="timer-label">מהיות לקוח</div>
-          <div class="timer-value">${c.clientAt ? daysBetween(c.clientAt)+' ימים' : '—'}</div>
-          <div class="timer-sub">${c.clientAt ? 'מ־'+fmtShort(c.clientAt) : 'עדיין ליד'}</div>
+          <div class="timer-value">${c.clientAt ? (daysBetween(c.clientAt, clientClockEnd(c))+' ימים'+(clientClockEnd(c) ? ' ⛳' : '')) : '—'}</div>
+          <div class="timer-sub">${c.clientAt ? (clientClockEnd(c) ? 'עד כניסה לביצוע' : 'מ־'+fmtShort(c.clientAt)) : 'עדיין ליד'}</div>
         </div>
       </div>
 
