@@ -1904,7 +1904,7 @@ function renderKanban() {
         <span class="stage-count-big">${count}</span>
       </div>
       <div class="stage-metrics">
-        <span class="stage-avg" title="זמן ממוצע בשלב"><span>⏳</span><span class="stage-avg-value">${avg}</span>י'</span>
+        ${(s.id==='execution'||s.id==='archive') ? '' : `<span class="stage-avg" title="זמן ממוצע בשלב"><span>⏳</span><span class="stage-avg-value">${avg}</span>י'</span>`}
       </div>
     </div>`;
   }).join('') + '</div>';
@@ -2000,7 +2000,7 @@ function renderStageFilterPanel() {
               <span>📞 ${escapeHtml(c.phone||'—')}${c.purpose?' · '+escapeHtml(c.purpose):''}</span>
               ${banker ? `<span>🏦 ${escapeHtml(banker.name)}${banker.bank?' · '+escapeHtml(banker.bank):''}</span>`:''}
               <span style="display:flex;justify-content:space-between;margin-top:4px">
-                <span>⏳ ${daysBetween(c.stageEnteredAt)} ימים בשלב</span>
+                <span>${(c.stage==='execution'||c.stage==='archive') ? '' : '⏳ '+daysBetween(c.stageEnteredAt)+' ימים בשלב'}</span>
                 ${reqPending>0?`<span onclick="event.stopPropagation();openMissingDocsPopup('${c.id}')" style="color:var(--warning);font-weight:700;cursor:pointer" title="לחץ להצגת המסמכים החסרים">חסר ${reqPending}</span>`:'<span style="color:var(--success);font-weight:700">✓</span>'}
               </span>
             </div>
