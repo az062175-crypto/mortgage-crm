@@ -3852,7 +3852,11 @@ function renderClientDetail() {
           <h1 class="client-name" style="display:flex;align-items:center;gap:10px">
             <button onclick="openCustomTaskModal('${c.id}')" title="הוסף משימה ללקוח" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:18px;border:none;cursor:pointer;line-height:1">+</button>
             <span>${escapeHtml(c.name)}</span>
-            <button onclick="openClientFolder('${c.id}')" oncontextmenu="event.preventDefault();editClientFolder('${c.id}')" title="${c.driveFolderUrl?'פתח תיקיית הלקוח · לחיצה ימנית לעריכה':'הגדר תיקיית הלקוח (Drive / קישור)'}" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:${c.driveFolderUrl?'#fbbf24':'#f1f5f9'};color:${c.driveFolderUrl?'#78350f':'var(--muted)'};font-size:16px;border:1px solid ${c.driveFolderUrl?'#fbbf24':'var(--border)'};cursor:pointer;line-height:1">📁</button>
+            ${(() => {
+              const hasPath = !!clientFolderPath(c);
+              const title = hasPath ? 'העתק נתיב התיקיה · לחיצה ימנית לעריכה' : 'הגדר תיקיית הלקוח';
+              return `<button onclick="openClientFolder('${c.id}')" oncontextmenu="event.preventDefault();editClientFolder('${c.id}')" title="${title}" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:${hasPath?'#fbbf24':'#f1f5f9'};color:${hasPath?'#78350f':'var(--muted)'};font-size:16px;border:1px solid ${hasPath?'#fbbf24':'var(--border)'};cursor:pointer;line-height:1">📁</button>`;
+            })()}
           </h1>
           <div class="client-sub">${(c.borrowers||[]).map(b => `<span style="margin-inline-end:12px"><strong>${escapeHtml(b.role||'לווה')}:</strong> ${escapeHtml(b.name||'—')} · ת.ז ${escapeHtml(b.idNumber||'—')} · ${escapeHtml(b.employmentType||'—')}</span>`).join('')} · 📞 ${escapeHtml(c.phone||'—')}</div>
           <div class="badges">
@@ -7040,11 +7044,50 @@ function openMyTasksHistoryDialog(clientId) {
 function openClientFolder(clientId) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
-  if (c.driveFolderUrl) {
+  // 1) custom URL override — open in new tab
+  if (c.driveFolderUrl && /^https?:\/\//i.test(c.driveFolderUrl)) {
     window.open(c.driveFolderUrl, '_blank', 'noopener');
     return;
   }
+  // 2) local path (custom OR auto-built from clientsFolderBase)
+  const path = clientFolderPath(c);
+  if (path) {
+    // Browsers block file:// from https pages — best we can do is copy path to clipboard and tell user
+    _copyToClipboard(path);
+    _showFolderToast(c.name, path);
+    return;
+  }
+  // 3) nothing configured — open the edit dialog
   editClientFolder(clientId);
+}
+function _copyToClipboard(txt) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt);
+      return;
+    }
+  } catch(e) {}
+  const ta = document.createElement('textarea');
+  ta.value = txt; ta.style.cssText = 'position:fixed;top:-9999px';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+}
+function _showFolderToast(name, path) {
+  const existing = document.getElementById('folderPathToast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'folderPathToast';
+  toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:14px 20px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:99999;font-family:inherit;max-width:92vw;direction:rtl;animation:slideUp 0.2s';
+  toast.innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px">📋 נתיב התיקיה הועתק ללוח</div>
+    <div style="font-size:12px;opacity:0.85;margin-bottom:8px">${escapeHtml(name)}</div>
+    <div style="font-family:ui-monospace,monospace;font-size:11px;background:rgba(255,255,255,0.1);padding:6px 8px;border-radius:4px;direction:ltr;text-align:left;word-break:break-all;max-width:400px">${escapeHtml(path)}</div>
+    <div style="font-size:11px;opacity:0.75;margin-top:8px">פתחי Explorer (Win+E) → הדביקי בשורת הכתובת → Enter</div>
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 5000);
+  toast.onclick = () => toast.remove();
 }
 function editClientFolder(clientId) {
   const c = state.clients.find(x => x.id === clientId);
@@ -15337,6 +15380,59 @@ function renderAppraisalDocsSection() {
   `;
 }
 
+// ------------------- Clients folder (Drive-for-Desktop) -------------------
+function _normalizeFolderBase(p) {
+  if (!p) return '';
+  p = p.trim();
+  // Strip trailing slash/backslash
+  p = p.replace(/[\\\/]+$/, '');
+  return p;
+}
+function clientFolderPath(c) {
+  if (!c) return '';
+  if (c.driveFolderUrl && /^https?:\/\//i.test(c.driveFolderUrl)) return c.driveFolderUrl;
+  if (c.driveFolderUrl) return c.driveFolderUrl; // custom local override
+  const base = _normalizeFolderBase((state.settings && state.settings.clientsFolderBase) || '');
+  if (!base) return '';
+  const sep = base.includes('/') ? '/' : '\\';
+  return base + sep + (c.name || '').trim();
+}
+function saveClientsFolderBase() {
+  const inp = document.getElementById('clientsFolderBaseInput');
+  if (!inp) return;
+  state.settings.clientsFolderBase = _normalizeFolderBase(inp.value);
+  save();
+  const msg = document.getElementById('clientsFolderBaseMsg');
+  if (msg) { msg.textContent = '✓ נשמר'; setTimeout(() => { msg.textContent = ''; }, 2000); }
+}
+function renderClientsFolderSection() {
+  const base = (state.settings && state.settings.clientsFolderBase) || '';
+  const sample = state.clients && state.clients[0];
+  const samplePath = sample ? clientFolderPath(sample) : '';
+  return `
+    <div class="panel">
+      <h2 class="panel-title">📁 תיקיית לקוחות (Drive-for-Desktop)</h2>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+        לכל לקוח יש תיקיה בשם הלקוח בתוך תיקיית בסיס אחת (למשל ב-Google Drive המסונכרן למחשב).<br>
+        הזן כאן את <strong>נתיב תיקיית הבסיס</strong>. המערכת תבנה אוטומטית את הנתיב לכל לקוח: <code>בסיס\\שם הלקוח</code>.<br>
+        הכפתור 📁 ליד שם הלקוח יעתיק ללוח את הנתיב — פתחי Explorer (Win+E), הדביקי בשורת הכתובת, Enter.
+      </div>
+      <div class="form-group">
+        <label>נתיב תיקיית הבסיס</label>
+        <input id="clientsFolderBaseInput" type="text" value="${escapeAttr(base)}" placeholder="C:\\Users\\user\\Google Drive\\user\\לקוחות כולל" style="width:100%;direction:ltr;text-align:left" onblur="saveClientsFolderBase()" onkeydown="if(event.key==='Enter')this.blur()">
+        <span id="clientsFolderBaseMsg" style="color:#16a34a;font-size:12px;margin-inline-start:8px"></span>
+      </div>
+      ${samplePath ? `<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:12px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">דוגמה — ${escapeHtml(sample.name)}:</div>
+        <div style="font-family:ui-monospace,monospace;font-size:13px;direction:ltr;text-align:left;background:white;padding:6px 8px;border-radius:4px;border:1px solid var(--border);word-break:break-all">${escapeHtml(samplePath)}</div>
+      </div>` : ''}
+      <div style="margin-top:14px;padding:10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;font-size:12px;color:#78350f">
+        <strong>הערה חשובה:</strong> לקוחות ספציפיים יכולים לדרוס את הברירת־מחדל עם קישור משלהם — לחיצה ימנית על 📁 בכרטיס הלקוח → הדבקת URL/נתיב מותאם.
+      </div>
+    </div>
+  `;
+}
+
 function renderGreetingsSection() {
   const list = Array.isArray(state.settings.greetings) && state.settings.greetings.length
     ? state.settings.greetings.slice().sort((a,b) => (a.untilHour||0)-(b.untilHour||0)) : DEFAULT_GREETINGS;
@@ -15519,6 +15615,7 @@ function renderSettings() {
     { id: 'incomeTypes', label: '💰 סוגי הכנסות', icon: '💰' },
     { id: 'stageReqs', label: '📎 דרישות מסמכים לפי שלב', icon: '📎' },
     { id: 'appraisalDocs', label: '🏠 דרישות שמאי לפי עסקה', icon: '🏠' },
+    { id: 'clientsFolder', label: '📁 תיקיית לקוחות (Drive)', icon: '📁' },
   ];
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:flex-start">
@@ -15543,6 +15640,7 @@ function renderActiveSettingsSection() {
 }
 
 function renderSettingsSection(id) {
+  if (id === 'clientsFolder') return renderClientsFolderSection();
   if (id === 'appraisalDocs') return renderAppraisalDocsSection();
   if (id === 'sellerTasks') return renderSellerTasksSection();
   if (id === 'bankTasks') return renderBankTasksSection();
