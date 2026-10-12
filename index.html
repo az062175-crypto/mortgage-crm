@@ -762,6 +762,14 @@ try {
       }
     });
   }
+  // One-shot migration: add נסח טאבו to הרחבה under tabu-ownership for users whose state predates this change
+  if (!state.settings._apprMigNesachHarchava) {
+    const t = state.settings.appraisalTasksByReg['tabu-ownership'];
+    if (t && Array.isArray(t['הרחבה']) && !t['הרחבה'].includes('נסח טאבו')) {
+      t['הרחבה'] = ['נסח טאבו'].concat(t['הרחבה']);
+    }
+    state.settings._apprMigNesachHarchava = true;
+  }
   // Migration: add "טופס ארנונה" to all deal types except יד ראשונה and מחיר למשתכן
   const ARNONA = 'טופס ארנונה';
   const ARNONA_EXEMPT = ['יד ראשונה', 'מחיר למשתכן'];
