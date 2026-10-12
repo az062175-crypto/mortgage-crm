@@ -7052,8 +7052,18 @@ function openClientFolder(clientId) {
   // 2) local path (custom OR auto-built from clientsFolderBase)
   const path = clientFolderPath(c);
   if (path) {
-    // Browsers block file:// from https pages — best we can do is copy path to clipboard and tell user
+    // Copy to clipboard as a fallback — works even if the openfolder:// handler isn't installed.
     _copyToClipboard(path);
+    // Try the custom openfolder:// protocol (opens Explorer directly if the user installed the handler on Windows)
+    try {
+      const encoded = encodeURI(path.replace(/\\/g, '/'));
+      const url = 'openfolder:///' + encoded;
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden';
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      setTimeout(() => { if (iframe.parentNode) iframe.remove(); }, 2000);
+    } catch(e) {}
     _showFolderToast(c.name, path);
     return;
   }
@@ -7080,10 +7090,9 @@ function _showFolderToast(name, path) {
   toast.id = 'folderPathToast';
   toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:14px 20px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:99999;font-family:inherit;max-width:92vw;direction:rtl;animation:slideUp 0.2s';
   toast.innerHTML = `
-    <div style="font-weight:700;margin-bottom:4px">📋 נתיב התיקיה הועתק ללוח</div>
-    <div style="font-size:12px;opacity:0.85;margin-bottom:8px">${escapeHtml(name)}</div>
+    <div style="font-weight:700;margin-bottom:4px">📁 ${escapeHtml(name)}</div>
     <div style="font-family:ui-monospace,monospace;font-size:11px;background:rgba(255,255,255,0.1);padding:6px 8px;border-radius:4px;direction:ltr;text-align:left;word-break:break-all;max-width:400px">${escapeHtml(path)}</div>
-    <div style="font-size:11px;opacity:0.75;margin-top:8px">פתחי Explorer (Win+E) → הדביקי בשורת הכתובת → Enter</div>
+    <div style="font-size:11px;opacity:0.75;margin-top:8px">אם מותקן openfolder:// — נפתח כעת ב-Explorer. אחרת: הנתיב הועתק ללוח, Win+E → הדביקי → Enter.</div>
   `;
   document.body.appendChild(toast);
   setTimeout(() => { if (toast.parentNode) toast.remove(); }, 5000);
