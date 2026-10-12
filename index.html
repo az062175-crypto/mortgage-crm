@@ -3852,6 +3852,7 @@ function renderClientDetail() {
           <h1 class="client-name" style="display:flex;align-items:center;gap:10px">
             <button onclick="openCustomTaskModal('${c.id}')" title="הוסף משימה ללקוח" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:18px;border:none;cursor:pointer;line-height:1">+</button>
             <span>${escapeHtml(c.name)}</span>
+            <button onclick="openClientFolder('${c.id}')" oncontextmenu="event.preventDefault();editClientFolder('${c.id}')" title="${c.driveFolderUrl?'פתח תיקיית הלקוח · לחיצה ימנית לעריכה':'הגדר תיקיית הלקוח (Drive / קישור)'}" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:${c.driveFolderUrl?'#fbbf24':'#f1f5f9'};color:${c.driveFolderUrl?'#78350f':'var(--muted)'};font-size:16px;border:1px solid ${c.driveFolderUrl?'#fbbf24':'var(--border)'};cursor:pointer;line-height:1">📁</button>
           </h1>
           <div class="client-sub">${(c.borrowers||[]).map(b => `<span style="margin-inline-end:12px"><strong>${escapeHtml(b.role||'לווה')}:</strong> ${escapeHtml(b.name||'—')} · ת.ז ${escapeHtml(b.idNumber||'—')} · ${escapeHtml(b.employmentType||'—')}</span>`).join('')} · 📞 ${escapeHtml(c.phone||'—')}</div>
           <div class="badges">
@@ -7032,6 +7033,56 @@ function openMyTasksHistoryDialog(clientId) {
     ${myTasks.length === 0 ? '<div class="empty" style="padding:20px">לא הוספת משימות ידניות ללקוח זה</div>' : `<div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">${myTasks.map(rowHtml).join('')}</div>`}
     <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">סגור</button></div>
   `);
+}
+
+// Client folder link — stores a URL per client (Google Drive, Dropbox, or any shareable URL).
+// Clicking the 📁 button next to the name opens the folder; if none set, opens a small dialog to set one.
+function openClientFolder(clientId) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  if (c.driveFolderUrl) {
+    window.open(c.driveFolderUrl, '_blank', 'noopener');
+    return;
+  }
+  editClientFolder(clientId);
+}
+function editClientFolder(clientId) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  const current = c.driveFolderUrl || '';
+  showModal(`
+    <h2 class="modal-title">📁 תיקיית ${escapeHtml(c.name)}</h2>
+    <div style="color:var(--muted);font-size:12px;margin-bottom:10px">הדבק קישור לתיקיית הלקוח ב-Drive / Dropbox / כל שירות ענן. הקישור יישמר ויהיה זמין בלחיצה אחת מכרטיס הלקוח.</div>
+    <div class="form-group">
+      <label>כתובת (URL)</label>
+      <input id="clientFolderUrlInput" type="url" value="${escapeAttr(current)}" placeholder="https://drive.google.com/drive/folders/..." style="width:100%">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="saveClientFolder('${c.id}')">שמור</button>
+      ${current ? `<button class="btn danger secondary" onclick="clearClientFolder('${c.id}')">הסר קישור</button>` : ''}
+      <button class="btn secondary" onclick="closeModal()">ביטול</button>
+    </div>
+  `);
+  setTimeout(() => { const i = document.getElementById('clientFolderUrlInput'); if (i) i.focus(); }, 50);
+}
+function saveClientFolder(clientId) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  const inp = document.getElementById('clientFolderUrlInput');
+  let v = (inp && inp.value || '').trim();
+  if (v && !/^https?:\/\//i.test(v) && !/^file:\/\//i.test(v)) v = 'https://' + v;
+  c.driveFolderUrl = v;
+  save();
+  closeModal();
+  if (currentTab === 'detail') renderClientDetail();
+}
+function clearClientFolder(clientId) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  c.driveFolderUrl = '';
+  save();
+  closeModal();
+  if (currentTab === 'detail') renderClientDetail();
 }
 
 function openCustomTaskModal(clientId, taskId) {
