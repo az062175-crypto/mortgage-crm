@@ -2945,8 +2945,12 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
     .concat(years.map(y => '<option value="' + y + '"' + (String(periodFilter.year) === String(y) ? ' selected' : '') + '>' + y + '</option>')).join('');
   const monthOptions = ['<option value="all"' + (periodFilter.month === 'all' ? ' selected' : '') + '>כל החודשים</option>']
     .concat(monthNames.map((n, i) => '<option value="' + (i + 1) + '"' + (String(periodFilter.month) === String(i + 1) ? ' selected' : '') + '>' + n + '</option>')).join('');
-  const purposeRows = Object.entries(byPurpose).sort((a, b) => b[1] - a[1]).map(([p, n]) => '<tr><td style="padding:4px 8px">' + escapeHtml(p) + '</td><td style="padding:4px 8px;text-align:center;font-weight:700">' + n + '</td></tr>').join('');
-  const bankRows = Object.entries(byBank).sort((a, b) => b[1].amount - a[1].amount).map(([b, v]) => '<tr><td style="padding:4px 8px">' + escapeHtml(b) + '</td><td style="padding:4px 8px;text-align:center">' + v.count + '</td><td style="padding:4px 8px;text-align:end;font-weight:700">' + fmtMoney(v.amount) + '</td></tr>').join('');
+  const purposeBreakdown = Object.entries(byPurpose).sort((a, b) => b[1] - a[1]);
+  const bankBreakdownExec = Object.entries(byBank).sort((a, b) => b[1].amount - a[1].amount);
+  const purposeTotal = purposeBreakdown.reduce((s, [, n]) => s + n, 0);
+  const bankTotalCount = bankBreakdownExec.reduce((s, [, v]) => s + v.count, 0);
+  const purposePalette = ['#2563eb','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#64748b'];
+  const bankPalette = ['#8b5cf6','#2563eb','#10b981','#f59e0b','#ef4444','#06b6d4','#ec4899','#64748b'];
   return `
     <div class="panel" style="margin-bottom:12px;background:linear-gradient(135deg,#f0fdf4,#eff6ff);border:1px solid #86efac">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
@@ -2983,14 +2987,40 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
           <div style="font-size:10px;color:var(--muted)">סוגים שונים</div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1.5fr;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div style="background:white;padding:10px;border-radius:8px;border:1px solid #86efac">
-          <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:6px;border-bottom:1px solid #d1fae5;padding-bottom:4px">פילוח לפי סוג עסקה</div>
-          <table style="width:100%;font-size:12px"><thead><tr><th style="text-align:right;padding:4px 8px;color:#166534">סוג</th><th style="text-align:center;padding:4px 8px;color:#166534">תיקים</th></tr></thead><tbody>${purposeRows || '<tr><td colspan="2" style="padding:8px;text-align:center;color:var(--muted)">—</td></tr>'}</tbody></table>
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#166534">📁 סוגי תיקים שבוצעו</div>
+          ${purposeBreakdown.length === 0 ? '<div style="color:var(--muted);font-size:12px">אין נתונים</div>' : `
+            <div style="display:flex;align-items:center;gap:10px">
+              ${_miniDonut(purposeBreakdown.map(([,c])=>c), purposePalette, purposeTotal)}
+              <div style="flex:1;min-width:0">
+                ${purposeBreakdown.map(([name, cnt], i) => {
+                  const pct = purposeTotal ? Math.round((cnt/purposeTotal)*100) : 0;
+                  const col = purposePalette[i % purposePalette.length];
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid #d1fae5;gap:6px">
+                    <span style="display:flex;align-items:center;gap:5px;min-width:0"><span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span><span style="color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span></span>
+                    <span style="display:flex;align-items:center;gap:4px;flex-shrink:0"><span style="color:var(--muted);font-size:11px">${pct}%</span><span style="background:#16a34a;color:#fff;padding:1px 8px;border-radius:999px;font-weight:700;font-size:11px">${cnt}</span></span>
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>`}
         </div>
         <div style="background:white;padding:10px;border-radius:8px;border:1px solid #86efac">
-          <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:6px;border-bottom:1px solid #d1fae5;padding-bottom:4px">פילוח לפי בנק מבצע</div>
-          <table style="width:100%;font-size:12px"><thead><tr><th style="text-align:right;padding:4px 8px;color:#166534">בנק</th><th style="text-align:center;padding:4px 8px;color:#166534">תיקים</th><th style="text-align:end;padding:4px 8px;color:#166534">סה"כ ₪</th></tr></thead><tbody>${bankRows || '<tr><td colspan="3" style="padding:8px;text-align:center;color:var(--muted)">אין מידע על בנק מבצע</td></tr>'}</tbody></table>
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#166534">🏦 בנקים שביצעו</div>
+          ${bankBreakdownExec.length === 0 ? '<div style="color:var(--muted);font-size:12px">אין מידע על בנק מבצע</div>' : `
+            <div style="display:flex;align-items:center;gap:10px">
+              ${_miniDonut(bankBreakdownExec.map(([,v])=>v.count), bankPalette, bankTotalCount)}
+              <div style="flex:1;min-width:0">
+                ${bankBreakdownExec.map(([name, v], i) => {
+                  const pct = bankTotalCount ? Math.round((v.count/bankTotalCount)*100) : 0;
+                  const col = bankPalette[i % bankPalette.length];
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid #d1fae5;gap:6px">
+                    <span style="display:flex;align-items:center;gap:5px;min-width:0"><span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span><span style="color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(name)} · ${fmtMoney(v.amount)}">${escapeHtml(name)}</span></span>
+                    <span style="display:flex;align-items:center;gap:4px;flex-shrink:0"><span style="color:var(--muted);font-size:11px">${pct}%</span><span style="background:#8b5cf6;color:#fff;padding:1px 8px;border-radius:999px;font-weight:700;font-size:11px">${v.count}</span></span>
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>`}
         </div>
       </div>`}
     </div>
