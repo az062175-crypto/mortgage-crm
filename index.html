@@ -2593,7 +2593,7 @@ function renderDashboard() {
             const byRange = { red: 0, orange: 0, green: 0, over: 0 };
             filteredClients.forEach(c => {
               if (!c.targetDate) return;
-              if (c.stage === 'execution' || c.stage === 'archive') return;
+              if (c.stage === 'execution' || c.stage === 'archive' || c.stage === 'lead') return;
               const target = new Date(c.targetDate + 'T00:00:00');
               const days = Math.round((target.getTime() - today.getTime()) / 86400000);
               if (days < 0) byRange.over++;
@@ -4881,7 +4881,7 @@ function openTargetDateDialog(range) {
   const rows = [];
   state.clients.forEach(c => {
     if (!c.targetDate) return;
-    if (c.stage === 'execution' || c.stage === 'archive') return;
+    if (c.stage === 'execution' || c.stage === 'archive' || c.stage === 'lead') return;
     const target = new Date(c.targetDate + 'T00:00:00');
     const days = Math.round((target.getTime() - today.getTime()) / 86400000);
     let match = false;
