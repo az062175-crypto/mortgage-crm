@@ -108,6 +108,8 @@
   .status-pill.active[data-tstatus="active"] { background: var(--warning); color: white; border-color: var(--warning); }
   .status-pill.active[data-tstatus="follow-up"] { background: var(--accent); color: white; border-color: var(--accent); }
   .status-pill.active[data-tstatus="done"] { background: var(--success); color: white; border-color: var(--success); }
+  .status-pill[data-tstatus="skip"] { color: #64748b; }
+  .status-pill.active[data-tstatus="skip"] { background: #64748b; color: white; border-color: #64748b; }
   .task-status-group { display: flex; gap: 3px; }
 
   .mini-card { background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; cursor: pointer; font-size: 12px; }
@@ -3757,7 +3759,8 @@ function renderTasksTodoSubTab(customOnly) {
                 <div class="task-status-group">
                   <span class="status-pill ${st==='active'?'active':''}" data-tstatus="active" onclick="setTaskStatus('${client.id}','${task.id}','active')">פעיל</span>
                   <span class="status-pill ${st==='follow-up'?'active':''}" data-tstatus="follow-up" onclick="setTaskStatus('${client.id}','${task.id}','follow-up')">מעקב</span>
-                  <span class="status-pill ${st==='done'?'active':''}" data-tstatus="done" onclick="setTaskStatus('${client.id}','${task.id}','done')">בוצע</span>
+                  <span class="status-pill ${st==='done' && !task.notRequired?'active':''}" data-tstatus="done" onclick="setTaskStatus('${client.id}','${task.id}','done')">בוצע</span>
+                  <span class="status-pill ${task.notRequired?'active':''}" data-tstatus="skip" onclick="markTaskNotRequired('${client.id}','${task.id}')" title="סמן כלא נדרש">לא נדרש</span>
                 </div>
               </td>
               <td><span class="stage-pill" style="background:${stageInfo(task.stage).color}">${stageInfo(task.stage).label}</span></td>
@@ -4859,7 +4862,8 @@ function taskItemHtml(c, t) {
     <div class="task-status-group">
       <span class="status-pill ${rawStatus==='active'?'active':''}" data-tstatus="active" onclick="setTaskStatus('${c.id}','${t.id}','active')">פעיל</span>
       <span class="status-pill ${rawStatus==='follow-up'?'active':''}" data-tstatus="follow-up" onclick="setTaskStatus('${c.id}','${t.id}','follow-up')">מעקב</span>
-      <span class="status-pill ${rawStatus==='done'?'active':''}" data-tstatus="done" onclick="setTaskStatus('${c.id}','${t.id}','done')">בוצע</span>
+      <span class="status-pill ${rawStatus==='done' && !t.notRequired?'active':''}" data-tstatus="done" onclick="setTaskStatus('${c.id}','${t.id}','done')">בוצע</span>
+      <span class="status-pill ${t.notRequired?'active':''}" data-tstatus="skip" onclick="markTaskNotRequired('${c.id}','${t.id}')" title="סמן כלא נדרש — נספר כבוצע">לא נדרש</span>
     </div>
     <button class="icon-btn" onclick="startRenameTask('${c.id}','${t.id}')" title="ערוך שם" style="color:var(--accent)">✎</button>
     <button class="icon-btn" onclick="openTaskReminderDialog('${c.id}','${t.id}')" title="הגדר תזכורת">${hasReminder?'🔔':'🕐'}</button>
@@ -6028,9 +6032,29 @@ function renderIncomeCheckboxes(c) {
 // ============================
 // Actions
 // ============================
+// "Not required" — counts as done for stage-advance purposes, but tagged visually and in history.
+// Bypasses most of the "done" special handlers (dialogs, blocks) — just records the skip and moves on.
+function markTaskNotRequired(clientId, taskId) {
+  const c = state.clients.find(x => x.id === clientId);
+  const t = c && c.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  t.status = 'done';
+  t.done = true;
+  t.doneAt = now();
+  t.notRequired = true;
+  t.history = t.history || [];
+  t.history.push({ status: 'done', at: now(), note: 'לא נדרש' });
+  const advanced = autoAdvanceIfStageComplete(c);
+  save();
+  if (advanced) renderKanban();
+  if (currentTab === 'detail') renderClientDetail();
+  if (currentTab === 'tasks') renderTasksTab();
+  if (currentTab === 'leads' && typeof renderLeadsTab === 'function') renderLeadsTab();
+}
 function setTaskStatus(clientId, taskId, status) {
   const c = state.clients.find(x => x.id === clientId);
   const t = c.tasks.find(t => t.id === taskId);
+  if (status !== 'done' && t.notRequired) { t.notRequired = false; }
   if (t.status === status) return;
   // Submission-stage: block "ניידים של הלווים" if borrowers don't have phones
   if (status === 'done' && t.stage === 'submission' && t.title === 'ניידים של הלווים') {
@@ -8846,7 +8870,8 @@ function renderLeadCard(c, isClosed) {
               ${!isClosed ? `<div class="task-status-group">
                 <span class="status-pill ${st==='active'?'active':''}" data-tstatus="active" onclick="setTaskStatus('${c.id}','${t.id}','active')">פעיל</span>
                 <span class="status-pill ${st==='follow-up'?'active':''}" data-tstatus="follow-up" onclick="setTaskStatus('${c.id}','${t.id}','follow-up')">מעקב</span>
-                <span class="status-pill ${st==='done'?'active':''}" data-tstatus="done" onclick="setTaskStatus('${c.id}','${t.id}','done')">בוצע</span>
+                <span class="status-pill ${st==='done' && !t.notRequired?'active':''}" data-tstatus="done" onclick="setTaskStatus('${c.id}','${t.id}','done')">בוצע</span>
+                <span class="status-pill ${t.notRequired?'active':''}" data-tstatus="skip" onclick="markTaskNotRequired('${c.id}','${t.id}')" title="סמן כלא נדרש">לא נדרש</span>
               </div>` : ''}
             </div>`;
           }).join('')}
