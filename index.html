@@ -16989,6 +16989,14 @@ function sbApplyRemoteState(obj){
     var _sig=state.settings.whatsappTemplates.find(function(t){return t.id==='sig-reminder'});
     if(_sig)_sig.body='שלום {name},\nתזכורת לפגישת החתימה שקבענו ביום {meetingDate} בשעה {meetingTime}.\nאצל הבנקאי {bankerName}\n\n*מיקום:* בנק {bank} · סניף {branch}\n*כתובת:* {branchAddress}\n\n*תזכורת: להביא איתכם:*\n• תעודת זהות + ספח - מקוריים\n\nנא לאשר הגעה.\nתודה,\nיצחק';
   }
+  // One-shot migration: add נסח טאבו to הרחבה under tabu-ownership (also when state loaded from cloud)
+  if (state.settings.appraisalTasksByReg && !state.settings._apprMigNesachHarchava) {
+    var _tbu = state.settings.appraisalTasksByReg['tabu-ownership'];
+    if (_tbu && Array.isArray(_tbu['הרחבה']) && !_tbu['הרחבה'].includes('נסח טאבו')) {
+      _tbu['הרחבה'] = ['נסח טאבו'].concat(_tbu['הרחבה']);
+    }
+    state.settings._apprMigNesachHarchava = true;
+  }
   state.clients.forEach(migrateClient);
 }
 
