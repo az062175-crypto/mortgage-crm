@@ -16231,6 +16231,32 @@ function _silentSyncStageDefaults() {
       }
     });
   }
+  // Per-deal/per-registration appraisal tasks — add any newly-defined items (e.g. נסח טאבו for הרחבה tabu-ownership)
+  const _apprByReg = (state.settings && state.settings.appraisalTasksByReg) || {};
+  if (apprIdx >= 0) {
+    (state.clients || []).forEach(c => {
+      if (c.stage === 'lead' || c.stage === 'archive') return;
+      const curIdx = STAGES.findIndex(x => x.id === c.stage);
+      if (curIdx < apprIdx) return;
+      if (c.requiresAppraisal === false) return;
+      const reg = c.registrationType || '';
+      if (!reg || !_apprByReg[reg]) return;
+      const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
+      purposes.forEach(p => {
+        const titles = _apprByReg[reg][p];
+        if (!Array.isArray(titles)) return;
+        c.tasks = c.tasks || [];
+        titles.forEach(title => {
+          const fullTitle = title + ' (' + p + ')';
+          const exists = c.tasks.some(t => t.stage === 'appraisal' && (t.title === fullTitle || t.title === title));
+          if (!exists) {
+            c.tasks.push({ id: uid(), stage: 'appraisal', title: fullTitle, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now(), note: 'סונכרן אוטומטית' }], source: 'appraisal-seed' });
+            changed = true;
+          }
+        });
+      });
+    });
+  }
   STAGES.forEach((s, stageIdx) => {
     const stageId = s.id;
     const taskTitles = Array.isArray(tasksMap[stageId]) ? tasksMap[stageId] : [];
