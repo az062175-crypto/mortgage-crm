@@ -2997,8 +2997,8 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
                 ${purposeBreakdown.map(([name, cnt], i) => {
                   const pct = purposeTotal ? Math.round((cnt/purposeTotal)*100) : 0;
                   const col = purposePalette[i % purposePalette.length];
-                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid #d1fae5;gap:6px">
-                    <span style="display:flex;align-items:center;gap:5px;min-width:0"><span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span><span style="color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span></span>
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid #d1fae5;gap:6px;cursor:pointer" onclick="openExecutedByPurposeDialog('${escapeAttr(name)}')" title="הצג תיקים שבוצעו של ${escapeAttr(name)}">
+                    <span style="display:flex;align-items:center;gap:5px;min-width:0"><span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span><span style="color:#166534;text-decoration:underline;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span></span>
                     <span style="display:flex;align-items:center;gap:4px;flex-shrink:0"><span style="color:var(--muted);font-size:11px">${pct}%</span><span style="background:#16a34a;color:#fff;padding:1px 8px;border-radius:999px;font-weight:700;font-size:11px">${cnt}</span></span>
                   </div>`;
                 }).join('')}
@@ -3014,8 +3014,8 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
                 ${bankBreakdownExec.map(([name, v], i) => {
                   const pct = bankTotalCount ? Math.round((v.count/bankTotalCount)*100) : 0;
                   const col = bankPalette[i % bankPalette.length];
-                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid #d1fae5;gap:6px">
-                    <span style="display:flex;align-items:center;gap:5px;min-width:0"><span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span><span style="color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(name)} · ${fmtMoney(v.amount)}">${escapeHtml(name)}</span></span>
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid #d1fae5;gap:6px;cursor:pointer" onclick="openExecutedByBankDialog('${escapeAttr(name)}')" title="הצג תיקים שבוצעו בבנק ${escapeAttr(name)} · ${fmtMoney(v.amount)}">
+                    <span style="display:flex;align-items:center;gap:5px;min-width:0"><span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span><span style="color:#166534;text-decoration:underline;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span></span>
                     <span style="display:flex;align-items:center;gap:4px;flex-shrink:0"><span style="color:var(--muted);font-size:11px">${pct}%</span><span style="background:#8b5cf6;color:#fff;padding:1px 8px;border-radius:999px;font-weight:700;font-size:11px">${v.count}</span></span>
                   </div>`;
                 }).join('')}
@@ -13387,6 +13387,73 @@ function openBankClientsDialog(bankName) {
     ${active.length === 0 ? '<div class="empty" style="padding:16px">אין תיקים פעילים</div>' : `<div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">${active.map(renderRow).join('')}</div>`}
     <div style="font-weight:700;margin:16px 0 6px;color:#475569">📦 בארכיון (${archived.length})</div>
     ${archived.length === 0 ? '<div class="empty" style="padding:16px">אין תיקים בארכיון</div>' : `<div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;opacity:0.85">${archived.map(renderRow).join('')}</div>`}
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">סגור</button></div>
+  `);
+}
+
+// Executed-deals dialogs — called from the green execution stats panel.
+// Scope: anyone who ever reached execution, filtered by the panel's period (window._execStatsFilter).
+function _execPanelInScope() {
+  const pf = window._execStatsFilter || { year: 'all', month: 'all' };
+  return (state.clients || []).filter(c => {
+    const execEntry = (c.stageHistory || []).find(h => h.stage === 'execution');
+    if (!execEntry || !execEntry.enteredAt) return false;
+    if (pf.year === 'all' && pf.month === 'all') return true;
+    const d = new Date(execEntry.enteredAt);
+    if (isNaN(d)) return false;
+    if (pf.year !== 'all' && d.getFullYear() !== Number(pf.year)) return false;
+    if (pf.month !== 'all' && (d.getMonth() + 1) !== Number(pf.month)) return false;
+    return true;
+  });
+}
+function _execDialogRow(c) {
+  const acc = (c.approvals || []).find(a => a.accepted);
+  const bankName = (acc && (acc.bankName || acc.bank)) || '';
+  const amt = Number(c.executedAmount) || Number(acc && acc.amount) || 0;
+  const purposes = (c.purposes && c.purposes.length) ? c.purposes.join(', ') : (c.purpose || '—');
+  const stLbl = stageInfo(c.stage).label;
+  return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="closeModal();openClient('${c.id}')">
+    <div style="flex:1">
+      <div style="font-weight:700">${escapeHtml(c.name)}</div>
+      <div style="font-size:11px;color:var(--muted)">${escapeHtml(stLbl)} · ${escapeHtml(purposes)}${bankName?' · '+escapeHtml(bankName):''} · ${fmtMoney(amt)}</div>
+    </div>
+  </div>`;
+}
+function openExecutedByPurposeDialog(dealType) {
+  const all = _execPanelInScope().filter(c => {
+    const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
+    return purposes.includes(dealType);
+  });
+  const active = all.filter(c => c.stage !== 'archive');
+  const archived = all.filter(c => c.stage === 'archive');
+  document.getElementById('modalContent').style.maxWidth = '760px';
+  showModal(`
+    <h2 class="modal-title">📁 ${escapeHtml(dealType)} — בוצעו</h2>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:10px">${active.length} בביצוע · ${archived.length} בארכיון</div>
+    <div style="font-weight:700;margin:12px 0 6px;color:#166534">🟢 בביצוע (${active.length})</div>
+    ${active.length === 0 ? '<div class="empty" style="padding:16px">אין תיקים</div>' : `<div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">${active.map(_execDialogRow).join('')}</div>`}
+    <div style="font-weight:700;margin:16px 0 6px;color:#475569">📦 בארכיון (${archived.length})</div>
+    ${archived.length === 0 ? '<div class="empty" style="padding:16px">אין תיקים בארכיון</div>' : `<div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;opacity:0.9">${archived.map(_execDialogRow).join('')}</div>`}
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">סגור</button></div>
+  `);
+}
+function openExecutedByBankDialog(bankName) {
+  const all = _execPanelInScope().filter(c => {
+    const acc = (c.approvals || []).find(a => a.accepted);
+    const bn = (acc && (acc.bankName || acc.bank)) || '';
+    return bn === bankName;
+  });
+  const active = all.filter(c => c.stage !== 'archive');
+  const archived = all.filter(c => c.stage === 'archive');
+  const totalAmt = all.reduce((s, c) => s + (Number(c.executedAmount) || 0), 0);
+  document.getElementById('modalContent').style.maxWidth = '760px';
+  showModal(`
+    <h2 class="modal-title">🏦 ${escapeHtml(bankName)} — בוצעו</h2>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:10px">${all.length} תיקים · סה"כ ${fmtMoney(totalAmt)}</div>
+    <div style="font-weight:700;margin:12px 0 6px;color:#166534">🟢 בביצוע (${active.length})</div>
+    ${active.length === 0 ? '<div class="empty" style="padding:16px">אין תיקים</div>' : `<div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">${active.map(_execDialogRow).join('')}</div>`}
+    <div style="font-weight:700;margin:16px 0 6px;color:#475569">📦 בארכיון (${archived.length})</div>
+    ${archived.length === 0 ? '<div class="empty" style="padding:16px">אין תיקים בארכיון</div>' : `<div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;opacity:0.9">${archived.map(_execDialogRow).join('')}</div>`}
     <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">סגור</button></div>
   `);
 }
