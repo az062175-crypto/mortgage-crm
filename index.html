@@ -2443,8 +2443,8 @@ function renderDashboard() {
       }
     }
   });
-  // Deal type breakdown — exclude leads/archive/execution (only in-progress deals)
-  const _activeForBreakdown = filteredClients.filter(c => c.stage !== 'lead' && c.stage !== 'archive' && c.stage !== 'execution');
+  // Deal type breakdown — exclude leads/execution (keep archive — completed deals count)
+  const _activeForBreakdown = filteredClients.filter(c => c.stage !== 'lead' && c.stage !== 'execution');
   const dealCount = {};
   _activeForBreakdown.forEach(c => {
     const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
@@ -13338,7 +13338,7 @@ function seedDealDocsForPurposes(client) {
 // ========== Banker's Clients Dialog ==========
 function openDealTypeClientsDialog(dealType) {
   const clients = state.clients.filter(c => {
-    if (c.stage === 'lead' || c.stage === 'execution' || c.stage === 'archive') return false;
+    if (c.stage === 'lead' || c.stage === 'execution') return false;
     const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
     return purposes.includes(dealType);
   });
@@ -13367,7 +13367,7 @@ function openDealTypeClientsDialog(dealType) {
 
 function openBankClientsDialog(bankName) {
   const bankerIds = state.settings.bankers.filter(b => b.bank === bankName).map(b => b.id);
-  const clients = state.clients.filter(c => c.bankerId && bankerIds.includes(c.bankerId) && c.stage !== 'lead' && c.stage !== 'execution' && c.stage !== 'archive');
+  const clients = state.clients.filter(c => c.bankerId && bankerIds.includes(c.bankerId) && c.stage !== 'lead' && c.stage !== 'execution');
   const active = clients.filter(c => c.stage !== 'archive');
   const archived = clients.filter(c => c.stage === 'archive');
   const renderRow = (c) => {
