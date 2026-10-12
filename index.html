@@ -15187,6 +15187,97 @@ function resetBankNameMap() {
   renderSettings();
 }
 
+// ------------------- Appraisal documents by registration type × deal type -------------------
+const REG_TYPE_LABELS = {
+  'tabu-ownership': 'טאבו בעלות',
+  'tabu-warning':   'טאבו בהערת אזהרה + אישור זכויות',
+  'minhal':         'מינהל + אישור זכויות'
+};
+let _appraisalDocsOpenReg = 'tabu-ownership';
+function _apprEnsure(regType, dealType) {
+  if (!state.settings.appraisalTasksByReg) state.settings.appraisalTasksByReg = {};
+  if (!state.settings.appraisalTasksByReg[regType]) state.settings.appraisalTasksByReg[regType] = {};
+  if (!Array.isArray(state.settings.appraisalTasksByReg[regType][dealType])) {
+    state.settings.appraisalTasksByReg[regType][dealType] = [];
+  }
+  return state.settings.appraisalTasksByReg[regType][dealType];
+}
+function switchAppraisalDocsReg(reg) { _appraisalDocsOpenReg = reg; renderActiveSettingsSection(); }
+function addAppraisalDoc(regType, dealType) {
+  const key = 'newApprDoc_' + regType + '_' + dealType.replace(/[^a-zא-ת]/gi, '_');
+  const inp = document.getElementById(key);
+  const v = inp && inp.value.trim();
+  if (!v) return;
+  const arr = _apprEnsure(regType, dealType);
+  if (arr.includes(v)) { inp.value = ''; return; }
+  arr.push(v);
+  save(); renderActiveSettingsSection();
+}
+function removeAppraisalDoc(regType, dealType, idx) {
+  const arr = _apprEnsure(regType, dealType);
+  arr.splice(idx, 1);
+  save(); renderActiveSettingsSection();
+}
+function renameAppraisalDoc(regType, dealType, idx, val) {
+  const arr = _apprEnsure(regType, dealType);
+  val = (val || '').trim();
+  if (!val) { arr.splice(idx, 1); } else { arr[idx] = val; }
+  save(); renderActiveSettingsSection();
+}
+function resetAppraisalDocsForDeal(regType, dealType) {
+  if (!confirm('לשחזר את ברירת המחדל של "' + dealType + '" בקבוצה "' + (REG_TYPE_LABELS[regType]||regType) + '"? שינויים שעשית ברשימה הזו יימחקו.')) return;
+  const def = (DEFAULT_DATA.settings.appraisalTasksByReg[regType] || {})[dealType];
+  if (!state.settings.appraisalTasksByReg[regType]) state.settings.appraisalTasksByReg[regType] = {};
+  state.settings.appraisalTasksByReg[regType][dealType] = Array.isArray(def) ? def.slice() : [];
+  save(); renderActiveSettingsSection();
+}
+function renderAppraisalDocsSection() {
+  const regTypes = Object.keys(REG_TYPE_LABELS);
+  const openReg = _appraisalDocsOpenReg || regTypes[0];
+  const dealTypes = (state.settings.dealTypes || []).slice();
+  // Also include deal types that exist only in the config (edge case)
+  const regData = (state.settings.appraisalTasksByReg || {})[openReg] || {};
+  Object.keys(regData).forEach(d => { if (!dealTypes.includes(d)) dealTypes.push(d); });
+  const tabs = regTypes.map(r => `
+    <button class="chip ${r===openReg?'active':''}" onclick="switchAppraisalDocsReg('${r}')" style="cursor:pointer">${escapeHtml(REG_TYPE_LABELS[r])}</button>
+  `).join('');
+  const cards = dealTypes.map(dt => {
+    const key = 'newApprDoc_' + openReg + '_' + dt.replace(/[^a-zא-ת]/gi, '_');
+    const docs = Array.isArray(regData[dt]) ? regData[dt] : [];
+    return `
+      <div class="panel" style="padding:12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+          <div style="font-weight:700;color:var(--accent)">📄 ${escapeHtml(dt)}</div>
+          <button class="btn secondary small" onclick="resetAppraisalDocsForDeal('${openReg}','${escapeAttr(dt)}')" title="חזרה לברירת המחדל של הקוד">↩ ברירת מחדל</button>
+        </div>
+        ${docs.length === 0 ? '<div style="color:var(--muted);font-size:12px;margin-bottom:8px">אין דרישות עבור ' + escapeHtml(dt) + ' בקבוצה הזו</div>' : ''}
+        <div style="display:flex;flex-direction:column;gap:4px">
+          ${docs.map((d, i) => `
+            <div class="settings-item" style="display:flex;gap:6px;align-items:center;background:#f8fafc">
+              <input value="${escapeAttr(d)}" onblur="renameAppraisalDoc('${openReg}','${escapeAttr(dt)}',${i},this.value)" onkeydown="if(event.key==='Enter')this.blur()" style="flex:1;background:transparent;border:none;font-size:14px;padding:4px">
+              <button class="icon-btn" onclick="removeAppraisalDoc('${openReg}','${escapeAttr(dt)}',${i})" title="הסר">✕</button>
+            </div>
+          `).join('')}
+        </div>
+        <div class="add-row" style="margin-top:10px;display:flex;gap:6px">
+          <input id="${key}" placeholder="מסמך/דרישה חדש" style="flex:1" onkeydown="if(event.key==='Enter'){addAppraisalDoc('${openReg}','${escapeAttr(dt)}')}">
+          <button class="btn small" onclick="addAppraisalDoc('${openReg}','${escapeAttr(dt)}')">+ הוסף</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  return `
+    <div class="panel">
+      <h2 class="panel-title">🏠 דרישות שמאי לפי עסקה ורישום</h2>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        לכל שילוב של <strong>סוג רישום × סוג עסקה</strong> — רשימת המסמכים שנשלחים לשמאי במייל ההפניה. שינויים נשמרים אוטומטית ונכנסים לתוקף לתיקים חדשים. לתיקים קיימים — דרישות חדשות יצטרפו בטעינה הבאה של המערכת (סינכרון שקט).
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${tabs}</div>
+    </div>
+    ${cards || '<div class="panel"><div class="empty">אין סוגי עסקאות מוגדרים — הוסף קודם בהגדרות "סוגי תיקים"</div></div>'}
+  `;
+}
+
 function renderGreetingsSection() {
   const list = Array.isArray(state.settings.greetings) && state.settings.greetings.length
     ? state.settings.greetings.slice().sort((a,b) => (a.untilHour||0)-(b.untilHour||0)) : DEFAULT_GREETINGS;
@@ -15368,6 +15459,7 @@ function renderSettings() {
     { id: 'greetings', label: '👋 ברכות לפי שעה', icon: '👋' },
     { id: 'incomeTypes', label: '💰 סוגי הכנסות', icon: '💰' },
     { id: 'stageReqs', label: '📎 דרישות מסמכים לפי שלב', icon: '📎' },
+    { id: 'appraisalDocs', label: '🏠 דרישות שמאי לפי עסקה', icon: '🏠' },
   ];
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:flex-start">
@@ -15392,6 +15484,7 @@ function renderActiveSettingsSection() {
 }
 
 function renderSettingsSection(id) {
+  if (id === 'appraisalDocs') return renderAppraisalDocsSection();
   if (id === 'sellerTasks') return renderSellerTasksSection();
   if (id === 'bankTasks') return renderBankTasksSection();
   if (id === 'signatureTasks') return renderSignatureTasksSection();
