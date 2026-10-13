@@ -1906,7 +1906,7 @@ function setAppraisalSentStatus(clientId, status) {
 let currentTab = 'dashboard';
 let currentClientId = null;
 let clientFilter = { search: '', stages: [], reqFilter: 'all', bankerId: '' };
-let tasksFilter = { tab: 'todo', status: 'active', bankerId: '', bankerIds: [], stage: '', search: '', clientId: '', clientIds: [], missingDocs: false, itemTitle: '' };
+let tasksFilter = { tab: 'my', status: 'active', bankerId: '', bankerIds: [], stage: '', search: '', clientId: '', clientIds: [], missingDocs: false, itemTitle: '' };
 
 function switchTab(tab) {
   currentTab = tab;
@@ -1929,7 +1929,7 @@ function switchTab(tab) {
     document.getElementById('tabClients').style.display = '';
     renderClientsList();
   }
-  if (tab === 'tasks') { document.getElementById('tabTasks').style.display = ''; renderTasksTab(); }
+  if (tab === 'tasks') { tasksFilter.tab = 'my'; document.getElementById('tabTasks').style.display = ''; renderTasksTab(); }
   if (tab === 'settings') { document.getElementById('tabSettings').style.display = ''; renderSettings(); }
   if (tab === 'detail') { document.getElementById('tabDetail').style.display = ''; renderClientDetail(); }
   renderKanban();
