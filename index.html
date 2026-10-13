@@ -17596,6 +17596,10 @@ function sbHeaderShow(){
   var el=document.getElementById('sb-header');if(!el)return;
   el.style.display='flex';
   document.body.style.marginTop='34px';
+  document.body.classList.add('sb-header-visible');
+  // Shift the sticky topbar down so it isn't covered by the fixed sync header
+  var tb = document.querySelector('.topbar');
+  if (tb) tb.style.top = '34px';
   var w=document.getElementById('sb-who');
   if(w&&SB.user)w.textContent=SB.user.email;
   sbUpdateLast();
