@@ -2310,8 +2310,8 @@ let overviewFilter = 'all'; // 'all' | 'urgent' | 'stuck' | 'active' | 'attentio
 let overviewCollapsed = false;
 
 function renderOverviewPanel() {
-  // Show all clients that are NOT archived or executed (active pipeline)
-  const clients = state.clients.filter(c => c.stage !== 'archive' && c.stage !== 'execution');
+  // Show only active pipeline — exclude leads, execution, archive
+  const clients = state.clients.filter(c => c.stage !== 'archive' && c.stage !== 'execution' && c.stage !== 'lead');
 
   // Classify by urgency
   const classify = (c) => {
