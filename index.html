@@ -298,9 +298,13 @@
     div[style*="grid-template-columns:repeat(4,1fr)"] { grid-template-columns: repeat(2, 1fr) !important; }
     div[style*="grid-template-columns:repeat(2,1fr)"] { grid-template-columns: 1fr !important; }
     div[style*="grid-template-columns:repeat(3,1fr)"] { grid-template-columns: 1fr !important; }
-    /* "1fr 1fr" variant (used in dashboard stuck+notes grid) → 1 col */
-    #tabDashboard div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; gap: 10px !important; }
-    #tabDashboard div[style*="grid-template-columns:1fr 1fr 1fr"] { grid-template-columns: 1fr !important; gap: 10px !important; }
+    /* "1fr 1fr" variant (used in dashboard stuck+notes grid, bankers+appraisers) → 1 col full width */
+    #tabDashboard div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; gap: 12px !important; }
+    #tabDashboard div[style*="grid-template-columns:1fr 1fr 1fr"] { grid-template-columns: 1fr !important; gap: 12px !important; }
+    /* Each panel inside dashboard — full width, extra breathing room between stacked panels */
+    #tabDashboard .panel { margin-bottom: 10px; }
+    /* Smooth scrolling anywhere */
+    html { scroll-behavior: smooth; }
 
     /* Settings sidebar → stack */
     div[style*="grid-template-columns:220px 1fr"] { grid-template-columns: 1fr !important; }
