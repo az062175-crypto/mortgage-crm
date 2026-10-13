@@ -641,6 +641,7 @@ const DEFAULT_DATA = {
   settings: {
     dealTypes: ['יד שנייה', 'יד ראשונה', 'שיפוצים', 'מחיר למשתכן', 'כל מטרה', 'מיחזור', 'מיחזור + שיפוץ', 'מיחזור + הרחבה', 'מיחזור + כל מטרה', 'גרירה + כסף חדש', 'הרחבה', 'מיחזור + תוספת', 'היפוך לווים', 'גישור', 'בניה עצמי', 'מיחזור + גרירה'],
     banksList: ['הפועלים', 'לאומי', 'מזרחי טפחות', 'דיסקונט', 'הבינלאומי הראשון לישראל', 'אגוד', 'ירושלים', 'מרכנתיל'],
+    accompanimentBanksList: ['הפועלים', 'מזרחי', 'הבינלאומי', 'דיסקונט', 'מרכנתיל', 'ירושלים', 'מנורה', 'הפניקס', 'רובי קפיטל', 'ברקת'],
     appraisers: [],
     creationReminders: [
       'מספר ילדים ובני זוג',
@@ -829,6 +830,9 @@ try {
   }
   if (!Array.isArray(state.settings.banksList) || state.settings.banksList.length === 0) {
     state.settings.banksList = JSON.parse(JSON.stringify(DEFAULT_DATA.settings.banksList || []));
+  }
+  if (!Array.isArray(state.settings.accompanimentBanksList) || state.settings.accompanimentBanksList.length === 0) {
+    state.settings.accompanimentBanksList = JSON.parse(JSON.stringify(DEFAULT_DATA.settings.accompanimentBanksList || []));
   }
   // Seed default bankers on first run (only if empty)
   if (state.settings.bankers.length === 0) {
@@ -9927,9 +9931,12 @@ function openNewClientModal(editClient, warningMessage) {
             יש ליווי בנקאי (יד ראשונה / מחיר למשתכן)
           </label>
           <div style="font-size:11px;color:#1e40af;margin-top:4px;padding-inline-start:24px">אם מסומן — לא יופיע שלב "שמאות" + נוצרת אוטומטית משימת "הוראה בלתי חוזרת" בשלב בטחונות מוכר</div>
-          <div id="fBankAccompBanks" style="display:none;margin-top:8px;padding:8px;background:white;border:1px solid #bfdbfe;border-radius:6px">
+          <div id="fBankAccompBanks" style="display:none;margin-top:8px;padding:8px;background:white;border:1px solid #bfdbfe;border-radius:6px;position:relative">
             <div style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:6px">בחר את הבנק/ים המלווים:</div>
-            <div id="fBankAccompBanksList" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+            <button type="button" id="fBankAccompBanksBtn" onclick="document.getElementById('fBankAccompBanksMenu').style.display=document.getElementById('fBankAccompBanksMenu').style.display==='none'?'block':'none'" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#f8fafc;text-align:right;cursor:pointer;font-size:13px">
+              <span id="fBankAccompBanksLabel">— בחר (אפשר כמה) — ▾</span>
+            </button>
+            <div id="fBankAccompBanksMenu" style="display:none;position:absolute;top:calc(100% - 4px);inset-inline:8px;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,0.15);max-height:260px;overflow-y:auto;z-index:50;padding:4px"></div>
           </div>
         </div>
         <div id="fRefinanceWrap" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px;margin-bottom:10px">
@@ -10206,20 +10213,28 @@ function onMaritalChange() {
 }
 
 function _populateBankAccompBanks(selected) {
-  const wrap = document.getElementById('fBankAccompBanksList');
-  if (!wrap) return;
+  const menu = document.getElementById('fBankAccompBanksMenu');
+  if (!menu) return;
   const sel = new Set(selected || []);
-  const banks = (state.settings && state.settings.banksList) || [];
+  const banks = (state.settings && state.settings.accompanimentBanksList) || [];
   if (banks.length === 0) {
-    wrap.innerHTML = '<div style="color:var(--muted);font-size:12px">אין בנקים מוגדרים — הגדר בהגדרות → בנקים לניהול עו"ש</div>';
+    menu.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">אין בנקים — הגדר בהגדרות → בנקים מלווים</div>';
     return;
   }
-  wrap.innerHTML = banks.map(b => {
+  menu.innerHTML = banks.map(b => {
     const checked = sel.has(b) ? 'checked' : '';
-    return `<label style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;padding:4px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;cursor:pointer">
-      <input type="checkbox" class="fBankAccompChk" value="${escapeAttr(b)}" ${checked} style="accent-color:var(--accent)">${escapeHtml(b)}
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background=''">
+      <input type="checkbox" class="fBankAccompChk" value="${escapeAttr(b)}" ${checked} onchange="_updateBankAccompLabel()" style="width:15px;height:15px;accent-color:var(--accent)">
+      <span>${escapeHtml(b)}</span>
     </label>`;
   }).join('');
+  _updateBankAccompLabel();
+}
+function _updateBankAccompLabel() {
+  const lbl = document.getElementById('fBankAccompBanksLabel');
+  if (!lbl) return;
+  const checked = Array.from(document.querySelectorAll('.fBankAccompChk:checked')).map(cb => cb.value);
+  lbl.textContent = checked.length ? checked.join(', ') + ' ▾' : '— בחר (אפשר כמה) — ▾';
 }
 function toggleTenantSection() {
   const cb = document.getElementById('fIsRented');
@@ -15676,6 +15691,54 @@ function renderAppraisalDocsSection() {
   `;
 }
 
+// ------------------- Accompaniment banks (ליווי בנקאי) -------------------
+function addAccompanimentBank() {
+  const inp = document.getElementById('newAccompanimentBank');
+  const v = inp && inp.value.trim();
+  if (!v) return;
+  if (!Array.isArray(state.settings.accompanimentBanksList)) state.settings.accompanimentBanksList = [];
+  if (state.settings.accompanimentBanksList.includes(v)) { inp.value = ''; return; }
+  state.settings.accompanimentBanksList.push(v);
+  save(); renderActiveSettingsSection();
+}
+function removeAccompanimentBank(idx) {
+  if (!Array.isArray(state.settings.accompanimentBanksList)) return;
+  state.settings.accompanimentBanksList.splice(idx, 1);
+  save(); renderActiveSettingsSection();
+}
+function renameAccompanimentBank(idx, val) {
+  val = (val || '').trim();
+  if (!Array.isArray(state.settings.accompanimentBanksList)) return;
+  if (!val) { state.settings.accompanimentBanksList.splice(idx, 1); }
+  else { state.settings.accompanimentBanksList[idx] = val; }
+  save(); renderActiveSettingsSection();
+}
+function renderAccompanimentBanksSection() {
+  const list = (state.settings.accompanimentBanksList || []);
+  return `
+    <div class="panel">
+      <h2 class="panel-title">🏦 בנקים מלווים (ליווי בנקאי)</h2>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+        הרשימה הזו מופיעה בטופס עריכת לקוח כשמסמנים "יש ליווי בנקאי" (עסקאות יד ראשונה / מחיר למשתכן).<br>
+        הבנקים שתבחר ללקוח יופיעו במשימת "הוראה בלתי חוזרת" בשלב בטחונות מוכר.
+      </div>
+      ${list.length === 0 ? '<div class="empty">אין בנקים מוגדרים</div>' : `
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${list.map((b, i) => `
+          <div class="settings-item" style="display:flex;gap:6px;align-items:center;background:#f8fafc">
+            <input value="${escapeAttr(b)}" onblur="renameAccompanimentBank(${i},this.value)" onkeydown="if(event.key==='Enter')this.blur()" style="flex:1;background:transparent;border:none;font-size:14px;padding:4px">
+            <button class="icon-btn" onclick="removeAccompanimentBank(${i})" title="הסר">✕</button>
+          </div>
+        `).join('')}
+      </div>`}
+      <div class="add-row" style="margin-top:12px;display:flex;gap:6px">
+        <input id="newAccompanimentBank" placeholder="שם בנק מלווה חדש" style="flex:1" onkeydown="if(event.key==='Enter'){addAccompanimentBank()}">
+        <button class="btn small" onclick="addAccompanimentBank()">+ הוסף</button>
+      </div>
+    </div>
+  `;
+}
+
 // ------------------- Local snapshots (safety-net restore) -------------------
 function restoreFromSnapshot(idx) {
   const snaps = listLocalSnapshots();
@@ -15970,6 +16033,7 @@ function renderSettings() {
     { id: 'appraisalDocs', label: '🏠 דרישות שמאי לפי עסקה', icon: '🏠' },
     { id: 'clientsFolder', label: '📁 תיקיית לקוחות (Drive)', icon: '📁' },
     { id: 'snapshots', label: '🛟 גיבויים אוטומטיים', icon: '🛟' },
+    { id: 'accompanimentBanks', label: '🏦 בנקים מלווים', icon: '🏦' },
   ];
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:flex-start">
@@ -15994,6 +16058,7 @@ function renderActiveSettingsSection() {
 }
 
 function renderSettingsSection(id) {
+  if (id === 'accompanimentBanks') return renderAccompanimentBanksSection();
   if (id === 'snapshots') return renderSnapshotsSection();
   if (id === 'clientsFolder') return renderClientsFolderSection();
   if (id === 'appraisalDocs') return renderAppraisalDocsSection();
