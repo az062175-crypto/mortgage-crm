@@ -7986,9 +7986,12 @@ function openOpenItemsPopup(clientId) {
         <button onclick="document.getElementById('openItemsPopupOverlay').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#6b7280;line-height:1">✕</button>
       </div>
       <div id="openItemsPopupBody" style="padding:16px 20px;overflow-y:auto;flex:1"></div>
-      <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="font-size:12px;color:var(--muted)">שינויים נשמרים אוטומטית</div>
-        <button class="btn secondary" onclick="document.getElementById('openItemsPopupOverlay').remove()">סגור</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" style="background:#8b5cf6" onclick="document.getElementById('openItemsPopupOverlay').remove();openStageMissingEmail('${clientId}',true)" title="שלח ללקוח רשימה מסוננת של פריטים פתוחים — מתוך כל השלבים">📧 שלח ללקוח</button>
+          <button class="btn secondary" onclick="document.getElementById('openItemsPopupOverlay').remove()">סגור</button>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -13308,15 +13311,15 @@ function getPersonDisplayFirstLast(p) {
 
 // Opens a modal letting the user pick which pending items (tasks + requirements) in the current stage
 // to include in a WhatsApp/Email message to the client. Pre-checks everything by default.
-function openStageMissingEmail(clientId) {
+function openStageMissingEmail(clientId, allStages) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
   const stage = c.stage;
-  const stageLabel = (stageInfo(stage) || {}).label || stage;
-  const pendingTasks = (c.tasks || []).filter(t => t.stage === stage && (t.status || 'active') !== 'done');
-  const pendingReqs = (c.requirements || []).filter(r => r.stage === stage && r.status === 'pending');
+  const stageLabel = allStages ? 'כל הפתוחים' : ((stageInfo(stage) || {}).label || stage);
+  const pendingTasks = (c.tasks || []).filter(t => (allStages || t.stage === stage) && (t.status || 'active') !== 'done');
+  const pendingReqs = (c.requirements || []).filter(r => (allStages || r.stage === stage) && r.status === 'pending');
   if (pendingTasks.length === 0 && pendingReqs.length === 0) {
-    alert('אין פריטים חסרים בשלב "' + stageLabel + '" — כל המשימות והמסמכים טופלו.');
+    alert(allStages ? 'אין פריטים פתוחים בתיק — הכל טופל.' : ('אין פריטים חסרים בשלב "' + stageLabel + '" — כל המשימות והמסמכים טופלו.'));
     return;
   }
   const rowsHtml = [];
