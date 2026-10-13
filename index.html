@@ -542,7 +542,7 @@
 </head>
 <body>
 
-<div id="sb-header" style="display:none;position:fixed;top:0;inset-inline:0;z-index:200;height:34px;background:#1e293b;color:white;padding:0 16px;display:none;align-items:center;gap:12px;font-size:12px">
+<div id="sb-header" style="display:none;position:sticky;top:0;inset-inline:0;z-index:200;height:34px;background:#1e293b;color:white;padding:0 16px;align-items:center;gap:12px;font-size:12px">
   <span id="sb-badge" style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:rgba(255,255,255,0.1);border-radius:999px;font-weight:600">
     <span id="sb-dot" style="width:8px;height:8px;border-radius:50%;background:#94a3b8"></span>
     <span id="sb-t">לא מחובר</span>
@@ -17631,9 +17631,8 @@ function sbBadge(st,msg){
 function sbHeaderShow(){
   var el=document.getElementById('sb-header');if(!el)return;
   el.style.display='flex';
-  document.body.style.marginTop='34px';
   document.body.classList.add('sb-header-visible');
-  // Shift the sticky topbar + kanban down so they aren't covered by the fixed sync header
+  // Shift the sticky topbar + kanban down so they stack below the sticky sync header
   var tb = document.querySelector('.topbar');
   if (tb) tb.style.top = '34px';
   var kb = document.getElementById('kanbanBar');
