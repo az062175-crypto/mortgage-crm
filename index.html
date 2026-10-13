@@ -7550,9 +7550,49 @@ function showStaleMissingDocsPopup(a) {
       <button class="btn small" style="background:#22c55e;color:#fff" onclick="sendMissingDocsWhatsApp('${a.client.id}',true);this.closest('div').parentElement.remove()">💬 המשך WhatsApp</button>
       <button class="btn small" style="background:#f59e0b;color:#fff" onclick="sendMissingDocsRequest('${a.client.id}',true);this.closest('div').parentElement.remove()">📧 המשך מייל</button>
       <button class="btn small" style="background:#16a34a;color:#fff" onclick="markMissingDocsReceived('${a.client.id}');this.closest('div').parentElement.remove()">✓ התקבל</button>
+      <button class="btn small" style="background:#6366f1;color:#fff" onclick="snoozeMissingDocsAlert('${a.client.id}',1);this.closest('div').parentElement.remove()" title="התזכורת לא תקפוץ שוב עד מחר">⏰ תזכיר מחר</button>
+      <button class="btn small secondary" onclick="_openSnoozePicker('${a.client.id}', this)" title="דחה לתאריך אחר">📅 תאריך אחר</button>
       <button class="btn small secondary" onclick="this.closest('div').parentElement.remove()">סגור</button>
+    </div>
+    <div id="snoozePicker_${a.client.id}" style="display:none;margin-top:10px;padding:10px;background:#fff;border:1px solid #fcd34d;border-radius:8px">
+      <label style="font-size:12px;color:#78350f;display:block;margin-bottom:6px">תזכיר לי בתאריך:</label>
+      <input type="date" id="snoozeDate_${a.client.id}" min="${todayLocal()}" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+      <button class="btn small" style="margin-inline-start:6px;background:#6366f1;color:#fff" onclick="_applySnoozeDate('${a.client.id}', this)">✓ קבע</button>
     </div>`;
   document.body.appendChild(wrap);
+}
+// Snooze a missing-docs alert for N days by pushing missingDocsFollowUpAt forward.
+// The alert re-check uses hours = (now - missingDocsFollowUpAt). Setting it to a future time hides the stale flag.
+function snoozeMissingDocsAlert(clientId, days) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  const target = new Date();
+  target.setDate(target.getDate() + days);
+  // Set follow-up to (target - 24h) so stale flag only re-triggers 24h after target
+  c.missingDocsFollowUpAt = new Date(target.getTime() - 24*60*60*1000).toISOString();
+  save();
+  // Remove from "already popped" set so a future actual alert can show again later
+  if (typeof _staleMissingDocsPopped !== 'undefined') {
+    for (const k of Array.from(_staleMissingDocsPopped)) {
+      if (k.startsWith(clientId + '::')) _staleMissingDocsPopped.delete(k);
+    }
+  }
+  if (typeof renderDashboard === 'function' && currentTab === 'dashboard') renderDashboard();
+}
+function _openSnoozePicker(clientId, btn) {
+  const picker = document.getElementById('snoozePicker_' + clientId);
+  if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+}
+function _applySnoozeDate(clientId, btn) {
+  const inp = document.getElementById('snoozeDate_' + clientId);
+  const val = inp && inp.value;
+  if (!val) { alert('בחר תאריך'); return; }
+  const target = new Date(val + 'T09:00:00');
+  const days = Math.ceil((target - new Date()) / (24*60*60*1000));
+  if (days < 0) { alert('בחר תאריך עתידי'); return; }
+  snoozeMissingDocsAlert(clientId, Math.max(1, days));
+  const popup = btn.closest('div').parentElement;
+  if (popup) popup.remove();
 }
 
 // All open missing-docs requests — every request stays here until user marks the docs as received
