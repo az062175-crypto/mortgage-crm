@@ -17369,6 +17369,12 @@ async function sbSignOut(){
 async function sbFetchState(){
   var r=await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1&select=state,updated_at,updated_by',
     {headers:sbHdrs(true)});
+  // Auto-refresh on 401 (expired token) and retry once
+  if(r.status===401){
+    try { await sbRefresh(); } catch(e){}
+    r=await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1&select=state,updated_at,updated_by',
+      {headers:sbHdrs(true)});
+  }
   if(!r.ok)throw new Error('טעינה נכשלה ('+r.status+')');
   var rows=await r.json();
   if(!rows.length)return {state:null,updated_at:null};
@@ -17425,6 +17431,13 @@ async function sbPushState(){
     var r=await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1',{
       method:'PATCH',headers:Object.assign(sbHdrs(true),{Prefer:'return=representation'}),
       body:body});
+    // Auto-refresh on 401 and retry once
+    if(r.status===401){
+      try { await sbRefresh(); } catch(e){}
+      r=await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1',{
+        method:'PATCH',headers:Object.assign(sbHdrs(true),{Prefer:'return=representation'}),
+        body:body});
+    }
     if(!r.ok){var t=await r.text();throw new Error('שמירה נכשלה ('+r.status+') '+t.slice(0,120))}
     var rows=await r.json();
     if(rows&&rows[0])SB.rowUpdated=rows[0].updated_at;
