@@ -3195,6 +3195,30 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
   `;
 }
 
+// Debounced search for the clients list — on mobile, every keystroke used to re-render the entire
+// tab, which blurred the input and closed the keyboard. Now we debounce by 300ms and preserve
+// focus + cursor position after each re-render.
+let _clientsSearchDebounce = null;
+function _onClientsSearchInput(val) {
+  clientFilter.search = val;
+  clearTimeout(_clientsSearchDebounce);
+  _clientsSearchDebounce = setTimeout(() => {
+    const prevInp = document.getElementById('clientsSearchInput');
+    const selStart = prevInp ? prevInp.selectionStart : null;
+    const selEnd = prevInp ? prevInp.selectionEnd : null;
+    renderClientsList();
+    const newInp = document.getElementById('clientsSearchInput');
+    if (newInp) {
+      newInp.focus();
+      if (selStart !== null && selEnd !== null) {
+        try { newInp.setSelectionRange(selStart, selEnd); } catch(e){}
+      } else {
+        // Fallback: put cursor at the end
+        try { newInp.setSelectionRange(val.length, val.length); } catch(e){}
+      }
+    }
+  }, 300);
+}
 function renderClientsList() {
   const el = document.getElementById('tabClients');
   const search = clientFilter.search.toLowerCase();
@@ -3231,7 +3255,7 @@ function renderClientsList() {
   el.innerHTML = `
     <div class="panel">
       <div class="toolbar">
-        <input class="search" placeholder="חיפוש שם / טלפון / ת.ז" value="${escapeHtml(clientFilter.search)}" oninput="clientFilter.search=this.value;renderClientsList()">
+        <input id="clientsSearchInput" class="search" placeholder="חיפוש שם / טלפון / ת.ז" value="${escapeHtml(clientFilter.search)}" oninput="_onClientsSearchInput(this.value)">
         <div style="position:relative;display:inline-block">
           <button type="button" class="filter" onclick="toggleClientsStageMenu(event)" style="min-width:160px;text-align:right;cursor:pointer">
             ${(() => {
