@@ -213,13 +213,24 @@
   @media (max-width: 768px) {
     body { font-size: 14px; padding-bottom: 60px; /* room for bottom nav */ }
 
-    /* Compact top bar — brand only + burger for actions */
-    .topbar { flex-wrap: wrap; padding: 6px 10px; gap: 4px; position: sticky; top: 0; z-index: 90; background: var(--panel); border-bottom: 1px solid var(--border); }
-    .topbar .brand { font-size: 15px; margin: 0; }
-    .topbar .tabs { display: none; /* replaced by bottom nav */ }
+    /* Compact top bar — brand + minimal action icons only. Everything else moves to bottom nav or the ⋯ menu. */
+    .topbar { flex-wrap: nowrap; padding: 6px 10px; gap: 6px; position: sticky; top: 0; z-index: 90; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+    .topbar .brand { font-size: 14px; margin: 0; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .topbar .tabs { display: none; }
+    .topbar .topbar-sep { display: none; }
+    /* Hide all tab-btn navigation on mobile — those are in the bottom nav */
+    .topbar .tab-btn[data-tab] { display: none; }
+    /* Hide the big "+ ליד חדש" / "+ לקוח חדש" buttons on mobile — merged into the ⋯ menu */
+    .topbar .tab-btn-add { display: none; }
+    /* Hide the "חיפוש" button on mobile — the search field in each tab suffices */
+    .topbar .topbar-search { display: none; }
     .topbar .btn { padding: 6px 10px; font-size: 12px; min-height: 36px; }
     .topbar .btn.small { padding: 4px 8px; font-size: 11px; min-height: 32px; }
-    #sb-cloud-btn { font-size: 11px; padding: 4px 8px; }
+    /* Cloud status badge — icon only, hide the "מחובר" / "לפני X דקות" text to save space */
+    #sb-cloud-btn { font-size: 11px; padding: 4px 8px; min-width: 40px; }
+    #sb-cloud-btn #sb-t { display: none; }
+    /* The "⋯" more-menu button — give it a clear tap target */
+    .topbar .topbar-more { font-size: 20px; min-width: 40px; min-height: 40px; }
 
     .content { padding: 10px !important; }
     .panel { padding: 12px !important; margin-bottom: 12px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -382,6 +393,25 @@
     /* Toast messages — center at bottom not left */
     #folderPathToast { max-width: calc(100vw - 20px); }
 
+    /* === Mobile: show LESS initially === */
+    /* Dashboard: hide the dense statistics panel on mobile (already covered above, extra safety) */
+    .dashboard-stats-panel, #dashStatsPanel { display: none !important; }
+    /* Clients list: compact toolbar — stack search + filters vertically */
+    #tabClients .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+    #tabClients .toolbar > * { width: 100%; }
+    #tabClients .toolbar .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    /* The "חיפוש" field — always full width on mobile */
+    .search { width: 100%; }
+    /* Hide the "חזרה לרשימה" button container padding issue */
+    #tabDetail > div[style*="padding"] { padding: 10px !important; }
+    /* Floating "+ ליד חדש" FAB-style button on bottom-right of leads tab (if we add later) */
+    /* Client card in table: show only name + stage + days on narrow screens, hide extra cols */
+    @media (max-width: 420px) {
+      .clients-table td[data-label*="ת.ז"],
+      .clients-table td[data-label*="מטרה"],
+      .clients-table td[data-label*="בנקאי"] { display: none; }
+    }
+
     /* Stage chevrons at top of client detail — horizontal scroll instead of wrap */
     #tabDetail div[style*="clip-path"] { font-size: 11px !important; min-width: 85px !important; }
 
@@ -480,6 +510,10 @@
   <div style="position:relative;display:inline-block">
     <button class="tab-btn topbar-more" onclick="toggleTopbarMenu(event)" title="פעולות נוספות">⋯</button>
     <div id="topbarMenu" style="display:none;position:absolute;top:100%;inset-inline-end:0;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,0.15);min-width:200px;padding:6px 0;z-index:200;margin-top:6px">
+      <button class="topbar-menu-item" onclick="closeTopbarMenu();openNewLeadModal()" style="color:#0ea5e9;font-weight:700">+ ליד חדש</button>
+      <button class="topbar-menu-item" onclick="closeTopbarMenu();openNewClientModal()" style="color:var(--accent);font-weight:700">+ לקוח חדש</button>
+      <button class="topbar-menu-item" onclick="closeTopbarMenu();openGlobalSearch()">🔍 חיפוש גלובלי</button>
+      <div style="height:1px;background:var(--border);margin:4px 0"></div>
       <button class="topbar-menu-item" id="topbarTrashBtn" onclick="closeTopbarMenu();openTrashDialog()">🗑️ פח מיחזור</button>
       <div style="height:1px;background:var(--border);margin:4px 0"></div>
       <button class="topbar-menu-item" onclick="closeTopbarMenu();document.getElementById('btnLinkFile').click()">🔗 חבר קובץ שמירה</button>
