@@ -1341,6 +1341,7 @@ function newClient(data) {
     existingMortgageBank: data.existingMortgageBank || '',
     isRented: !!data.isRented,
     hasBankAccompaniment: !!data.hasBankAccompaniment,
+    bankAccompanimentBanks: Array.isArray(data.bankAccompanimentBanks) ? data.bankAccompanimentBanks : [],
     refinanceType: data.refinanceType || '',
     registrationType: data.registrationType || '',
     propertyAddress: data.propertyAddress || '',
@@ -9922,10 +9923,14 @@ function openNewClientModal(editClient, warningMessage) {
         </label>
         <div id="fBankAccompWrap" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:10px">
           <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;font-weight:600;color:#1e40af">
-            <input type="checkbox" id="fBankAccomp" style="width:16px;height:16px;accent-color:var(--accent)">
+            <input type="checkbox" id="fBankAccomp" onchange="document.getElementById('fBankAccompBanks').style.display=this.checked?'block':'none'" style="width:16px;height:16px;accent-color:var(--accent)">
             יש ליווי בנקאי (יד ראשונה / מחיר למשתכן)
           </label>
           <div style="font-size:11px;color:#1e40af;margin-top:4px;padding-inline-start:24px">אם מסומן — לא יופיע שלב "שמאות" + נוצרת אוטומטית משימת "הוראה בלתי חוזרת" בשלב בטחונות מוכר</div>
+          <div id="fBankAccompBanks" style="display:none;margin-top:8px;padding:8px;background:white;border:1px solid #bfdbfe;border-radius:6px">
+            <div style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:6px">בחר את הבנק/ים המלווים:</div>
+            <div id="fBankAccompBanksList" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          </div>
         </div>
         <div id="fRefinanceWrap" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px;margin-bottom:10px">
           <div style="font-weight:600;color:#166534;font-size:13px;margin-bottom:6px">סוג מיחזור</div>
@@ -10113,6 +10118,9 @@ function openNewClientModal(editClient, warningMessage) {
     toggleTenantSection();
     updateFinPct();
     if (document.getElementById('fBankAccomp')) document.getElementById('fBankAccomp').checked = !!c.hasBankAccompaniment;
+    // Populate bank-accompaniment banks checkboxes
+    _populateBankAccompBanks(c.bankAccompanimentBanks || []);
+    if (document.getElementById('fBankAccompBanks') && !!c.hasBankAccompaniment) document.getElementById('fBankAccompBanks').style.display = 'block';
     if (c.refinanceType) {
       const rt = document.querySelector('input[name="fRefinanceType"][value="'+c.refinanceType+'"]');
       if (rt) rt.checked = true;
@@ -10197,6 +10205,22 @@ function onMaritalChange() {
   document.getElementById('i1Title').textContent = isMarried ? 'סוגי הכנסה — בעל *' : 'סוגי הכנסה *';
 }
 
+function _populateBankAccompBanks(selected) {
+  const wrap = document.getElementById('fBankAccompBanksList');
+  if (!wrap) return;
+  const sel = new Set(selected || []);
+  const banks = (state.settings && state.settings.banksList) || [];
+  if (banks.length === 0) {
+    wrap.innerHTML = '<div style="color:var(--muted);font-size:12px">אין בנקים מוגדרים — הגדר בהגדרות → בנקים לניהול עו"ש</div>';
+    return;
+  }
+  wrap.innerHTML = banks.map(b => {
+    const checked = sel.has(b) ? 'checked' : '';
+    return `<label style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;padding:4px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;cursor:pointer">
+      <input type="checkbox" class="fBankAccompChk" value="${escapeAttr(b)}" ${checked} style="accent-color:var(--accent)">${escapeHtml(b)}
+    </label>`;
+  }).join('');
+}
 function toggleTenantSection() {
   const cb = document.getElementById('fIsRented');
   const wrap = document.getElementById('fTenantWrap');
@@ -10214,7 +10238,14 @@ function updatePurposeLabel() {
   const pm = document.getElementById('fPurposeMenu');
   if (pm) pm.style.display = 'none';
   const wrap = document.getElementById('fBankAccompWrap');
-  if (wrap) wrap.style.display = (vals.includes('יד ראשונה') || vals.includes('מחיר למשתכן')) ? '' : 'none';
+  if (wrap) {
+    wrap.style.display = (vals.includes('יד ראשונה') || vals.includes('מחיר למשתכן')) ? '' : 'none';
+    // Populate banks list once visible (idempotent)
+    if (wrap.style.display === '') {
+      const banksList = document.getElementById('fBankAccompBanksList');
+      if (banksList && !banksList.children.length) _populateBankAccompBanks([]);
+    }
+  }
   // Show refinance-type question if any מיחזור variant selected
   const refiWrap = document.getElementById('fRefinanceWrap');
   if (refiWrap) refiWrap.style.display = vals.some(v => v.indexOf('מיחזור') === 0) ? '' : 'none';
@@ -12173,6 +12204,7 @@ function submitNewClient() {
     existingMortgageBank: ((document.getElementById('fExistingMortgageBank')||{}).value || '').trim(),
     isRented: document.getElementById('fIsRented').checked,
     hasBankAccompaniment: !!(document.getElementById('fBankAccomp') && document.getElementById('fBankAccomp').checked),
+    bankAccompanimentBanks: Array.from(document.querySelectorAll('.fBankAccompChk:checked')).map(cb => cb.value),
     refinanceType: (document.querySelector('input[name="fRefinanceType"]:checked') || {}).value || '',
     registrationType: document.getElementById('fRegistrationType').value,
     propertyAddress: document.getElementById('fPropAddress').value.trim(),
@@ -12718,12 +12750,16 @@ function seedSellerStageTasks(client) {
       }
     }
   }
-  // Conditional: יד ראשונה + bank accompaniment → הוראה בלתי חוזרת
+  // Conditional: יד ראשונה / מחיר למשתכן + bank accompaniment → הוראה בלתי חוזרת
+  // Prefer explicit bankAccompanimentBanks list (multi-select); fall back to the main banker's bank
   if ((purposes.includes('יד ראשונה') || purposes.includes('מחיר למשתכן')) && client.hasBankAccompaniment) {
+    const explicitBanks = Array.isArray(client.bankAccompanimentBanks) ? client.bankAccompanimentBanks.filter(Boolean) : [];
     const banker = client.bankerId ? state.settings.bankers.find(b => b.id === client.bankerId) : null;
-    const bankName = banker && banker.bank ? banker.bank : '';
+    const fallbackBank = banker && banker.bank ? banker.bank : '';
+    const banksForTitle = explicitBanks.length ? explicitBanks : (fallbackBank ? [fallbackBank] : []);
     const loanAmt = Number(client.loanAmount) || 0;
-    const title = 'הוראה בלתי חוזרת — בנק ' + (bankName || '?') + (loanAmt > 0 ? ' · ' + fmtMoney(loanAmt) : '');
+    const banksStr = banksForTitle.length ? banksForTitle.join(' + ') : '?';
+    const title = 'הוראה בלתי חוזרת — בנק ' + banksStr + (loanAmt > 0 ? ' · ' + fmtMoney(loanAmt) : '');
     if (!client.tasks.some(t => t.stage === 'seller' && t.title.startsWith('הוראה בלתי חוזרת'))) {
       client.tasks.push({ id: uid(), stage: 'seller', title, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], source: 'seller-seed-conditional' });
     }
