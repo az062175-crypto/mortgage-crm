@@ -245,14 +245,32 @@
     /* Dashboard statistics panel — hidden on mobile */
     .dashboard-stats-panel { display: none !important; }
 
-    /* Tables → card-list style */
+    /* Clients table → compact one-row-per-client layout on mobile.
+       Shows: + button | name | stage pill | missing-docs. Hides everything else.
+       Tap on the row (anywhere except "+") opens the client. */
     .clients-table { display: block; }
     .clients-table thead { display: none; }
-    .clients-table tbody, .clients-table tr { display: block; }
-    .clients-table tr { background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
-    .clients-table td { display: flex; justify-content: space-between; padding: 4px 0 !important; border: none; white-space: normal; font-size: 13px; text-align: right; }
-    .clients-table td:first-child { border-bottom: 1px solid var(--border); padding-bottom: 6px !important; margin-bottom: 4px; }
-    .clients-table td::before { content: attr(data-label); color: var(--muted); font-size: 11px; font-weight: 600; }
+    .clients-table tbody { display: block; }
+    .clients-table tr { display: flex !important; align-items: center; gap: 8px; background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; min-height: 48px; }
+    .clients-table td { padding: 0 !important; border: none !important; white-space: nowrap; font-size: 13px; }
+    .clients-table td::before { display: none; }
+    /* + button (tasks) — fixed slot on the right (RTL first position) */
+    .clients-table td:nth-child(1) { flex: 0 0 32px; }
+    /* Name — takes remaining space, truncates */
+    .clients-table td:nth-child(2) { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .clients-table td:nth-child(2) strong { display: block; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+    /* Hide ID, phone, purpose, banker, days-in-stage, total-days on mobile — all visible when the user taps to open the client */
+    .clients-table td:nth-child(3),
+    .clients-table td:nth-child(4),
+    .clients-table td:nth-child(5),
+    .clients-table td:nth-child(6),
+    .clients-table td:nth-child(8),
+    .clients-table td:nth-child(9) { display: none !important; }
+    /* Stage pill */
+    .clients-table td:nth-child(7) { flex: 0 0 auto; }
+    .clients-table td:nth-child(7) .stage-pill { font-size: 11px; padding: 3px 8px; }
+    /* Missing-docs badge */
+    .clients-table td:nth-child(10) { flex: 0 0 auto; font-size: 12px; }
 
     /* Generic tables — allow horizontal scroll but shrink font */
     table[style*="width:100%"] { font-size: 11px !important; }
