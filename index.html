@@ -4309,61 +4309,58 @@ function renderClientDetail() {
               c.tasks = c.tasks.filter(t => t.source !== 'lead-note');
               save();
             }
-            // Merge notes + tasks into one combined list.
-            // Items: { kind:'note'|'task', id, text, createdAt, doneAt, status, stage }
-            const items = [];
-            (c.leadNotes || []).forEach(n => items.push({
-              kind: 'note', id: n.id, text: n.text, createdAt: n.createdAt, doneAt: null, status: 'active', stage: n.stage
-            }));
-            (c.tasks || []).forEach(t => items.push({
-              kind: 'task', id: t.id, text: t.title + (t.subTopic ? ' · ' + t.subTopic : ''),
-              createdAt: t.createdAt, doneAt: t.doneAt,
-              status: t.status || (t.done ? 'done' : 'active'),
-              stage: t.stage, notRequired: t.notRequired
-            }));
-            if (items.length === 0) return '';
-            // Sort: active first (newest first), then done/not-required at the bottom (most-recently-done first)
-            const isDone = (it) => it.status === 'done';
-            items.sort((a,b) => {
-              const da = isDone(a) ? 1 : 0, db = isDone(b) ? 1 : 0;
-              if (da !== db) return da - db;
-              const refA = isDone(a) ? (a.doneAt || a.createdAt) : a.createdAt;
-              const refB = isDone(b) ? (b.doneAt || b.createdAt) : b.createdAt;
-              return new Date(refB) - new Date(refA);
-            });
-            return `<div style="display:flex;flex-direction:column;gap:4px;max-height:320px;overflow-y:auto;margin-bottom:10px">
-              ${items.map(it => {
-                const stageLbl = it.stage ? (stageInfo(it.stage).label) : '';
-                const stageColor = it.stage ? stageInfo(it.stage).color : '#94a3b8';
-                const done = isDone(it);
-                const bg = it.kind === 'note'
-                  ? (done ? '#f1f5f9' : '#fef3c7')
-                  : (done ? '#f0fdf4' : '#eff6ff');
-                const border = it.kind === 'note'
-                  ? (done ? '#cbd5e1' : '#fcd34d')
-                  : (done ? '#86efac' : '#bfdbfe');
-                const icon = it.kind === 'note' ? '📝' : (done ? (it.notRequired ? '🚫' : '✓') : '📋');
-                const textStyle = done ? 'text-decoration:line-through;opacity:0.75' : '';
-                const actionBtns = it.kind === 'note'
-                  ? `<button class="icon-btn" onclick="openContactEmailDialog('${c.id}','הערה: ${escapeAttr((it.text||'').slice(0,60))}')" title="שלח מייל" style="padding:0 3px;font-size:12px;color:var(--accent)">📧</button>
-                     <button class="icon-btn" onclick="editLeadNote('${c.id}','${it.id}')" title="ערוך" style="padding:0 3px;font-size:12px;color:var(--accent)">✎</button>
-                     <button class="icon-btn" onclick="deleteLeadNote('${c.id}','${it.id}')" title="מחק" style="padding:0 3px;font-size:12px">✕</button>`
-                  : `${!done ? `<button class="icon-btn" onclick="setTaskStatus('${c.id}','${it.id}','done')" title="סמן בוצע" style="padding:0 3px;font-size:12px;color:#16a34a">✓</button>` : ''}
-                     <button class="icon-btn" onclick="startRenameTask('${c.id}','${it.id}')" title="ערוך שם" style="padding:0 3px;font-size:12px;color:var(--accent)">✎</button>
-                     <button class="icon-btn" onclick="deleteTask('${c.id}','${it.id}')" title="מחק" style="padding:0 3px;font-size:12px">✕</button>`;
-                const doneLabel = done && it.doneAt ? ` · <span style="color:#16a34a">בוצע ${fmtDateTime(it.doneAt)}${it.notRequired ? ' (לא נדרש)' : ''}</span>` : '';
-                return `<div style="padding:6px 8px;background:${bg};border:1px solid ${border};border-radius:6px;font-size:12px;display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
-                  <span style="flex:1;min-width:0">
-                    <span style="margin-inline-end:4px">${icon}</span><span style="${textStyle}">${escapeHtml(it.text)}</span>
-                  </span>
-                  <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;white-space:nowrap">
-                    <span style="font-size:10px;color:var(--muted)">נוצר ${fmtDateTime(it.createdAt)}${doneLabel}</span>
-                    ${stageLbl ? `<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:${stageColor};color:#fff;font-weight:700">${escapeHtml(stageLbl)}</span>` : ''}
-                  </span>
-                  ${actionBtns}
-                </div>`;
-              }).join('')}
-            </div>`;
+            const notes = (c.leadNotes || []).slice().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+            // Only MANUAL tasks (added by user via "+" button or custom task modal) — skip auto-seeded stage tasks
+            const manualTasks = (c.tasks || []).filter(t => t.custom === true);
+            const activeTasks = manualTasks.filter(t => (t.status||'active') !== 'done').sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+            const doneTasks = manualTasks.filter(t => (t.status||'active') === 'done').sort((a,b) => new Date(b.doneAt||b.createdAt) - new Date(a.doneAt||a.createdAt));
+            const renderNoteRow = (n) => {
+              const stageLbl = n.stage ? (stageInfo(n.stage).label) : '';
+              const stageColor = n.stage ? stageInfo(n.stage).color : '#94a3b8';
+              return `<div style="padding:6px 8px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:12px;display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
+                <span style="flex:1;min-width:0">${escapeHtml(n.text)}</span>
+                <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;white-space:nowrap">
+                  <span style="font-size:10px;color:var(--muted)">נוצר ${fmtDateTime(n.createdAt)}</span>
+                  ${stageLbl ? `<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:${stageColor};color:#fff;font-weight:700">${escapeHtml(stageLbl)}</span>` : ''}
+                </span>
+                <button class="icon-btn" onclick="openContactEmailDialog('${c.id}','הערה: ${escapeAttr((n.text||'').slice(0,60))}')" title="שלח מייל" style="padding:0 3px;font-size:12px;color:var(--accent)">📧</button>
+                <button class="icon-btn" onclick="editLeadNote('${c.id}','${n.id}')" title="ערוך" style="padding:0 3px;font-size:12px;color:var(--accent)">✎</button>
+                <button class="icon-btn" onclick="deleteLeadNote('${c.id}','${n.id}')" title="מחק" style="padding:0 3px;font-size:12px">✕</button>
+              </div>`;
+            };
+            const renderTaskRow = (t) => {
+              const done = (t.status||'active') === 'done';
+              const stageLbl = t.stage ? (stageInfo(t.stage).label) : '';
+              const stageColor = t.stage ? stageInfo(t.stage).color : '#94a3b8';
+              const bg = done ? '#f0fdf4' : '#eff6ff';
+              const border = done ? '#86efac' : '#bfdbfe';
+              const textStyle = done ? 'text-decoration:line-through;opacity:0.75' : '';
+              const title = t.title + (t.subTopic ? ' · ' + t.subTopic : '');
+              const doneLabel = done && t.doneAt ? ` · <span style="color:#16a34a">בוצע ${fmtDateTime(t.doneAt)}${t.notRequired ? ' (לא נדרש)' : ''}</span>` : '';
+              return `<div style="padding:6px 8px;background:${bg};border:1px solid ${border};border-radius:6px;font-size:12px;display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
+                <span style="flex:1;min-width:0;${textStyle}">${escapeHtml(title)}</span>
+                <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;white-space:nowrap">
+                  <span style="font-size:10px;color:var(--muted)">נוצר ${fmtDateTime(t.createdAt)}${doneLabel}</span>
+                  ${stageLbl ? `<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:${stageColor};color:#fff;font-weight:700">${escapeHtml(stageLbl)}</span>` : ''}
+                </span>
+                ${!done ? `<button class="icon-btn" onclick="setTaskStatus('${c.id}','${t.id}','done')" title="סמן בוצע" style="padding:0 3px;font-size:12px;color:#16a34a">✓</button>` : ''}
+                <button class="icon-btn" onclick="startRenameTask('${c.id}','${t.id}')" title="ערוך שם" style="padding:0 3px;font-size:12px;color:var(--accent)">✎</button>
+                <button class="icon-btn" onclick="deleteTask('${c.id}','${t.id}')" title="מחק" style="padding:0 3px;font-size:12px">✕</button>
+              </div>`;
+            };
+            let html = '';
+            if (notes.length) {
+              html += `<div style="font-size:11px;font-weight:700;color:#78350f;margin:6px 0 4px">📝 הערות (${notes.length})</div>`;
+              html += `<div style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;margin-bottom:10px">${notes.map(renderNoteRow).join('')}</div>`;
+            }
+            if (activeTasks.length || doneTasks.length) {
+              html += `<div style="font-size:11px;font-weight:700;color:#1e40af;margin:6px 0 4px">📋 משימות (${activeTasks.length} פעילות${doneTasks.length?' · '+doneTasks.length+' בוצעו':''})</div>`;
+              html += `<div style="display:flex;flex-direction:column;gap:4px;max-height:240px;overflow-y:auto;margin-bottom:10px">`;
+              html += activeTasks.map(renderTaskRow).join('');
+              html += doneTasks.map(renderTaskRow).join('');
+              html += `</div>`;
+            }
+            return html;
           })()}
           <div style="font-size:11px;color:var(--muted);margin-bottom:4px">הערות חופשיות (טקסט ארוך):</div>
           <textarea id="notes_${c.id}" oninput="updateNotes('${c.id}',this.value)" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit">${escapeHtml(c.notes||'')}</textarea>
@@ -7162,7 +7159,7 @@ function addTaskFromInput(clientId) {
   const val = input.value.trim();
   if (!val) return;
   const c = state.clients.find(x => x.id === clientId);
-  c.tasks.push({ id: uid(), stage: c.stage, title: val, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }] });
+  c.tasks.push({ id: uid(), stage: c.stage, title: val, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], custom: true });
   save(); renderClientDetail();
 }
 
