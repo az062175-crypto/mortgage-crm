@@ -4293,7 +4293,7 @@ function renderClientDetail() {
       <div>
         <div class="panel">
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <h3 class="panel-title" style="margin:0">הערות</h3>
+            <h3 class="panel-title" style="margin:0">משימות והערות</h3>
             <button class="btn secondary small" onclick="openContactEmailDialog('${c.id}','הערות בתיק')" title="שלח מייל לאנשי קשר בנוגע לתיק" style="padding:4px 10px;font-size:12px">📧 שלח מייל</button>
           </div>
           <div style="display:flex;gap:6px;margin:8px 0">
@@ -4309,21 +4309,58 @@ function renderClientDetail() {
               c.tasks = c.tasks.filter(t => t.source !== 'lead-note');
               save();
             }
-            const notes = (c.leadNotes || []).slice().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-            if (notes.length === 0) return '';
-            return `<div style="display:flex;flex-direction:column;gap:4px;max-height:260px;overflow-y:auto;margin-bottom:10px">
-              ${notes.map(n => {
-                const stageLbl = n.stage ? (stageInfo(n.stage).label) : '';
-                const stageColor = n.stage ? stageInfo(n.stage).color : '#94a3b8';
-                return `<div style="padding:6px 8px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:12px;display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
-                  <span style="flex:1">${escapeHtml(n.text)}</span>
+            // Merge notes + tasks into one combined list.
+            // Items: { kind:'note'|'task', id, text, createdAt, doneAt, status, stage }
+            const items = [];
+            (c.leadNotes || []).forEach(n => items.push({
+              kind: 'note', id: n.id, text: n.text, createdAt: n.createdAt, doneAt: null, status: 'active', stage: n.stage
+            }));
+            (c.tasks || []).forEach(t => items.push({
+              kind: 'task', id: t.id, text: t.title + (t.subTopic ? ' · ' + t.subTopic : ''),
+              createdAt: t.createdAt, doneAt: t.doneAt,
+              status: t.status || (t.done ? 'done' : 'active'),
+              stage: t.stage, notRequired: t.notRequired
+            }));
+            if (items.length === 0) return '';
+            // Sort: active first (newest first), then done/not-required at the bottom (most-recently-done first)
+            const isDone = (it) => it.status === 'done';
+            items.sort((a,b) => {
+              const da = isDone(a) ? 1 : 0, db = isDone(b) ? 1 : 0;
+              if (da !== db) return da - db;
+              const refA = isDone(a) ? (a.doneAt || a.createdAt) : a.createdAt;
+              const refB = isDone(b) ? (b.doneAt || b.createdAt) : b.createdAt;
+              return new Date(refB) - new Date(refA);
+            });
+            return `<div style="display:flex;flex-direction:column;gap:4px;max-height:320px;overflow-y:auto;margin-bottom:10px">
+              ${items.map(it => {
+                const stageLbl = it.stage ? (stageInfo(it.stage).label) : '';
+                const stageColor = it.stage ? stageInfo(it.stage).color : '#94a3b8';
+                const done = isDone(it);
+                const bg = it.kind === 'note'
+                  ? (done ? '#f1f5f9' : '#fef3c7')
+                  : (done ? '#f0fdf4' : '#eff6ff');
+                const border = it.kind === 'note'
+                  ? (done ? '#cbd5e1' : '#fcd34d')
+                  : (done ? '#86efac' : '#bfdbfe');
+                const icon = it.kind === 'note' ? '📝' : (done ? (it.notRequired ? '🚫' : '✓') : '📋');
+                const textStyle = done ? 'text-decoration:line-through;opacity:0.75' : '';
+                const actionBtns = it.kind === 'note'
+                  ? `<button class="icon-btn" onclick="openContactEmailDialog('${c.id}','הערה: ${escapeAttr((it.text||'').slice(0,60))}')" title="שלח מייל" style="padding:0 3px;font-size:12px;color:var(--accent)">📧</button>
+                     <button class="icon-btn" onclick="editLeadNote('${c.id}','${it.id}')" title="ערוך" style="padding:0 3px;font-size:12px;color:var(--accent)">✎</button>
+                     <button class="icon-btn" onclick="deleteLeadNote('${c.id}','${it.id}')" title="מחק" style="padding:0 3px;font-size:12px">✕</button>`
+                  : `${!done ? `<button class="icon-btn" onclick="setTaskStatus('${c.id}','${it.id}','done')" title="סמן בוצע" style="padding:0 3px;font-size:12px;color:#16a34a">✓</button>` : ''}
+                     <button class="icon-btn" onclick="startRenameTask('${c.id}','${it.id}')" title="ערוך שם" style="padding:0 3px;font-size:12px;color:var(--accent)">✎</button>
+                     <button class="icon-btn" onclick="deleteTask('${c.id}','${it.id}')" title="מחק" style="padding:0 3px;font-size:12px">✕</button>`;
+                const doneLabel = done && it.doneAt ? ` · <span style="color:#16a34a">בוצע ${fmtDateTime(it.doneAt)}${it.notRequired ? ' (לא נדרש)' : ''}</span>` : '';
+                return `<div style="padding:6px 8px;background:${bg};border:1px solid ${border};border-radius:6px;font-size:12px;display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
+                  <span style="flex:1;min-width:0">
+                    <span style="margin-inline-end:4px">${icon}</span><span style="${textStyle}">${escapeHtml(it.text)}</span>
+                  </span>
                   <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;white-space:nowrap">
-                    <span style="font-size:10px;color:var(--muted)">${fmtDateTime(n.createdAt)}</span>
+                    <span style="font-size:10px;color:var(--muted)">נוצר ${fmtDateTime(it.createdAt)}${doneLabel}</span>
                     ${stageLbl ? `<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:${stageColor};color:#fff;font-weight:700">${escapeHtml(stageLbl)}</span>` : ''}
                   </span>
-                  <button class="icon-btn" onclick="openContactEmailDialog('${c.id}','הערה: ${escapeAttr((n.text||'').slice(0,60))}')" title="שלח מייל בנוגע להערה" style="padding:0 3px;font-size:12px;color:var(--accent)">📧</button>
-                  <button class="icon-btn" onclick="editLeadNote('${c.id}','${n.id}')" title="ערוך" style="padding:0 3px;font-size:12px;color:var(--accent)">✎</button>
-                  <button class="icon-btn" onclick="deleteLeadNote('${c.id}','${n.id}')" title="מחק" style="padding:0 3px;font-size:12px">✕</button>
+                  ${actionBtns}
                 </div>`;
               }).join('')}
             </div>`;
