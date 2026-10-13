@@ -16782,6 +16782,20 @@ function _hasEquivalentStageTask(c, stageId, title) {
 }
 
 function _silentSyncStageDefaults() {
+  // Auto-dedupe "הוגש ב:" style tasks: if the client already submitted (submittedToBankerIds set),
+  // any ACTIVE submission task starting with "הוגש" is marked done — avoids phantom duplicates.
+  (state.clients || []).forEach(c => {
+    const submitted = Array.isArray(c.submittedToBankerIds) ? c.submittedToBankerIds.length > 0 : !!c.submittedToBankerId;
+    if (!submitted) return;
+    (c.tasks || []).forEach(t => {
+      if (t.stage !== 'submission') return;
+      if (!(t.title || '').startsWith('הוגש')) return;
+      if ((t.status || 'active') === 'done') return;
+      t.status = 'done'; t.done = true; t.doneAt = t.doneAt || now();
+      t.history = t.history || [];
+      t.history.push({ status: 'done', at: now(), note: 'סומן אוטומטית — התיק כבר הוגש' });
+    });
+  });
   const tasksMap = (state.settings && state.settings.stageTasks) || {};
   const reqsMap = (state.settings && state.settings.stageRequirements) || {};
   let changed = false;
