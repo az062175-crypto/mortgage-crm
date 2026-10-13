@@ -398,6 +398,29 @@
     .dashboard-stats-panel, #dashStatsPanel { display: none !important; }
     /* Client detail: hide top 3 timer cards (בשלב / מכניסת ליד / מהיות לקוח) on mobile */
     #tabDetail .timers-top-row { display: none !important; }
+
+    /* === Prevent ANY horizontal overflow on mobile === */
+    html, body { overflow-x: hidden !important; max-width: 100vw; }
+    #tabDetail, #tabDashboard, #tabClients, #tabLeads, #tabTasks, #tabSettings { max-width: 100vw; overflow-x: hidden; }
+    /* All panels — fit viewport, no overflow */
+    .panel { max-width: 100%; overflow-wrap: break-word; word-wrap: break-word; }
+    /* Task row — allow buttons to wrap to a new row */
+    .task-status-group { flex-wrap: wrap; gap: 4px; }
+    .task-list li { flex-wrap: wrap; }
+    /* Tables in panels (not modals) — scroll horizontally */
+    .panel table:not(.clients-table) { max-width: 100%; display: block; overflow-x: auto; }
+    /* Keep clients-table its mobile card-style (already handled above) */
+    /* Floating alerts popup — compact, not covering content, dismissible via click outside */
+    #floatTaskAlerts { max-height: 50vh !important; width: calc(100vw - 24px) !important; max-width: 320px; bottom: 76px !important; left: 12px !important; right: 12px !important; font-size: 12px; padding: 10px !important; }
+    #floatTaskAlerts > div, #floatTaskAlerts > ul, #floatTaskAlerts > ol { padding: 0 !important; }
+    /* 2-column grid in client detail → 1 column */
+    .detail-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
+    /* Grid-template-columns with any 2+ columns in detail tab → stack */
+    #tabDetail div[style*="grid-template-columns:1fr 1fr"],
+    #tabDetail div[style*="grid-template-columns:repeat(2,1fr)"],
+    #tabDetail div[style*="grid-template-columns:repeat(3,1fr)"] { grid-template-columns: 1fr !important; gap: 8px !important; }
+    /* Any inline flex row with gap — ensure wrapping */
+    #tabDetail div[style*="display:flex"] { flex-wrap: wrap; }
     /* Clients list: compact toolbar — stack search + filters vertically */
     #tabClients .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
     #tabClients .toolbar > * { width: 100%; }
