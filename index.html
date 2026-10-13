@@ -396,6 +396,8 @@
     /* === Mobile: show LESS initially === */
     /* Dashboard: hide the dense statistics panel on mobile (already covered above, extra safety) */
     .dashboard-stats-panel, #dashStatsPanel { display: none !important; }
+    /* Client detail: hide top 3 timer cards (בשלב / מכניסת ליד / מהיות לקוח) on mobile */
+    #tabDetail .timers-top-row { display: none !important; }
     /* Clients list: compact toolbar — stack search + filters vertically */
     #tabClients .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
     #tabClients .toolbar > * { width: 100%; }
@@ -4042,7 +4044,7 @@ function renderClientDetail() {
     </div>
 
     <div class="panel">
-      <div class="timers">
+      <div class="timers timers-top-row">
         <div class="timer-card">
           <div class="timer-label">בשלב הנוכחי</div>
           <div class="timer-value">${(c.stage==='execution'||c.stage==='archive') ? '— (נעצר בביצוע)' : daysBetween(c.stageEnteredAt)+' ימים'}</div>
