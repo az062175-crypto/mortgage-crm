@@ -222,8 +222,8 @@
     .topbar .tab-btn[data-tab] { display: none; }
     /* Hide the big "+ ליד חדש" / "+ לקוח חדש" buttons on mobile — merged into the ⋯ menu */
     .topbar .tab-btn-add { display: none; }
-    /* Hide the "חיפוש" button on mobile — the search field in each tab suffices */
-    .topbar .topbar-search { display: none; }
+    /* Keep the "חיפוש" button visible in the topbar on mobile — user asked for it */
+    .topbar .topbar-search { display: inline-flex !important; padding: 6px 10px; font-size: 12px; min-height: 36px; }
     .topbar .btn { padding: 6px 10px; font-size: 12px; min-height: 36px; }
     .topbar .btn.small { padding: 4px 8px; font-size: 11px; min-height: 32px; }
     /* Cloud status badge — icon only, hide the "מחובר" / "לפני X דקות" text to save space */
