@@ -2270,6 +2270,8 @@ function renderTrashPanel() {
 }
 
 let dashFilter = { year: 'all', bank: '', dealType: '', bankerId: '', appraiserId: '' };
+let dashSubTab = 'clients'; // 'clients' | 'executed'
+function switchDashSubTab(tab) { dashSubTab = tab; renderDashboard(); }
 let dashNotesFilter = 'today'; // 'today' | '3days' | 'all'
 
 let overviewFilter = 'all'; // 'all' | 'urgent' | 'stuck' | 'active' | 'attention'
@@ -2626,7 +2628,19 @@ function renderDashboard() {
     return { id, name: a?a.name:'—', email: a?a.email:'', count: cnt };
   });
 
-  el.innerHTML = `
+  const _dashSubTabsHtml = `
+    <div class="panel" style="padding:8px 10px;margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn ${dashSubTab==='clients'?'':'secondary'}" onclick="switchDashSubTab('clients')" style="flex:1;min-width:140px">📊 דשבורד לקוחות</button>
+      <button class="btn ${dashSubTab==='executed'?'':'secondary'}" onclick="switchDashSubTab('executed')" style="flex:1;min-width:140px;background:${dashSubTab==='executed'?'#16a34a':''}">🏆 דשבורד תיקים שבוצעו</button>
+    </div>
+  `;
+  if (dashSubTab === 'executed') {
+    // Executed-deals dashboard — use the same stats panel the clients tab shows when drilled down.
+    // We force it to render by passing ['execution','archive'] as the stage filter.
+    el.innerHTML = _dashSubTabsHtml + _executionStatsPanelHtml(state.clients || [], ['execution','archive']);
+    return;
+  }
+  el.innerHTML = _dashSubTabsHtml + `
     <div class="panel dashboard-stats-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         <h2 class="panel-title" style="margin:0">📊 סטטיסטיקות</h2>
@@ -3224,7 +3238,6 @@ function renderClientsList() {
           <div class="chip ${reqFilter==='at-banker'?'active':''}" onclick="clientFilter.reqFilter='at-banker';renderClientsList()">אצל הבנקאי</div>
         </div>
       </div>
-      ${_executionStatsPanelHtml(clients, stagesFilter)}
       ${clients.length === 0 ? '<div class="empty">לא נמצאו תיקים</div>' : `
       <table class="clients-table">
         <thead>
