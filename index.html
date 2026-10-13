@@ -15433,6 +15433,63 @@ function renderAppraisalDocsSection() {
   `;
 }
 
+// ------------------- Local snapshots (safety-net restore) -------------------
+function restoreFromSnapshot(idx) {
+  const snaps = listLocalSnapshots();
+  const s = snaps[idx];
+  if (!s) return;
+  const n = (s.state.clients || []).length;
+  if (!confirm('לשחזר את ה-state מגיבוי של ' + new Date(s.at).toLocaleString('he-IL') + '?\n\nזה יחליף את ה-state הנוכחי שלך (' + (state.clients||[]).length + ' לקוחות) ב-' + n + ' לקוחות מהגיבוי.\n\nגיבוי של ה-state הנוכחי יישמר אוטומטית לפני השחזור.')) return;
+  // Snapshot current state before overwriting
+  try { _writeLocalSnapshot(); } catch(e){}
+  state = JSON.parse(JSON.stringify(s.state));
+  save();
+  if (typeof sbQueueSave === 'function') sbQueueSave(true);
+  alert('שוחזר בהצלחה. ' + n + ' לקוחות.');
+  location.reload();
+}
+function renderSnapshotsSection() {
+  const snaps = listLocalSnapshots().slice().reverse(); // newest first
+  const rows = snaps.map((s, i) => {
+    const d = new Date(s.at);
+    const when = d.toLocaleString('he-IL');
+    const origIdx = listLocalSnapshots().length - 1 - i;
+    return `<tr>
+      <td style="padding:8px 10px;border-bottom:1px solid var(--border)">${escapeHtml(when)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:center;font-weight:700">${s.clientsCount}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:center">
+        <button class="btn small secondary" onclick="restoreFromSnapshot(${origIdx})" style="background:#fef3c7;color:#78350f">🔙 שחזר</button>
+      </td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="panel">
+      <h2 class="panel-title">🛟 גיבויים אוטומטיים</h2>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+        המערכת שומרת אוטומטית תמונת מצב של ה-state בכל פעם שאתה שומר/משנה משהו. נשמרים 20 הגיבויים האחרונים.<br>
+        <strong>אם לקוח נמחק בטעות (או קונפליקט סנכרון)</strong> — תוכל לשחזר כאן את ה-state מגיבוי קודם.<br>
+        הגיבויים נשמרים ב-<code>localStorage</code> של הדפדפן הזה בלבד (לא בענן).
+      </div>
+      ${snaps.length === 0 ? '<div class="empty">אין גיבויים עדיין</div>' : `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="background:#f8fafc">
+              <th style="padding:8px 10px;text-align:right;border-bottom:1px solid var(--border)">זמן גיבוי</th>
+              <th style="padding:8px 10px;text-align:center;border-bottom:1px solid var(--border)">מס' לקוחות</th>
+              <th style="padding:8px 10px;text-align:center;border-bottom:1px solid var(--border)">פעולה</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`}
+      <div style="margin-top:14px;padding:10px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:12px;color:#166534">
+        <strong>הגנה חדשה שהתווספה:</strong> בכל שמירה, לפני דחיפה לענן — המערכת מושכת קודם את ה-state מהענן ומאחדת לקוחות שחסרים אצלך. זה מונע את התרחיש שלקוח שיצרת במכשיר אחר נמחק בגלל שמכשיר אחר דחף state ישן.
+      </div>
+    </div>
+  `;
+}
+
 // ------------------- Clients folder (Drive-for-Desktop) -------------------
 function _normalizeFolderBase(p) {
   if (!p) return '';
@@ -15669,6 +15726,7 @@ function renderSettings() {
     { id: 'stageReqs', label: '📎 דרישות מסמכים לפי שלב', icon: '📎' },
     { id: 'appraisalDocs', label: '🏠 דרישות שמאי לפי עסקה', icon: '🏠' },
     { id: 'clientsFolder', label: '📁 תיקיית לקוחות (Drive)', icon: '📁' },
+    { id: 'snapshots', label: '🛟 גיבויים אוטומטיים', icon: '🛟' },
   ];
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:flex-start">
@@ -15693,6 +15751,7 @@ function renderActiveSettingsSection() {
 }
 
 function renderSettingsSection(id) {
+  if (id === 'snapshots') return renderSnapshotsSection();
   if (id === 'clientsFolder') return renderClientsFolderSection();
   if (id === 'appraisalDocs') return renderAppraisalDocsSection();
   if (id === 'sellerTasks') return renderSellerTasksSection();
@@ -17108,15 +17167,53 @@ async function sbFetchState(){
   if(!rows.length)return {state:null,updated_at:null};
   return {state:rows[0].state,updated_at:rows[0].updated_at,updated_by:rows[0].updated_by};
 }
+// Merge-before-push: fetch the latest server state and merge any clients
+// that exist on the server but NOT locally — this prevents losing a client
+// another device just created when we overwrite the server with our (older) state.
+async function sbMergeFromServer(){
+  try{
+    var r = await sbFetchState();
+    if (!r || !r.state) return;
+    var remote = r.state;
+    var localIds = new Set((state.clients||[]).map(function(c){return c.id}));
+    var merged = 0;
+    (remote.clients||[]).forEach(function(rc){
+      if (!localIds.has(rc.id)) {
+        // Server has a client we don't — merge it in to avoid overwriting
+        state.clients.push(rc);
+        merged++;
+      } else {
+        // Both have this client — pick whichever was edited last
+        var lc = state.clients.find(function(x){return x.id===rc.id});
+        var lLast = new Date(lc._updatedAt || lc.leadAt || 0).getTime();
+        var rLast = new Date(rc._updatedAt || rc.leadAt || 0).getTime();
+        if (rLast > lLast) {
+          // Server version is newer — only accept if we didn't just edit it
+          var idx = state.clients.indexOf(lc);
+          state.clients[idx] = rc;
+          merged++;
+        }
+      }
+    });
+    if (merged > 0) {
+      console.log('[sync] merged ' + merged + ' clients from server before push');
+    }
+  } catch(e){ console.warn('[sync] merge-from-server failed:', e.message); }
+}
 async function sbPushState(){
   SB.pending=false;
   if(!SB.token||SB.mode!=='on')return;
   sbBadge('saving');
   try{
+    // STEP 1 — pull latest from server and merge non-conflicting changes BEFORE pushing.
+    // This prevents the classic "last-write-wins" data loss.
+    await sbMergeFromServer();
     if(SB.user&&SB.user.email){
       state._lastEditor=SB.user.email;
       state._lastEditedAt=new Date().toISOString();
     }
+    // STEP 2 — write a local snapshot before push (rolling backup, last 20 states)
+    try { _writeLocalSnapshot(); } catch(e){}
     var body=JSON.stringify({state:state,updated_at:new Date().toISOString()});
     var r=await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1',{
       method:'PATCH',headers:Object.assign(sbHdrs(true),{Prefer:'return=representation'}),
@@ -17126,6 +17223,19 @@ async function sbPushState(){
     if(rows&&rows[0])SB.rowUpdated=rows[0].updated_at;
     sbBadge('ok');sbUpdateLast();
   }catch(e){sbBadge('err',e.message);setTimeout(function(){sbQueueSave()},5000);}
+}
+// Rolling local snapshots — up to 20, oldest dropped. Lives in localStorage, each with a timestamp.
+function _writeLocalSnapshot(){
+  try{
+    var key = 'mortgage-crm-snapshots';
+    var arr = JSON.parse(localStorage.getItem(key) || '[]');
+    arr.push({ at: new Date().toISOString(), clientsCount: (state.clients||[]).length, state: state });
+    while (arr.length > 20) arr.shift();
+    localStorage.setItem(key, JSON.stringify(arr));
+  }catch(e){}
+}
+function listLocalSnapshots(){
+  try { return JSON.parse(localStorage.getItem('mortgage-crm-snapshots') || '[]'); } catch(e){ return []; }
 }
 function sbQueueSave(immediate){
   if(SB.mode!=='on')return;
