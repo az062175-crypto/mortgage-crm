@@ -422,6 +422,13 @@
     #floatTaskAlerts > div, #floatTaskAlerts > ul, #floatTaskAlerts > ol { padding: 0 !important; }
     /* 2-column grid in client detail → 1 column */
     .detail-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
+    /* Stale missing-docs panel: collapse to show first row only; "הצג עוד" expands all */
+    .staleDocsPanel .staleDocsRows > div:not(:first-child) { display: none; }
+    .staleDocsPanel .staleDocsRows.expanded > div { display: flex !important; }
+    /* Stage chevrons — bigger tap targets on mobile */
+    .progress-step { min-height: 44px !important; padding: 14px 4px 14px 20px !important; font-size: 12px !important; }
+    /* Show the "move stage" button on mobile */
+    .mobileStageMoveBtn { display: block !important; }
     /* Grid-template-columns with any 2+ columns in detail tab → stack */
     #tabDetail div[style*="grid-template-columns:1fr 1fr"],
     #tabDetail div[style*="grid-template-columns:repeat(2,1fr)"],
@@ -2893,9 +2900,11 @@ function renderDashboard() {
       const title = staleCount > 0
         ? '⏰ ניירת שנשלחה וטרם התקבלה — ' + staleCount + ' דחוף' + (freshCount ? ' + ' + freshCount + ' בהמתנה' : '')
         : '📤 בקשות ניירת פתוחות (' + allAlerts.length + ')';
-      return `<div class="panel" style="border:2px solid ${panelBorder};background:${panelBg}">
+      const _staleExpanded = window._staleAlertsExpanded === true;
+      return `<div class="panel staleDocsPanel" style="border:2px solid ${panelBorder};background:${panelBg}">
         <h2 class="panel-title" style="color:${headerColor}">${title}</h2>
-        <div style="display:flex;flex-direction:column;gap:8px">
+        ${allAlerts.length > 1 ? `<button class="btn secondary small staleDocsToggle" onclick="window._staleAlertsExpanded=!(window._staleAlertsExpanded===true);renderDashboard()" style="margin-bottom:8px;width:100%">${_staleExpanded ? '▲ הסתר ' + (allAlerts.length-1) + ' נוספים' : '▼ הצג עוד ' + (allAlerts.length-1) + ' תיקים'}</button>` : ''}
+        <div class="staleDocsRows ${_staleExpanded ? 'expanded' : ''}" style="display:flex;flex-direction:column;gap:8px">
           ${allAlerts.map(a => {
             const label = a.hours < 1 ? 'לפני פחות משעה' : a.hours < 48 ? 'לפני ' + a.hours + ' שעות' : 'לפני ' + Math.floor(a.hours/24) + ' ימים';
             const pending = (a.client.requirements || []).filter(r => r.status === 'pending').length;
@@ -4054,6 +4063,7 @@ function renderClientDetail() {
         </div>
       </div>
 
+      <button class="btn mobileStageMoveBtn" onclick="openStageModal('${c.id}')" style="display:none;width:100%;margin-bottom:8px;background:var(--accent);font-size:14px;padding:12px">↔ העבר לשלב אחר</button>
       <div class="progress" style="grid-template-columns:repeat(${STAGES.filter(s => s.id !== 'appraisal' || c.requiresAppraisal).length},1fr);margin-bottom:0">
         ${(() => {
           const visited = new Set((c.stageHistory||[]).map(h => h.stage));
