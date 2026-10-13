@@ -423,7 +423,7 @@
     /* 2-column grid in client detail → 1 column */
     .detail-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
     /* Stale missing-docs panel: collapse to show first row only; "הצג עוד" expands all */
-    .staleDocsPanel .staleDocsRows > div:not(:first-child) { display: none; }
+    .staleDocsPanel .staleDocsRows > div:not(:first-child) { display: none !important; }
     .staleDocsPanel .staleDocsRows.expanded > div { display: flex !important; }
     /* Stage chevrons — bigger tap targets on mobile */
     .progress-step { min-height: 44px !important; padding: 14px 4px 14px 20px !important; font-size: 12px !important; }
