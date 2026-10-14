@@ -4101,6 +4101,7 @@ function renderClientDetail() {
             <button class="btn secondary small" onclick="openIncomesEditor('${c.id}')" title="ערוך הכנסות חודשיות של הלווים והערבים" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3">💰 ערוך הכנסות</button>
             <button class="btn secondary small" onclick="printClientForMeeting('${c.id}')" title="הכן דף מסודר להדפסה / PDF לפגישה" style="background:#f0fdf4;border-color:#22c55e;color:#166534">🖨️ הכן לפגישה</button>
             <button class="btn secondary small" onclick="openBankLetter('${c.id}')" title="הכן מכתב מסודר לבנקאי — להדפסה או לשליחה במייל" style="background:#eff6ff;border-color:#3b82f6;color:#1e40af">📨 מכתב לבנק</button>
+            <button class="btn secondary small" onclick="orderNesach('${c.id}')" title="פותח את gov.il בדפדפן, ממלא את הפרטים אוטומטית, מחכה שתשלם, ומסמן בוצע" style="background:#fef3c7;border-color:#f59e0b;color:#78350f">📄 הזמן נסח</button>
             <button class="btn danger small" onclick="deleteClient('${c.id}')">מחק</button>
           </div>
           ${(() => {
@@ -8532,6 +8533,94 @@ function _bankerAddress(banker) {
   const nm = (banker.name || '').trim();
   if (!nm) return 'שלום רב';
   return (title ? title + ' ' : '') + nm;
+}
+
+// Nefakh ordering — talks to the Chrome extension (CRM Nefakh Helper).
+// If the extension isn't installed, shows an install prompt.
+let _nefakhExtensionReady = false;
+window.addEventListener('message', (ev) => {
+  if (!ev.data) return;
+  if (ev.data.type === 'NEFAKH_HELPER_READY' || ev.data.type === 'NEFAKH_HELPER_PONG') {
+    _nefakhExtensionReady = true;
+  }
+  if (ev.data.type === 'NEFAKH_HELPER_ACK') {
+    // Order was accepted by the extension — gov.il tab will open
+  }
+  if (ev.data.type === 'NEFAKH_HELPER_DONE') {
+    // Order completed in gov.il — mark the CRM task done
+    const payload = ev.data.payload || {};
+    const c = state.clients.find(x => x.id === payload.clientId);
+    if (c) {
+      const task = (c.tasks || []).find(t => (t.title || '').includes('נסח טאבו') && (t.status || 'active') !== 'done');
+      if (task) {
+        task.status = 'done'; task.done = true; task.doneAt = new Date().toISOString();
+        task.history = task.history || [];
+        task.history.push({ status: 'done', at: new Date().toISOString(), note: 'הוזמן ונשמר אוטומטית ע״י תוסף' });
+        save();
+        if (currentTab === 'detail') renderClientDetail();
+      }
+      alert('✓ הזמנת הנסח של ' + c.name + ' הושלמה. המשימה סומנה כבוצעה.');
+    }
+  }
+});
+function orderNesach(clientId) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  const missing = [];
+  if (!c.propertyGush) missing.push('גוש');
+  if (!c.propertyHelka) missing.push('חלקה');
+  if (missing.length) {
+    alert('חסרים נתונים ללקוח: ' + missing.join(', ') + '.\nערוך את הלקוח והוסף את הפרטים.');
+    return;
+  }
+  // Ping the extension (reply within 500ms if installed)
+  _nefakhExtensionReady = false;
+  window.postMessage({ type: 'NEFAKH_HELPER_PING' }, '*');
+  setTimeout(() => {
+    if (!_nefakhExtensionReady) {
+      if (confirm('תוסף Chrome "CRM Nefakh Helper" לא מותקן.\n\nלהתקין? (תקבל הוראות)')) {
+        _showNefakhInstallInstructions();
+      }
+      return;
+    }
+    // Extension is here — send the order
+    window.postMessage({
+      type: 'ORDER_NESACH',
+      payload: {
+        clientId: c.id,
+        clientName: c.name,
+        gush: c.propertyGush || '',
+        helka: c.propertyHelka || '',
+        tatHelka: c.propertyTatHelka || '',
+        customerName: 'יצחק',
+        customerEmail: 'a035591712@gmail.com'
+      }
+    }, '*');
+  }, 500);
+}
+function _showNefakhInstallInstructions() {
+  showModal(`
+    <h2 class="modal-title">📄 הזמן נסח — התקנת תוסף Chrome</h2>
+    <p style="margin:0 0 12px">הכפתור הזה דורש תוסף Chrome ייעודי שעושה את כל ההזמנה אוטומטית מול gov.il.</p>
+    <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;line-height:1.6">
+      <strong>איפה התוסף:</strong><br>
+      התוסף נמצא בתיקיה: <code>פלט/nefakh-extension</code> במחשב שלך.
+    </div>
+    <div style="margin-bottom:14px;font-size:13px;line-height:1.8">
+      <strong>איך מתקינים (60 שניות, פעם אחת):</strong>
+      <ol style="padding-inline-start:20px;margin:8px 0">
+        <li>פתח ב-Chrome את הכתובת: <code>chrome://extensions</code></li>
+        <li>למעלה מימין — הפעל <strong>"Developer mode"</strong></li>
+        <li>לחץ <strong>"Load unpacked"</strong></li>
+        <li>בחר את תיקיית <code>nefakh-extension</code> (ב-פלט/)</li>
+        <li>רענן את ה-CRM — הכפתור יעבוד</li>
+      </ol>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="window.open('chrome://extensions', '_blank');closeModal()">פתח chrome://extensions</button>
+      <button class="btn secondary" onclick="closeModal()">סגור</button>
+    </div>
+  `);
 }
 
 function openBankLetter(clientId) {
