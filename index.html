@@ -834,6 +834,15 @@ try {
   if (!Array.isArray(state.settings.accompanimentBanksList) || state.settings.accompanimentBanksList.length === 0) {
     state.settings.accompanimentBanksList = JSON.parse(JSON.stringify(DEFAULT_DATA.settings.accompanimentBanksList || []));
   }
+  // One-shot cleanup on load: dedupe trash + remove any client that also exists in trash
+  if (Array.isArray(state.trash)) {
+    const trashSeen = new Set();
+    state.trash = state.trash.filter(c => { if (trashSeen.has(c.id)) return false; trashSeen.add(c.id); return true; });
+    if (Array.isArray(state.clients)) {
+      const trashIds = new Set(state.trash.map(c => c.id));
+      state.clients = state.clients.filter(c => !trashIds.has(c.id));
+    }
+  }
   // Seed default bankers on first run (only if empty)
   if (state.settings.bankers.length === 0) {
     state.settings.bankers = JSON.parse(JSON.stringify(DEFAULT_DATA.settings.bankers));
@@ -17637,10 +17646,16 @@ async function sbMergeFromServer(){
     if (!r || !r.state) return;
     var remote = r.state;
     var localIds = new Set((state.clients||[]).map(function(c){return c.id}));
+    // Build a set of ids that we deleted locally — don't re-add them from the server!
+    var trashedIds = new Set((state.trash||[]).map(function(c){return c.id}));
     var merged = 0;
     (remote.clients||[]).forEach(function(rc){
+      if (trashedIds.has(rc.id)) {
+        // We deleted this client locally. Skip — don't resurrect it.
+        return;
+      }
       if (!localIds.has(rc.id)) {
-        // Server has a client we don't — merge it in to avoid overwriting
+        // Server has a client we don't (and we didn't delete it) — merge it in
         state.clients.push(rc);
         merged++;
       } else {
@@ -17649,13 +17664,42 @@ async function sbMergeFromServer(){
         var lLast = new Date(lc._updatedAt || lc.leadAt || 0).getTime();
         var rLast = new Date(rc._updatedAt || rc.leadAt || 0).getTime();
         if (rLast > lLast) {
-          // Server version is newer — only accept if we didn't just edit it
           var idx = state.clients.indexOf(lc);
           state.clients[idx] = rc;
           merged++;
         }
       }
     });
+    // Also merge the remote trash — but dedupe (same id = same deletion)
+    if (Array.isArray(remote.trash) && remote.trash.length) {
+      var localTrashIds = new Set((state.trash||[]).map(function(c){return c.id}));
+      remote.trash.forEach(function(rc){
+        if (!localTrashIds.has(rc.id)) {
+          state.trash = state.trash || [];
+          state.trash.push(rc);
+          localTrashIds.add(rc.id);
+        }
+      });
+    }
+    // Dedupe local trash by id (removes any legacy duplicates)
+    if (Array.isArray(state.trash)) {
+      var seen = new Set();
+      state.trash = state.trash.filter(function(c){
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
+    }
+    // CLEANUP: if a client appears in both clients[] and trash[], remove from clients[]
+    // (trash is the authoritative "deleted" marker)
+    if (Array.isArray(state.trash) && state.trash.length && Array.isArray(state.clients)) {
+      var trashSet = new Set(state.trash.map(function(c){return c.id}));
+      var before = state.clients.length;
+      state.clients = state.clients.filter(function(c){ return !trashSet.has(c.id); });
+      if (state.clients.length < before) {
+        console.log('[sync] cleaned ' + (before - state.clients.length) + ' resurrected clients');
+      }
+    }
     if (merged > 0) {
       console.log('[sync] merged ' + merged + ' clients from server before push');
     }
