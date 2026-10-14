@@ -2260,11 +2260,17 @@ function restoreFromTrash(clientId) {
 }
 
 function permanentlyDelete(clientId) {
-  if (!confirm('למחוק לצמיתות? הפעולה בלתי הפיכה — אי אפשר לשחזר.')) return;
   if (!Array.isArray(state.trash)) return;
+  const beforeCount = state.trash.length;
+  const target = state.trash.find(x => x.id === clientId);
+  const name = target ? (target.name || '—') : clientId;
+  if (!confirm('למחוק לצמיתות את "' + name + '"? הפעולה בלתי הפיכה.')) return;
   state.trash = state.trash.filter(x => x.id !== clientId);
+  const removed = beforeCount - state.trash.length;
   saveNow();
-  renderTrashPanel();
+  // Re-render the full dialog (not just the body) so the title count updates too
+  openTrashDialog();
+  if (removed === 0) alert('לא נמצא פריט עם מזהה זה. ייתכן שהוא כבר נמחק במכשיר אחר. רענן את הדף.');
 }
 
 function emptyTrash() {
