@@ -17821,6 +17821,16 @@ function sbApplyRemoteState(obj){
     }
     state.settings._apprMigNesachHarchava = true;
   }
+  // Cleanup after remote pull: dedupe trash + remove any client that also exists in trash
+  // (otherwise a delete on one device gets "resurrected" when another device syncs)
+  if (Array.isArray(state.trash)) {
+    var _seen = new Set();
+    state.trash = state.trash.filter(function(c){ if (_seen.has(c.id)) return false; _seen.add(c.id); return true; });
+    if (Array.isArray(state.clients)) {
+      var _trashIds = new Set(state.trash.map(function(c){return c.id}));
+      state.clients = state.clients.filter(function(c){ return !_trashIds.has(c.id); });
+    }
+  }
   state.clients.forEach(migrateClient);
 }
 
