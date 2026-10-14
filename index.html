@@ -8536,102 +8536,41 @@ function _bankerAddress(banker) {
   return (title ? title + ' ' : '') + nm;
 }
 
-// Open Claude.ai in a new tab with a ready-made prompt — Claude's browser agent takes it from there:
-// fills gov.il, pays with the saved card, downloads PDF, uploads to the client's Drive folder.
-function _openClaudeWithPrompt(prompt) {
-  const url = 'https://claude.ai/new?q=' + encodeURIComponent(prompt);
-  window.open(url, '_blank', 'noopener');
-}
-function orderNesach(clientId) {
+// Fast order flow: copy property IDs to clipboard + open gov.il in a new tab.
+// You then Ctrl+V the values into the form, pay manually, download — ~60 seconds total.
+function _orderPropertyDoc(clientId, kind) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
   const missing = [];
   if (!c.propertyGush) missing.push('גוש');
   if (!c.propertyHelka) missing.push('חלקה');
   if (missing.length) {
-    if (!confirm('חסרים נתונים: ' + missing.join(', ') + '.\nלהמשיך בכל זאת? (הסוכן יבקש ממך אותם בצ\'אט)')) return;
+    if (!confirm('חסרים נתונים: ' + missing.join(', ') + '.\nלהמשיך בכל זאת?')) return;
   }
-  const parts = [];
-  parts.push('**מצב אוטומטי מלא — אל תשאל אותי שאלות. הנחתי לך את כל ההחלטות מראש. התחל והמשך עד הסוף בלי לחכות לאישורים.**');
-  parts.push('');
-  parts.push('**המשימה:** היכנס לאתר רשות המקרקעין (land.gov.il או landregistration.gov.il) והזמן **נסח טאבו רגיל** עבור הנכס הבא:');
-  parts.push('');
-  parts.push('גוש: ' + (c.propertyGush || '[לא ידוע]'));
-  parts.push('חלקה: ' + (c.propertyHelka || '[לא ידוע]'));
-  if (c.propertyTatHelka) parts.push('תת־חלקה: ' + c.propertyTatHelka);
-  if (c.propertyAddress) parts.push('כתובת: ' + c.propertyAddress + (c.propertyCity ? ', ' + c.propertyCity : ''));
-  parts.push('');
-  parts.push('שם הלקוח: ' + c.name);
-  parts.push('');
-  parts.push('**ברירות מחדל — השתמש בלי לשאול:**');
-  parts.push('• **פרטי המבקש בטופס:** שם = יצחק · מייל = a035591712@gmail.com');
-  parts.push('• **אפוסטיל:** לא');
-  parts.push('• **סוג מסמך:** נסח רגיל (לא היסטורי, לא מרוכז)');
-  parts.push('• **אם האתר דורש אישור/סימון של הצהרת אחריות** — סמן אוטומטית ואשר. אני לוקח אחריות מראש.');
-  parts.push('');
-  parts.push('**הזרימה (3 שלבים):**');
-  parts.push('');
-  parts.push('**שלב א\' — מילוי אוטומטי (עשה הכל לבד, בלי לשאול):**');
-  parts.push('1. פתח את האתר, מלא את פרטי הנכס (גוש/חלקה/תת־חלקה) ופרטי מבקש כפי שרשום למעלה.');
-  parts.push('2. סמן את כל הצהרות האחריות שהאתר דורש.');
-  parts.push('3. התקדם עד מסך התשלום.');
-  parts.push('');
-  parts.push('**שלב ב\' — תשלום (עצור והמתן לי):**');
-  parts.push('4. **כשתגיע למסך התשלום (הזנת פרטי כרטיס אשראי) — עצור.** אל תמלא כלום. אל תתערב. אל תשלם.');
-  parts.push('5. כתוב לי בצ\'אט: "הגעתי למסך תשלום. אני ממתין שתשלם ידנית. אחרי שהתשלום עבר, רשום לי בצ\'אט \'המשך\' ואמשיך לשלב הבא."');
-  parts.push('6. **אני אתערב ידנית במסך התשלום** (אני אקליד את פרטי האשראי בעצמי), אסיים את התשלום, ואז אכתוב "המשך" או "ok" בצ\'אט.');
-  parts.push('');
-  parts.push('**שלב ג\' — אחרי שאני אומר "המשך" (עשה הכל לבד, בלי לשאול):**');
-  parts.push('7. חפש בעמוד הנוכחי של gov.il את קישור/כפתור ההורדה של ה-PDF (זה מופיע בעמוד אישור התשלום). **הורד ישירות מהאתר, לא מהמייל.**');
-  parts.push('8. העלה את ה-PDF ל-Google Drive בתיקיית "' + c.name + '" (תיקיה-אב: "לקוחות כולל"). שם הקובץ: "נסח טאבו - ' + c.name + ' - [תאריך].pdf".');
-  parts.push('9. שלח לי מייל סיכום עם: שם הלקוח, גוש/חלקה, סכום בפועל, תאריך+שעה, קישור ל-PDF ב-Drive.');
-  parts.push('10. דווח לי בצ\'אט "סיימתי".');
-  parts.push('');
-  parts.push('**כלל ברזל:** ההתערבות היחידה שלי בכל התהליך = התשלום בלבד. בכל שאר השלבים — פעל לבד, אל תחכה לאישור, אל תסכם לפני פעולה.');
-  _openClaudeWithPrompt(parts.join('\n'));
+  // Build a tab-separated string for easy pasting into each field one after the other
+  const txt = [c.propertyGush || '', c.propertyHelka || '', c.propertyTatHelka || ''].join('\t');
+  _copyToClipboard(txt);
+  const url = kind === 'tashrit'
+    ? 'https://land.gov.il/'    // תשריט בית משותף — אותו פורטל
+    : 'https://land.gov.il/';   // נסח טאבו
+  window.open(url, '_blank', 'noopener');
+  // Visual toast
+  const toastWrap = document.createElement('div');
+  toastWrap.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:14px 20px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:99999;font-family:inherit;max-width:92vw;direction:rtl;font-size:13px';
+  toastWrap.innerHTML = `
+    <div style="font-weight:800;margin-bottom:6px">📋 גוש/חלקה/תת־חלקה הועתקו ללוח</div>
+    <div style="font-family:ui-monospace,monospace;background:rgba(255,255,255,0.1);padding:6px 8px;border-radius:4px;direction:ltr;text-align:left">
+      ${escapeHtml(c.propertyGush || '-')} / ${escapeHtml(c.propertyHelka || '-')} / ${escapeHtml(c.propertyTatHelka || '-')}
+    </div>
+    <div style="opacity:0.8;margin-top:8px">בטאב החדש של gov.il — Tab בין שדות + Ctrl+V לכל שדה. ${kind === 'tashrit' ? 'בחר "תשריט בית משותף"' : 'בחר "נסח רגיל"'}, שלם, הורד.</div>
+  `;
+  document.body.appendChild(toastWrap);
+  setTimeout(() => toastWrap.remove(), 8000);
+  toastWrap.onclick = () => toastWrap.remove();
 }
-function orderTashrit(clientId) {
-  const c = state.clients.find(x => x.id === clientId);
-  if (!c) return;
-  const parts = [];
-  parts.push('**מצב אוטומטי מלא — אל תשאל אותי שאלות. הנחתי לך את כל ההחלטות מראש. התחל והמשך עד הסוף בלי לחכות לאישורים.**');
-  parts.push('');
-  parts.push('**המשימה:** היכנס לאתר רשות המקרקעין (land.gov.il) והזמן **תשריט בית משותף** עבור הנכס הבא:');
-  parts.push('');
-  parts.push('גוש: ' + (c.propertyGush || '[לא ידוע]'));
-  parts.push('חלקה: ' + (c.propertyHelka || '[לא ידוע]'));
-  if (c.propertyTatHelka) parts.push('תת־חלקה: ' + c.propertyTatHelka);
-  if (c.propertyAddress) parts.push('כתובת: ' + c.propertyAddress + (c.propertyCity ? ', ' + c.propertyCity : ''));
-  parts.push('');
-  parts.push('שם הלקוח: ' + c.name);
-  parts.push('');
-  parts.push('**ברירות מחדל — השתמש בלי לשאול:**');
-  parts.push('• **פרטי המבקש בטופס:** שם = יצחק · מייל = a035591712@gmail.com');
-  parts.push('• **סוג מסמך:** תשריט בית משותף');
-  parts.push('• **אם האתר דורש אישור/סימון של הצהרת אחריות** — סמן אוטומטית ואשר. אני לוקח אחריות מראש.');
-  parts.push('');
-  parts.push('**הזרימה (3 שלבים):**');
-  parts.push('');
-  parts.push('**שלב א\' — מילוי אוטומטי (עשה הכל לבד, בלי לשאול):**');
-  parts.push('1. פתח את האתר, מלא את פרטי הנכס ופרטי מבקש כפי שרשום למעלה.');
-  parts.push('2. סמן את כל הצהרות האחריות שהאתר דורש.');
-  parts.push('3. התקדם עד מסך התשלום.');
-  parts.push('');
-  parts.push('**שלב ב\' — תשלום (עצור והמתן לי):**');
-  parts.push('4. **כשתגיע למסך התשלום (הזנת פרטי כרטיס אשראי) — עצור.** אל תמלא כלום. אל תתערב. אל תשלם.');
-  parts.push('5. כתוב לי בצ\'אט: "הגעתי למסך תשלום. אני ממתין שתשלם ידנית. אחרי שהתשלום עבר, רשום לי בצ\'אט \'המשך\' ואמשיך לשלב הבא."');
-  parts.push('6. **אני אתערב ידנית במסך התשלום** (אני אקליד את פרטי האשראי בעצמי), אסיים את התשלום, ואז אכתוב "המשך" או "ok" בצ\'אט.');
-  parts.push('');
-  parts.push('**שלב ג\' — אחרי שאני אומר "המשך" (עשה הכל לבד, בלי לשאול):**');
-  parts.push('7. חפש בעמוד הנוכחי של gov.il את קישור/כפתור ההורדה של ה-PDF (זה מופיע בעמוד אישור התשלום). **הורד ישירות מהאתר, לא מהמייל.**');
-  parts.push('8. העלה את ה-PDF ל-Google Drive בתיקיית "' + c.name + '" (תיקיה-אב: "לקוחות כולל"). שם הקובץ: "תשריט בית משותף - ' + c.name + ' - [תאריך].pdf".');
-  parts.push('9. שלח לי מייל סיכום עם: שם הלקוח, גוש/חלקה, סכום בפועל, תאריך+שעה, קישור ל-PDF ב-Drive.');
-  parts.push('10. דווח לי בצ\'אט "סיימתי".');
-  parts.push('');
-  parts.push('**כלל ברזל:** ההתערבות היחידה שלי בכל התהליך = התשלום בלבד. בכל שאר השלבים — פעל לבד, אל תחכה לאישור, אל תסכם לפני פעולה.');
-  _openClaudeWithPrompt(parts.join('\n'));
-}
-
+function orderNesach(clientId) { _orderPropertyDoc(clientId, 'nesach'); }
+function orderTashrit(clientId) { _orderPropertyDoc(clientId, 'tashrit'); }
+// Dead code below — kept temporarily so references don't break. Not called.
 function openBankLetter(clientId) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
