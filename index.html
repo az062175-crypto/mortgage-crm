@@ -8616,8 +8616,15 @@ function _showNefakhInstallInstructions() {
         <li>רענן את ה-CRM — הכפתור יעבוד</li>
       </ol>
     </div>
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:14px;font-size:13px">
+      <strong>העתק את הכתובת והדבק בשורת הכתובת של Chrome:</strong>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input id="chromeExtUrl" value="chrome://extensions" readonly style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-family:ui-monospace,monospace;direction:ltr">
+        <button class="btn small" onclick="_copyToClipboard('chrome://extensions');this.textContent='✓ הועתק'">📋 העתק</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">⚠️ Chrome חוסם פתיחת chrome:// מקישור — חייב להעתיק ולהדביק ידנית</div>
+    </div>
     <div class="modal-actions">
-      <button class="btn" onclick="window.open('chrome://extensions', '_blank');closeModal()">פתח chrome://extensions</button>
       <button class="btn secondary" onclick="closeModal()">סגור</button>
     </div>
   `);
