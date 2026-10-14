@@ -9907,6 +9907,24 @@ function openNewClientModal(editClient, warningMessage) {
             <input id="fPropCity" placeholder="למשל: ירושלים">
           </div>
         </div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>גוש</label>
+            <input id="fPropGush" placeholder="למשל: 6210">
+          </div>
+          <div class="form-group">
+            <label>חלקה</label>
+            <input id="fPropHelka" placeholder="למשל: 42">
+          </div>
+          <div class="form-group">
+            <label>תת חלקה</label>
+            <input id="fPropTatHelka" placeholder="למשל: 3">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>הערות על הנכס (מלל חופשי)</label>
+          <textarea id="fPropNotes" placeholder="פרטים נוספים על הנכס..." style="min-height:60px;font-family:inherit"></textarea>
+        </div>
         <div id="fProjectDetailsWrap" class="form-group" style="display:none;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:10px 12px">
           <label style="color:#4338ca;font-weight:700">🏗️ פרטי פרויקט (יד ראשונה / מחיר למשתכן)</label>
           <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-top:6px">
@@ -10101,6 +10119,10 @@ function openNewClientModal(editClient, warningMessage) {
     document.getElementById('fIsRented').checked = !!c.isRented;
     if (document.getElementById('fPropAddress')) document.getElementById('fPropAddress').value = c.propertyAddress || '';
     if (document.getElementById('fPropBuilding')) document.getElementById('fPropBuilding').value = c.propertyBuilding || '';
+    if (document.getElementById('fPropGush')) document.getElementById('fPropGush').value = c.propertyGush || '';
+    if (document.getElementById('fPropHelka')) document.getElementById('fPropHelka').value = c.propertyHelka || '';
+    if (document.getElementById('fPropTatHelka')) document.getElementById('fPropTatHelka').value = c.propertyTatHelka || '';
+    if (document.getElementById('fPropNotes')) document.getElementById('fPropNotes').value = c.propertyNotes || '';
     if (document.getElementById('fPropApartment')) document.getElementById('fPropApartment').value = c.propertyApartment || '';
     if (document.getElementById('fPropCity')) document.getElementById('fPropCity').value = c.propertyCity || '';
     // Existing mortgage (for שיפוצים / כל מטרה / הרחבה / בניה עצמי)
@@ -12229,6 +12251,10 @@ function submitNewClient() {
     propertyBuilding: (document.getElementById('fPropBuilding')?.value || '').trim(),
     propertyApartment: (document.getElementById('fPropApartment')?.value || '').trim(),
     propertyCity: (document.getElementById('fPropCity')?.value || '').trim(),
+    propertyGush: (document.getElementById('fPropGush')?.value || '').trim(),
+    propertyHelka: (document.getElementById('fPropHelka')?.value || '').trim(),
+    propertyTatHelka: (document.getElementById('fPropTatHelka')?.value || '').trim(),
+    propertyNotes: (document.getElementById('fPropNotes')?.value || '').trim(),
     projectName: (document.getElementById('fProjectName')?.value || '').trim(),
     projectBuilding: (document.getElementById('fProjectBuilding')?.value || '').trim(),
     projectApartment: (document.getElementById('fProjectApartment')?.value || '').trim(),
