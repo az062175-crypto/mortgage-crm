@@ -8592,8 +8592,10 @@ function orderNesach(clientId) {
         gush: c.propertyGush || '',
         helka: c.propertyHelka || '',
         tatHelka: c.propertyTatHelka || '',
-        customerName: 'יצחק',
-        customerEmail: 'a035591712@gmail.com'
+        // Form fields on gov.il:
+        customerName: c.name,                       // the client's name goes in "פרטי המבקש"
+        customerEmail: 'a035591712@gmail.com',      // your email (receives the nefakh)
+        customerPhone: c.phone || ''                // optional
       }
     }, '*');
   }, 500);
