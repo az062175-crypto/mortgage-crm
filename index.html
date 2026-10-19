@@ -640,6 +640,7 @@ const DEFAULT_DATA = {
   clients: [],
   settings: {
     dealTypes: ['יד שנייה', 'יד ראשונה', 'שיפוצים', 'מחיר למשתכן', 'כל מטרה', 'מיחזור', 'מיחזור + שיפוץ', 'מיחזור + הרחבה', 'מיחזור + כל מטרה', 'גרירה + כסף חדש', 'הרחבה', 'מיחזור + תוספת', 'היפוך לווים', 'גישור', 'בניה עצמי', 'מיחזור + גרירה'],
+    sourceCategories: ['פרסום', 'שת"פ', 'לקוח חוזר', 'הפניה מלקוח בעבר'],
     banksList: ['הפועלים', 'לאומי', 'מזרחי טפחות', 'דיסקונט', 'הבינלאומי הראשון לישראל', 'אגוד', 'ירושלים', 'מרכנתיל'],
     accompanimentBanksList: ['הפועלים', 'מזרחי', 'הבינלאומי', 'דיסקונט', 'מרכנתיל', 'ירושלים', 'מנורה', 'הפניקס', 'רובי קפיטל', 'ברקת'],
     appraisers: [],
@@ -770,6 +771,14 @@ let state = load();
 try {
   if (!state.settings) state.settings = JSON.parse(JSON.stringify(DEFAULT_DATA.settings));
   if (!Array.isArray(state.settings.dealTypes)) state.settings.dealTypes = [];
+  if (!Array.isArray(state.settings.sourceCategories) || state.settings.sourceCategories.length === 0) {
+    state.settings.sourceCategories = (DEFAULT_DATA.settings.sourceCategories || []).slice();
+  }
+  // Migrate legacy English source codes → Hebrew labels (one-time)
+  const _srcCodeMap = { advertising: 'פרסום', partnership: 'שת"פ', returning: 'לקוח חוזר', referral: 'הפניה מלקוח בעבר' };
+  (state.clients || []).forEach(c => {
+    if (c && _srcCodeMap[c.sourceCategory]) c.sourceCategory = _srcCodeMap[c.sourceCategory];
+  });
   if (!state.settings.stageTasks) state.settings.stageTasks = {};
   if (!state.settings.stageRequirements) state.settings.stageRequirements = {};
   // Editable bank/seller/signature tasks — deferred until constants are defined (below)
@@ -2649,6 +2658,14 @@ function renderDashboard() {
     bankAggregate[b.bank] = (bankAggregate[b.bank] || 0) + 1;
   });
   const bankBreakdown = Object.entries(bankAggregate).sort((a,b) => b[1]-a[1]);
+  // Source-category breakdown — ALL files (leads + clients + executed + archive), not just active
+  const sourceCount = {};
+  filteredClients.forEach(c => {
+    const label = (c.sourceCategory || '').trim() || 'לא צויין';
+    sourceCount[label] = (sourceCount[label] || 0) + 1;
+  });
+  const sourceBreakdownDash = Object.entries(sourceCount).sort((a,b) => b[1]-a[1]);
+  const sourceTotalDash = sourceBreakdownDash.reduce((s,[,n]) => s+n, 0);
   // Available years from leadAt for the filter dropdown
   const yearsSet = new Set();
   state.clients.forEach(c => { const y = c.leadAt ? new Date(c.leadAt).getFullYear() : (c.createdAt ? new Date(c.createdAt).getFullYear() : null); if (y) yearsSet.add(y); });
@@ -2876,6 +2893,25 @@ function renderDashboard() {
             </div>`;
           })()}
         </div>
+      </div>
+      <div style="margin-top:12px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#334155">📣 פילוח כלל התיקים לפי מקור הגעה (כולל לידים)</div>
+        ${sourceBreakdownDash.length === 0 ? '<div style="color:var(--muted);font-size:12px">אין נתונים</div>' : (() => {
+          const palette = ['#2563eb','#f59e0b','#10b981','#ec4899','#8b5cf6','#06b6d4','#ef4444','#94a3b8'];
+          return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            ${_miniDonut(sourceBreakdownDash.map(([,c])=>c), palette, sourceTotalDash)}
+            <div style="flex:1;min-width:180px">
+              ${sourceBreakdownDash.map(([name, cnt], i) => {
+                const pct = sourceTotalDash ? Math.round((cnt/sourceTotalDash)*100) : 0;
+                const col = palette[i % palette.length];
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid var(--border);gap:6px">
+                  <span style="display:flex;align-items:center;gap:6px;min-width:0"><span style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0"></span><span style="color:#334155;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span></span>
+                  <span style="display:flex;align-items:center;gap:6px;flex-shrink:0"><span style="color:var(--muted);font-size:11px">${pct}%</span><span style="background:var(--accent);color:#fff;padding:1px 10px;border-radius:999px;font-weight:700;font-size:11px">${cnt}</span></span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        })()}
       </div>
     </div>
 
@@ -3106,7 +3142,6 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
   const totalCount = inScope.length;
   let totalAmount = 0; let totalDays = 0; let daysCount = 0;
   const byPurpose = {}; const byBank = {}; const bySource = {};
-  const SOURCE_LABELS = { advertising: 'פרסום', partnership: 'שת"פ', returning: 'לקוח חוזר', referral: 'הפניה מלקוח בעבר' };
   // Measures client → execution duration (not lead → execution): time starts when the file became
   // a real client, not when the lead first appeared.
   const _clientStart = (c) => {
@@ -3131,8 +3166,7 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
       byBank[bankName].count++;
       byBank[bankName].amount += amt;
     }
-    const srcKey = c.sourceCategory || 'unknown';
-    const srcLabel = SOURCE_LABELS[srcKey] || 'לא צויין';
+    const srcLabel = (c.sourceCategory || '').trim() || 'לא צויין';
     bySource[srcLabel] = (bySource[srcLabel] || 0) + 1;
   });
   const avgDays = daysCount > 0 ? Math.round(totalDays / daysCount) : 0;
@@ -9495,10 +9529,7 @@ function openNewLeadModal(existingClient) {
         <label>מאיפה הגיע הלקוח</label>
         <select id="leadSourceCategory" style="width:100%">
           <option value="">— בחר —</option>
-          <option value="advertising" ${c.sourceCategory==='advertising'?'selected':''}>פרסום</option>
-          <option value="partnership" ${c.sourceCategory==='partnership'?'selected':''}>שת"פ</option>
-          <option value="returning" ${c.sourceCategory==='returning'?'selected':''}>לקוח חוזר</option>
-          <option value="referral" ${c.sourceCategory==='referral'?'selected':''}>הפניה מלקוח בעבר</option>
+          ${(state.settings.sourceCategories || []).map(s => `<option value="${escapeAttr(s)}" ${c.sourceCategory===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group" style="flex:1">
@@ -10165,10 +10196,7 @@ function openNewClientModal(editClient, warningMessage) {
         <label>מאיפה הגיע הלקוח</label>
         <select id="fSourceCategory">
           <option value="">— בחר —</option>
-          <option value="advertising">פרסום</option>
-          <option value="partnership">שת"פ</option>
-          <option value="returning">לקוח חוזר</option>
-          <option value="referral">הפניה מלקוח בעבר</option>
+          ${(state.settings.sourceCategories || []).map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
@@ -16224,6 +16252,7 @@ function renderSettings() {
   const el = document.getElementById('tabSettings');
   const sections = [
     { id: 'dealTypes', label: '📋 סוגי תיקים', icon: '📋' },
+    { id: 'sourceCategories', label: '📣 מקורות הגעה', icon: '📣' },
     { id: 'contacts', label: '👥 אנשי קשר', icon: '👥' },
     { id: 'whatsapp', label: '💬 תבניות WhatsApp', icon: '💬' },
     { id: 'emailTemplates', label: '📧 תבניות מייל', icon: '📧' },
@@ -16296,6 +16325,22 @@ function renderSettingsSection(id) {
       <div class="add-row" style="margin-top:12px">
         <input id="newDealType" placeholder="סוג תיק חדש" style="flex:1">
         <button class="btn small" onclick="addToList('dealTypes','newDealType')">+ הוסף</button>
+      </div>
+    </div>`;
+
+  if (id === 'sourceCategories') return `
+    <div class="panel">
+      <h2 class="panel-title">📣 מקורות הגעה (${(state.settings.sourceCategories||[]).length})</h2>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">הקטגוריות שיופיעו בשדה "מאיפה הגיע הלקוח" בטופס ליד/לקוח, ובפילוח בדשבורדים.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${(state.settings.sourceCategories||[]).map((d,i) => `
+          <span class="settings-item" style="display:inline-flex;padding:6px 10px;margin:0"><span>${escapeHtml(d)}</span>
+            <button class="icon-btn" onclick="removeFromList('sourceCategories',${i})">✕</button>
+          </span>`).join('')}
+      </div>
+      <div class="add-row" style="margin-top:12px">
+        <input id="newSourceCategory" placeholder="קטגוריה חדשה (למשל: גוגל / פייסבוק / המלצת חבר)" style="flex:1">
+        <button class="btn small" onclick="addToList('sourceCategories','newSourceCategory')">+ הוסף</button>
       </div>
     </div>`;
 
