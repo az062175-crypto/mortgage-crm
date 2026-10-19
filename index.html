@@ -17918,6 +17918,12 @@ function sbApplyRemoteState(obj){
   if(!Array.isArray(state.clients))state.clients=[];
   if(!Array.isArray(state.settings.bankers))state.settings.bankers=[];
   if(!Array.isArray(state.settings.dealTypes))state.settings.dealTypes=DEFAULT_DATA.settings.dealTypes.slice();
+  if(!Array.isArray(state.settings.sourceCategories)||state.settings.sourceCategories.length===0){
+    state.settings.sourceCategories=(DEFAULT_DATA.settings.sourceCategories||['פרסום','שת"פ','לקוח חוזר','הפניה מלקוח בעבר']).slice();
+  }
+  // Migrate legacy English source codes → Hebrew labels
+  var _srcMap={advertising:'פרסום',partnership:'שת"פ',returning:'לקוח חוזר',referral:'הפניה מלקוח בעבר'};
+  (state.clients||[]).forEach(function(c){if(c&&_srcMap[c.sourceCategory])c.sourceCategory=_srcMap[c.sourceCategory]});
   if(!state.settings.stageTasks)state.settings.stageTasks=JSON.parse(JSON.stringify(DEFAULT_DATA.settings.stageTasks));
   if(!state.settings.stageRequirements)state.settings.stageRequirements=JSON.parse(JSON.stringify(DEFAULT_DATA.settings.stageRequirements));
   if(!Array.isArray(state.settings.whatsappTemplates)||state.settings.whatsappTemplates.length===0){
