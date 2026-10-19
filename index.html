@@ -3045,11 +3045,12 @@ function renderDashboard() {
         ? '⏰ ניירת שנשלחה וטרם התקבלה — ' + staleCount + ' דחוף' + (freshCount ? ' + ' + freshCount + ' בהמתנה' : '')
         : '📤 בקשות ניירת פתוחות (' + allAlerts.length + ')';
       const _staleExpanded = window._staleAlertsExpanded === true;
+      const _staleVisible = _staleExpanded ? allAlerts : allAlerts.slice(0, 1);
       return `<div class="panel staleDocsPanel" style="border:2px solid ${panelBorder};background:${panelBg}">
         <h2 class="panel-title" style="color:${headerColor}">${title}</h2>
         ${allAlerts.length > 1 ? `<button class="btn secondary small staleDocsToggle" onclick="window._staleAlertsExpanded=!(window._staleAlertsExpanded===true);renderDashboard()" style="margin-bottom:8px;width:100%">${_staleExpanded ? '▲ הסתר ' + (allAlerts.length-1) + ' נוספים' : '▼ הצג עוד ' + (allAlerts.length-1) + ' תיקים'}</button>` : ''}
         <div class="staleDocsRows ${_staleExpanded ? 'expanded' : ''}" style="display:flex;flex-direction:column;gap:8px">
-          ${allAlerts.map(a => {
+          ${_staleVisible.map(a => {
             const label = a.hours < 1 ? 'לפני פחות משעה' : a.hours < 48 ? 'לפני ' + a.hours + ' שעות' : 'לפני ' + Math.floor(a.hours/24) + ' ימים';
             const pending = (a.client.requirements || []).filter(r => r.status === 'pending').length;
             const rowBg = a.isStale ? '#fff' : '#f8fafc';
