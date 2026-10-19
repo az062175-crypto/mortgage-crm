@@ -18221,6 +18221,27 @@ function sbRefreshCloudBtn(){
   }
 }
 
+// Deep-link: ?c=<clientId> opens that client directly after state loads.
+function _openClientFromUrl() {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var cid = params.get('c') || (window.location.hash.match(/c=([^&]+)/) || [])[1];
+    if (!cid) return;
+    var tries = 0;
+    var iv = setInterval(function(){
+      tries++;
+      if (state && Array.isArray(state.clients) && state.clients.some(function(c){ return c.id === cid; })) {
+        clearInterval(iv);
+        openClient(cid);
+        // Clean the URL so refresh doesn't re-open
+        try { history.replaceState({}, '', window.location.pathname); } catch(e){}
+      } else if (tries > 30) {
+        clearInterval(iv);
+      }
+    }, 300);
+  } catch(e){}
+}
+
 setTimeout(function(){
   // Always add the cloud button to the top bar
   var topbar=document.querySelector('.topbar');
@@ -18231,6 +18252,7 @@ setTimeout(function(){
     topbar.appendChild(b);
   }
   sbRefreshCloudBtn();
+  _openClientFromUrl();
   // Refresh button label after successful sign-in / sign-out
   var origApply = sbApplySession, origSaveSess = sbSaveSession;
   sbApplySession = function(s){ var r = origApply(s); setTimeout(sbRefreshCloudBtn, 50); return r; };
