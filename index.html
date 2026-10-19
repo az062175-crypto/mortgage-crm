@@ -1348,6 +1348,8 @@ function newClient(data) {
     employmentType: data.employmentType || borrowers[0].employmentType || 'שכיר',
     incomeTypes: data.incomeTypes || borrowers[0].incomeTypes || [],
     bankerId: data.bankerId || '',
+    sourceCategory: data.sourceCategory || '',
+    sourceNotes: data.sourceNotes || '',
     propertyValue: data.propertyValue || 0,
     loanAmount: data.loanAmount || 0,
     existingMortgage: Number(data.existingMortgage) || 0,
@@ -3103,7 +3105,8 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
   // Compute stats
   const totalCount = inScope.length;
   let totalAmount = 0; let totalDays = 0; let daysCount = 0;
-  const byPurpose = {}; const byBank = {};
+  const byPurpose = {}; const byBank = {}; const bySource = {};
+  const SOURCE_LABELS = { advertising: 'פרסום', partnership: 'שת"פ', returning: 'לקוח חוזר', referral: 'הפניה מלקוח בעבר' };
   // Measures client → execution duration (not lead → execution): time starts when the file became
   // a real client, not when the lead first appeared.
   const _clientStart = (c) => {
@@ -3128,6 +3131,9 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
       byBank[bankName].count++;
       byBank[bankName].amount += amt;
     }
+    const srcKey = c.sourceCategory || 'unknown';
+    const srcLabel = SOURCE_LABELS[srcKey] || 'לא צויין';
+    bySource[srcLabel] = (bySource[srcLabel] || 0) + 1;
   });
   const avgDays = daysCount > 0 ? Math.round(totalDays / daysCount) : 0;
   const avgAmount = totalCount > 0 ? Math.round(totalAmount / totalCount) : 0;
@@ -3151,10 +3157,13 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
     .concat(monthNames.map((n, i) => '<option value="' + (i + 1) + '"' + (String(periodFilter.month) === String(i + 1) ? ' selected' : '') + '>' + n + '</option>')).join('');
   const purposeBreakdown = Object.entries(byPurpose).sort((a, b) => b[1] - a[1]);
   const bankBreakdownExec = Object.entries(byBank).sort((a, b) => b[1].amount - a[1].amount);
+  const sourceBreakdown = Object.entries(bySource).sort((a, b) => b[1] - a[1]);
   const purposeTotal = purposeBreakdown.reduce((s, [, n]) => s + n, 0);
   const bankTotalCount = bankBreakdownExec.reduce((s, [, v]) => s + v.count, 0);
+  const sourceTotal = sourceBreakdown.reduce((s, [, n]) => s + n, 0);
   const purposePalette = ['#2563eb','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#64748b'];
   const bankPalette = ['#8b5cf6','#2563eb','#10b981','#f59e0b','#ef4444','#06b6d4','#ec4899','#64748b'];
+  const sourcePalette = ['#2563eb','#f59e0b','#10b981','#ec4899','#94a3b8'];
   return `
     <div class="panel" style="margin-bottom:12px;background:linear-gradient(135deg,#f0fdf4,#eff6ff);border:1px solid #86efac">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
@@ -3230,6 +3239,23 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
             </div>`;
           })()}
         </div>
+      </div>
+      <div style="margin-top:12px;background:white;padding:10px;border-radius:8px;border:1px solid #86efac">
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#166534">📣 פילוח לפי מקור הלקוח</div>
+        ${sourceBreakdown.length === 0 ? '<div style="color:var(--muted);font-size:12px">אין נתונים</div>' : `
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            ${_miniDonut(sourceBreakdown.map(([,c])=>c), sourcePalette, sourceTotal)}
+            <div style="flex:1;min-width:180px">
+              ${sourceBreakdown.map(([name, cnt], i) => {
+                const pct = sourceTotal ? Math.round((cnt/sourceTotal)*100) : 0;
+                const col = sourcePalette[i % sourcePalette.length];
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid #d1fae5;gap:6px">
+                  <span style="display:flex;align-items:center;gap:6px;min-width:0"><span style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0"></span><span style="color:#166534;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span></span>
+                  <span style="display:flex;align-items:center;gap:6px;flex-shrink:0"><span style="color:var(--muted);font-size:11px">${pct}%</span><span style="background:#16a34a;color:#fff;padding:1px 10px;border-radius:999px;font-weight:700;font-size:11px">${cnt}</span></span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`}
       </div>`}
     </div>
   `;
@@ -9464,6 +9490,23 @@ function openNewLeadModal(existingClient) {
       </div>
     </div>
 
+    <div class="form-row">
+      <div class="form-group" style="flex:1">
+        <label>מאיפה הגיע הלקוח</label>
+        <select id="leadSourceCategory" style="width:100%">
+          <option value="">— בחר —</option>
+          <option value="advertising" ${c.sourceCategory==='advertising'?'selected':''}>פרסום</option>
+          <option value="partnership" ${c.sourceCategory==='partnership'?'selected':''}>שת"פ</option>
+          <option value="returning" ${c.sourceCategory==='returning'?'selected':''}>לקוח חוזר</option>
+          <option value="referral" ${c.sourceCategory==='referral'?'selected':''}>הפניה מלקוח בעבר</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>פרטי מקור (מלל חופשי)</label>
+        <input id="leadSourceNotes" placeholder="למשל: הפנה אבי כהן" style="width:100%" value="${escapeAttr(c.sourceNotes || '')}">
+      </div>
+    </div>
+
     <div class="form-group" style="position:relative">
       <label>סוג עסקה</label>
       <button type="button" class="btn secondary" style="width:100%;text-align:right" onclick="toggleLeadPurposeMenu(event)">
@@ -9554,6 +9597,8 @@ function submitNewLead() {
   const emp1 = Array.from(document.querySelectorAll('.leadEmp1:checked')).map(x => x.value);
   const emp2 = Array.from(document.querySelectorAll('.leadEmp2:checked')).map(x => x.value);
   const purposes = Array.from(document.querySelectorAll('.leadPurpose:checked')).map(x => x.value);
+  const sourceCategory = (document.getElementById('leadSourceCategory')?.value || '').trim();
+  const sourceNotes = (document.getElementById('leadSourceNotes')?.value || '').trim();
   const isEdit = !!editingLeadId;
   const notesRaw = isEdit ? '' : ((document.getElementById('leadNotes')?.value) || '').trim();
   if (!phone && !email && !name) { alert('צריך לפחות טלפון, מייל, או שם'); return; }
@@ -9597,6 +9642,8 @@ function submitNewLead() {
     c.employmentType = emp1.join(' + ');
     c.purposes = purposes;
     c.purpose = purposes[0] || '';
+    c.sourceCategory = sourceCategory;
+    c.sourceNotes = sourceNotes;
     // Re-seed docs for this lead based on the new info
     // Remove old auto-seeded borrower + deal + registration doc requirements (keep already-provided/not-required)
     const preserved = (c.requirements || []).filter(r => r.status && r.status !== 'pending');
@@ -9621,6 +9668,8 @@ function submitNewLead() {
     employmentType: emp1.join(' + ')
   });
   client.email = email;
+  client.sourceCategory = sourceCategory;
+  client.sourceNotes = sourceNotes;
   client.leadNotes = [];
   if (notesRaw) {
     const lines = notesRaw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -10113,6 +10162,23 @@ function openNewClientModal(editClient, warningMessage) {
 
     <div class="form-row">
       <div class="form-group">
+        <label>מאיפה הגיע הלקוח</label>
+        <select id="fSourceCategory">
+          <option value="">— בחר —</option>
+          <option value="advertising">פרסום</option>
+          <option value="partnership">שת"פ</option>
+          <option value="returning">לקוח חוזר</option>
+          <option value="referral">הפניה מלקוח בעבר</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>פרטי מקור (מלל חופשי)</label>
+        <input id="fSourceNotes" placeholder="למשל: הפנה אבי כהן / קמפיין פייסבוק דצמבר">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
         <label>בנקאי מטפל</label>
         <select id="fBanker">
           <option value="">— ללא —</option>
@@ -10272,6 +10338,8 @@ function openNewClientModal(editClient, warningMessage) {
     }
     if (document.getElementById('fRegistrationType')) document.getElementById('fRegistrationType').value = c.registrationType || '';
     document.getElementById('fBanker').value = c.bankerId || '';
+    if (document.getElementById('fSourceCategory')) document.getElementById('fSourceCategory').value = c.sourceCategory || '';
+    if (document.getElementById('fSourceNotes')) document.getElementById('fSourceNotes').value = c.sourceNotes || '';
     document.getElementById('fNotes').value = c.notes || '';
     // Guarantors
     if (c.guarantors && c.guarantors.length) {
@@ -12340,6 +12408,8 @@ function submitNewClient() {
     purpose: purpose,
     purposes: purposes,
     bankerId: document.getElementById('fBanker').value,
+    sourceCategory: (document.getElementById('fSourceCategory')?.value || '').trim(),
+    sourceNotes: (document.getElementById('fSourceNotes')?.value || '').trim(),
     propertyValue: propVal,
     appraiserValue: (function(){
       // If main field is in appraiser mode, take the value from there
