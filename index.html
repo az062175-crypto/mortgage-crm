@@ -1655,6 +1655,15 @@ function migrateClient(c) {
       if (t.stage === 'appraisal' && t.title === 'שמאות מוכנה?' && !t.floating) t.floating = true;
     });
   }
+  // Backfill: seed/migrate the mortgage-deed workflow for clients that already passed the seller stage
+  try {
+    const _purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
+    const _needsShtar = c.registrationType === 'tabu-ownership' && _purposes.some(p => ['שיפוצים','הרחבה','כל מטרה','גישור'].includes(p));
+    const _reachedSeller = c.stage === 'seller' || (c.stageHistory || []).some(h => ['seller','signature','execution','archive'].includes(h.stage));
+    if (_needsShtar && _reachedSeller && typeof seedSellerStageTasks === 'function') {
+      seedSellerStageTasks(c);
+    }
+  } catch(e) {}
   // Migration: "נשלח לבחינה" moved from bank stage to approval stage
   if (Array.isArray(c.tasks)) {
     c.tasks.forEach(t => {
