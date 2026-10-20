@@ -5282,33 +5282,53 @@ function setMortgageSignLink(clientId, val) {
   save();
 }
 
+const DEFAULT_SHTAR_EMAIL_TEMPLATE = {
+  subject: 'רישום שטרות בטאבו',
+  body: '{greeting}, {name}\n\n'
+      + 'יש לחתום על שטרות המשכנתא. מצ"ב קישור לחתימה דיגיטלית:\n'
+      + '{link}\n\n'
+      + 'נא להעביר תשלום כדלהלן:\n\n'
+      + 'סך 300 ₪ לעו"ד פרידמן עבור טיפול ברישום -\n'
+      + 'בנק הפועלים - 12\n'
+      + 'סניף 655\n'
+      + 'ח-ן 367480\n'
+      + 'ע"ש עו"ד פרידמן דוד\n\n'
+      + 'נא לשלוח בבקשה אסמכתא לביצוע העברה.\n\n'
+      + 'בנוסף, יש לשלם אגרה בקישור המצורף לרשות לרישום מקרקעין (טאבו) סך 188 + 18 ₪ עבור הרישום.\n'
+      + 'https://ecom.gov.il/counterspa/home/5/1/Mortgage\n'
+      + 'יש לבחור אגרת "רישום/תיקון משכנתה" + "נסח מקוון" ולשלם באשראי כפי ההוראות.\n'
+      + 'לאחמ"כ ללחוץ "הדפסה" על אישור התשלום/אגרה, להוריד ולשלוח אליי.\n\n'
+      + 'תודה'
+};
+function _getShtarTemplate() {
+  const t = (state.settings && state.settings.shtarMishkantaEmailTemplate) || {};
+  return {
+    subject: (t.subject && t.subject.trim()) || DEFAULT_SHTAR_EMAIL_TEMPLATE.subject,
+    body: (typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_SHTAR_EMAIL_TEMPLATE.body
+  };
+}
 function _buildMortgageSignMessage(c) {
   const h = new Date().getHours();
   const greeting = h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : 'ערב טוב';
   const nameOnly = (c.borrowers && c.borrowers[0] && (c.borrowers[0].firstName || c.borrowers[0].name)) || c.name || '';
-  const link = (c.mortgageSignLink || '').trim();
-  return greeting + ', ' + nameOnly + '\n\n'
-    + 'יש לחתום על שטרות המשכנתא. מצ"ב קישור לחתימה דיגיטלית:\n'
-    + (link || '[יש להזין את הקישור במשימה "חתימה דיגיטלית על שטרות משכנתא"]') + '\n\n'
-    + 'נא להעביר תשלום כדלהלן:\n\n'
-    + 'סך 300 ₪ לעו"ד פרידמן עבור טיפול ברישום -\n'
-    + 'בנק הפועלים - 12\n'
-    + 'סניף 655\n'
-    + 'ח-ן 367480\n'
-    + 'ע"ש עו"ד פרידמן דוד\n\n'
-    + 'נא לשלוח בבקשה אסמכתא לביצוע העברה.\n\n'
-    + 'בנוסף, יש לשלם אגרה בקישור המצורף לרשות לרישום מקרקעין (טאבו) סך 188 + 18 ₪ עבור הרישום.\n'
-    + 'https://ecom.gov.il/counterspa/home/5/1/Mortgage\n'
-    + 'יש לבחור אגרת "רישום/תיקון משכנתה" + "נסח מקוון" ולשלם באשראי כפי ההוראות.\n'
-    + 'לאחמ"כ ללחוץ "הדפסה" על אישור התשלום/אגרה, להוריד ולשלוח אליי.\n\n'
-    + 'תודה';
+  const link = (c.mortgageSignLink || '').trim() || '[יש להזין את הקישור במשימה "חתימה דיגיטלית על שטרות משכנתא"]';
+  const tpl = _getShtarTemplate();
+  return tpl.body
+    .replace(/\{greeting\}/g, greeting)
+    .replace(/\{name\}/g, nameOnly)
+    .replace(/\{link\}/g, link);
+}
+function _buildMortgageSignSubject(c) {
+  const tpl = _getShtarTemplate();
+  const nameOnly = (c.borrowers && c.borrowers[0] && (c.borrowers[0].firstName || c.borrowers[0].name)) || c.name || '';
+  return tpl.subject.replace(/\{name\}/g, nameOnly);
 }
 
 function sendMortgageSignMessage(clientId, channel) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
   const msg = _buildMortgageSignMessage(c);
-  const subject = 'רישום שטרות בטאבו';
+  const subject = _buildMortgageSignSubject(c);
   if (channel === 'whatsapp') {
     const phone = (c.phone || '').replace(/\D/g, '').replace(/^0/, '972');
     if (!phone) { alert('אין טלפון ללקוח'); return; }
@@ -16414,6 +16434,44 @@ function saveExecutionSummaryTemplate() {
   alert('✓ נשמר');
 }
 
+function renderShtarEmailTemplateSection() {
+  const tpl = _getShtarTemplate();
+  return `<div class="panel">
+    <h2 class="panel-title">📧 תבנית מייל: "רישום שטרות בטאבו"</h2>
+    <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px 14px;border-radius:8px;font-size:12px;color:#1e3a8a;margin-bottom:14px">
+      💡 תבנית זו נטענת כשלוחצים "📧 שלח משימות ללקוח" בשלב בטחונות מוכר, או "📧 מייל ללקוח" ליד משימת החתימה הדיגיטלית.
+      <br>משתני החלפה זמינים: <code>{greeting}</code> (ברכת זמן), <code>{name}</code> (שם לקוח), <code>{link}</code> (קישור חתימה דיגיטלית)
+    </div>
+    <div class="form-group">
+      <label>נושא</label>
+      <input id="shtarEmailSubj" value="${escapeAttr(tpl.subject)}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px">
+    </div>
+    <div class="form-group">
+      <label>גוף המייל</label>
+      <textarea id="shtarEmailBody" style="width:100%;min-height:380px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px;direction:rtl">${escapeHtml(tpl.body)}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="saveShtarEmailTemplate()" style="background:#22c55e">💾 שמור</button>
+      <button class="btn secondary" onclick="resetShtarEmailTemplate()">↺ שחזר ברירת מחדל</button>
+    </div>
+  </div>`;
+}
+
+function saveShtarEmailTemplate() {
+  const subj = (document.getElementById('shtarEmailSubj').value || '').trim();
+  const body = document.getElementById('shtarEmailBody').value || '';
+  state.settings.shtarMishkantaEmailTemplate = { subject: subj, body: body };
+  save();
+  alert('✓ נשמר');
+}
+
+function resetShtarEmailTemplate() {
+  if (!confirm('לשחזר את תבנית ברירת המחדל?')) return;
+  state.settings.shtarMishkantaEmailTemplate = JSON.parse(JSON.stringify(DEFAULT_SHTAR_EMAIL_TEMPLATE));
+  save();
+  renderActiveSettingsSection();
+}
+
 function renderSignatureTasksSection() {
   const regLabels = { 'tabu-ownership': 'טאבו בעלות', 'tabu-warning': 'טאבו בהערת אזהרה + אישור זכויות', 'minhal': 'מינהל + אישור זכויות' };
   const store = state.settings.signatureTasksByRegAndDeal || {};
@@ -16495,6 +16553,7 @@ function renderSettings() {
     { id: 'sellerTasks', label: '🤝 משימות בטחונות מוכר', icon: '🤝' },
     { id: 'signatureTasks', label: '✍️ משימות חתימות', icon: '✍️' },
     { id: 'executionSummary', label: '📧 תבנית סיכום ללקוח', icon: '📧' },
+    { id: 'shtarEmail', label: '📧 תבנית מייל רישום שטרות', icon: '📧' },
     { id: 'insuranceEmail', label: '🛡 תבנית מייל ביטוח', icon: '🛡' },
     { id: 'sigCoordEmail', label: '✍️ תבנית תיאום חתימות (לבנקאי)', icon: '✍️' },
     { id: 'bankNameMap', label: '🏦 מיפוי שמות בנקים', icon: '🏦' },
@@ -16539,6 +16598,7 @@ function renderSettingsSection(id) {
   if (id === 'bankTasks') return renderBankTasksSection();
   if (id === 'signatureTasks') return renderSignatureTasksSection();
   if (id === 'executionSummary') return renderExecutionSummaryTemplateSection();
+  if (id === 'shtarEmail') return renderShtarEmailTemplateSection();
   if (id === 'insuranceEmail') return renderInsuranceEmailTemplateSection();
   if (id === 'sigCoordEmail') return renderSigCoordEmailTemplateSection();
   if (id === 'bankNameMap') return renderBankNameMapSection();
