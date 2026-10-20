@@ -1567,6 +1567,28 @@ function pushPersonDocs(client, person, suffix, section, opts) {
   if (types.includes('אישור ביטוח לאומי')) {
     client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור ביטוח לאומי' + suffix, status: 'pending' });
   }
+  if (types.includes('חל"ד')) {
+    const birth = person.chladBirthDate ? new Date(person.chladBirthDate) : null;
+    if (birth && !isNaN(birth)) {
+      const nowDate = new Date();
+      const monthsSinceBirth = (nowDate.getFullYear() - birth.getFullYear()) * 12 + (nowDate.getMonth() - birth.getMonth());
+      const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+      if (monthsSinceBirth <= 3) {
+        // Up to 3 months since birth → 3 payslips BEFORE birth + National Insurance maternity approval
+        for (let i = 1; i <= 3; i++) {
+          const d = new Date(birth.getFullYear(), birth.getMonth() - i, 1);
+          const mLabel = monthNames[d.getMonth()] + ' ' + d.getFullYear();
+          client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'תלוש שכר ' + mLabel + ' (לפני לידה)' + suffix, status: 'pending' });
+        }
+        client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור ביטוח לאומי על דמי לידה' + suffix, status: 'pending' });
+      } else {
+        // More than 3 months since birth → employer approval of return to work
+        client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור מעסיק על חזרה לעבודה' + suffix, status: 'pending' });
+      }
+    } else {
+      client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'תאריך לידה (חל"ד) — חסר במערכת' + suffix, status: 'pending' });
+    }
+  }
   if (person.customIncome && person.customIncome.trim()) {
     client.requirements.push({ id: uid(), stage: 'client', section: sec, name: person.customIncome.trim() + suffix, status: 'pending' });
   }
@@ -7885,7 +7907,7 @@ function getMissingClientFieldsSpec(c) {
   specs.push({ path: 'borrowers.0.email', label: 'לווה 1 · מייל', type: 'email' });
   specs.push({ path: 'borrowers.0.dob', label: 'לווה 1 · תאריך לידה', type: 'date' });
   specs.push({ path: 'borrowers.0.idIssueDate', label: 'לווה 1 · תאריך הנפקת ת"ז', type: 'date' });
-  specs.push({ path: 'borrowers.0.employmentType', label: 'לווה 1 · סוג העסקה', type: 'select', options: ['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי'] });
+  specs.push({ path: 'borrowers.0.employmentType', label: 'לווה 1 · סוג העסקה', type: 'select', options: ['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','חל"ד'] });
   if (emp1.includes('שכיר')) {
     specs.push({ path: 'borrowers.0.employers', label: 'לווה 1 · מקום עבודה', type: 'list' });
   }
@@ -7897,7 +7919,7 @@ function getMissingClientFieldsSpec(c) {
     specs.push({ path: 'borrowers.1.email', label: 'לווה 2 · מייל', type: 'email' });
     specs.push({ path: 'borrowers.1.dob', label: 'לווה 2 · תאריך לידה', type: 'date' });
     specs.push({ path: 'borrowers.1.idIssueDate', label: 'לווה 2 · תאריך הנפקת ת"ז', type: 'date' });
-    specs.push({ path: 'borrowers.1.employmentType', label: 'לווה 2 · סוג העסקה', type: 'select', options: ['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי'] });
+    specs.push({ path: 'borrowers.1.employmentType', label: 'לווה 2 · סוג העסקה', type: 'select', options: ['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','חל"ד'] });
     if (emp2.includes('שכיר')) {
       specs.push({ path: 'borrowers.1.employers', label: 'לווה 2 · מקום עבודה', type: 'list' });
     }
@@ -9488,7 +9510,7 @@ function openNewLeadModal(existingClient) {
   const emp1 = Array.isArray(b1.employmentTypes) ? b1.employmentTypes : (b1.employmentType ? [b1.employmentType] : []);
   const emp2 = Array.isArray(b2.employmentTypes) ? b2.employmentTypes : (b2.employmentType ? [b2.employmentType] : []);
   const purposes = Array.isArray(c.purposes) ? c.purposes : (c.purpose ? [c.purpose] : []);
-  const STANDARD_EMP_OPTIONS = ['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי'];
+  const STANDARD_EMP_OPTIONS = ['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','חל"ד'];
   // Per-client custom types = anything on this client's borrowers that isn't standard
   const clientCustom = Array.from(new Set([...(emp1||[]), ...(emp2||[])].filter(v => v && !STANDARD_EMP_OPTIONS.includes(v))));
   const empOptions = STANDARD_EMP_OPTIONS.concat(clientCustom);
@@ -10006,7 +10028,7 @@ function openNewClientModal(editClient, warningMessage) {
             </button>
             <div id="fEmpMenu1" style="display:none;position:absolute;top:100%;inset-inline-start:0;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;margin-top:4px;z-index:10;width:100%">
               <div id="fEmpMenuItems1">
-              ${['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי'].map(opt => '<div style="display:flex;align-items:center;gap:6px"><label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;white-space:nowrap;flex:1" onmouseover="this.style.background=\'#eef2ff\'" onmouseout="this.style.background=\'\'"><input type="checkbox" class="fEmpChk1" value="' + escapeAttr(opt) + '" onchange="updateIncomeLabel(\'1\')" style="width:16px;height:16px;flex-shrink:0;margin:0;accent-color:var(--accent)"><span>' + escapeHtml(opt) + '</span></label></div>').join('')}
+              ${['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','חל"ד'].map(opt => '<div style="display:flex;align-items:center;gap:6px"><label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;white-space:nowrap;flex:1" onmouseover="this.style.background=\'#eef2ff\'" onmouseout="this.style.background=\'\'"><input type="checkbox" class="fEmpChk1" value="' + escapeAttr(opt) + '" onchange="updateIncomeLabel(\'1\')" style="width:16px;height:16px;flex-shrink:0;margin:0;accent-color:var(--accent)"><span>' + escapeHtml(opt) + '</span></label></div>').join('')}
               </div>
               <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;gap:6px">
                 <input type="text" id="fEmpCustom1" placeholder="+ הוסף סוג הכנסה חדש" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomIncomeType('1')}">
@@ -10015,6 +10037,7 @@ function openNewClientModal(editClient, warningMessage) {
             </div>
           </div>
           <input type="hidden" id="fCustIncome1" value="">
+          <input type="hidden" id="fChladBirth1" value="">
           <div id="fEmployersByType1" style="margin-top:8px;margin-bottom:6px;display:none"></div>
           <input type="hidden" id="fEmployers1" value="">
           <input type="hidden" id="fEmployersData1" value="{}">
@@ -10041,7 +10064,7 @@ function openNewClientModal(editClient, warningMessage) {
             </button>
             <div id="fEmpMenu2" style="display:none;position:absolute;top:100%;inset-inline-start:0;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;margin-top:4px;z-index:10;width:100%">
               <div id="fEmpMenuItems2">
-              ${['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','ללא הכנסות'].map(opt => '<div style="display:flex;align-items:center;gap:6px"><label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;white-space:nowrap;flex:1" onmouseover="this.style.background=\'#eef2ff\'" onmouseout="this.style.background=\'\'"><input type="checkbox" class="fEmpChk2" value="' + escapeAttr(opt) + '" onchange="updateIncomeLabel(\'2\')" style="width:16px;height:16px;flex-shrink:0;margin:0;accent-color:var(--accent)"><span>' + escapeHtml(opt) + '</span></label></div>').join('')}
+              ${['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','חל"ד','ללא הכנסות'].map(opt => '<div style="display:flex;align-items:center;gap:6px"><label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;white-space:nowrap;flex:1" onmouseover="this.style.background=\'#eef2ff\'" onmouseout="this.style.background=\'\'"><input type="checkbox" class="fEmpChk2" value="' + escapeAttr(opt) + '" onchange="updateIncomeLabel(\'2\')" style="width:16px;height:16px;flex-shrink:0;margin:0;accent-color:var(--accent)"><span>' + escapeHtml(opt) + '</span></label></div>').join('')}
               </div>
               <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;gap:6px">
                 <input type="text" id="fEmpCustom2" placeholder="+ הוסף סוג הכנסה חדש" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomIncomeType('2')}">
@@ -10050,6 +10073,7 @@ function openNewClientModal(editClient, warningMessage) {
             </div>
           </div>
           <input type="hidden" id="fCustIncome2" value="">
+          <input type="hidden" id="fChladBirth2" value="">
           <div id="fEmployersByType2" style="margin-top:8px;margin-bottom:6px;display:none"></div>
           <input type="hidden" id="fEmployers2" value="">
           <input type="hidden" id="fEmployersData2" value="{}">
@@ -10293,6 +10317,7 @@ function openNewClientModal(editClient, warningMessage) {
     { const _e = document.getElementById('fEmployers1'); if (_e) _e.value = Array.isArray(b1.employers) ? b1.employers.join(', ') : (b1.employers || ''); }
     // Restore per-type employer map so renderEmployersByType keeps the right names in each row
     { const _d = document.getElementById('fEmployersData1'); if (_d) _d.value = JSON.stringify(b1.employersByType || {}); }
+    { const _cb = document.getElementById('fChladBirth1'); if (_cb) _cb.value = b1.chladBirthDate || ''; }
     renderEmployersByType('1');
     { const _g = document.getElementById('fGemachs1'); if (_g) _g.value = Array.isArray(b1.gemachs) ? b1.gemachs.join(', ') : (b1.gemachs || ''); }
     { // Bank accounts — migrate legacy bankAccount → bankAccounts
@@ -10315,6 +10340,7 @@ function openNewClientModal(editClient, warningMessage) {
     { const _i = document.getElementById('fIdIssue2'); if (_i) _i.value = b2.idIssueDate || ''; }
     { const _e = document.getElementById('fEmployers2'); if (_e) _e.value = Array.isArray(b2.employers) ? b2.employers.join(', ') : (b2.employers || ''); }
     { const _d = document.getElementById('fEmployersData2'); if (_d) _d.value = JSON.stringify(b2.employersByType || {}); }
+    { const _cb = document.getElementById('fChladBirth2'); if (_cb) _cb.value = b2.chladBirthDate || ''; }
     renderEmployersByType('2');
     { // Bank accounts for spouse — migrate legacy
       const _d = document.getElementById('fBankAccountsData2');
@@ -11592,7 +11618,7 @@ function addGuarantorRow(data) {
     <div class="form-group">
       <label>סוג הכנסה <span style="color:var(--muted);font-weight:400;font-size:11px">(בחירה מרובה)</span></label>
       <div class="gEmpTypes" data-gid="${gid}" style="display:flex;flex-wrap:wrap;gap:10px;padding:6px 8px;background:#f8fafc;border:1px solid var(--border);border-radius:6px">
-        ${['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','ללא'].map(t => `
+        ${['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','חל"ד','ללא'].map(t => `
           <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer">
             <input type="checkbox" class="gEmpCb" value="${escapeAttr(t)}" style="accent-color:var(--accent)"> ${escapeHtml(t === 'ללא' ? 'ללא הכנסות' : t)}
           </label>
@@ -12052,7 +12078,7 @@ function addCustomLeadEmpType(idx) {
 }
 
 function rebuildLeadEmpMenus() {
-  const STANDARD = ['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי'];
+  const STANDARD = ['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','חל"ד'];
   const custom = Array.isArray(state.settings.customIncomeTypes) ? state.settings.customIncomeTypes : [];
   const all = STANDARD.concat(custom);
   ['1','2'].forEach(idx => {
@@ -12122,6 +12148,7 @@ function _employerFieldLabel(type) {
   if (type === 'אברך') return 'שם ישיבה / כולל';
   if (type === 'אישור רב') return 'שם הרב';
   if (type === 'אישור ביטוח לאומי') return 'סוג הקצבה';
+  if (type === 'חל"ד') return '';
   if (type === 'ללא הכנסות') return '';
   return 'שם / פרט';
 }
@@ -12144,7 +12171,19 @@ function renderEmployersByType(idx, values) {
     const t = inp.dataset.type;
     if (t) prev[t] = (inp.value || '').split(',').map(x => x.trim()).filter(Boolean);
   });
+  // Preserve previously-entered חל"ד birth date
+  const prevChladInput = container.querySelector('.chladBirthInput');
+  const prevChladVal = prevChladInput ? prevChladInput.value : (document.getElementById('fChladBirth' + idx)?.value || '');
   container.innerHTML = values.filter(t => t !== 'ללא הכנסות').map(t => {
+    if (t === 'חל"ד') {
+      return `
+        <div class="form-group" style="margin-bottom:6px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:8px 10px">
+          <label style="font-size:12px;font-weight:700;color:#78350f">👶 תאריך לידה — חל"ד</label>
+          <input type="date" class="chladBirthInput" value="${escapeAttr(prevChladVal)}" oninput="document.getElementById('fChladBirth${idx}').value=this.value" style="width:100%">
+          <div style="font-size:11px;color:#92400e;margin-top:4px">אם עברו עד 3 חודשים מהלידה: 3 תלושי שכר (לפני הלידה) + אישור ביטוח לאומי. מעל 3 חודשים: אישור מעסיק על חזרה לעבודה.</div>
+        </div>
+      `;
+    }
     const lbl = _employerFieldLabel(t);
     if (!lbl) return '';
     const savedArr = Array.isArray(prev[t]) ? prev[t] : [];
@@ -12440,6 +12479,7 @@ function submitNewClient() {
     gemachs: parseList(document.getElementById('fGemachs1')?.value),
     bankAccounts: parseBankAccounts('1'),
     hasGemachs: !!document.getElementById('fHasGemachs1')?.checked,
+    chladBirthDate: (document.getElementById('fChladBirth1')?.value || '').trim(),
     incomeTypes: [],
     customIncome: document.getElementById('fCustIncome1').value.trim()
   }];
@@ -12466,6 +12506,7 @@ function submitNewClient() {
       gemachs: [],
       bankAccounts: parseBankAccounts('2'),
       hasGemachs: false,
+      chladBirthDate: (document.getElementById('fChladBirth2')?.value || '').trim(),
       incomeTypes: [],
       customIncome: document.getElementById('fCustIncome2').value.trim()
     });
