@@ -5048,6 +5048,16 @@ function taskItemHtml(c, t) {
     }
   } else if (t.title === 'כמה אושר שווי ע"פ השמאי' && c.appraiserValue) {
     inlineExtra = `<div style="margin-top:6px;font-size:13px;font-weight:700;color:var(--accent)">💰 שווי השמאי: ${fmtMoney(c.appraiserValue)}</div>`;
+  } else if (t.stage === 'signature' && t.source === 'shtar-mishkanta-seed' && t.title === 'חתימה דיגיטלית על שטרות משכנתא') {
+    const link = c.mortgageSignLink || '';
+    inlineExtra = `<div style="margin-top:8px;padding:8px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px">
+      <label style="display:block;font-size:11px;font-weight:700;color:#78350f;margin-bottom:4px">🔗 קישור לחתימה דיגיטלית (יוטמע בהודעה ללקוח)</label>
+      <input type="text" value="${escapeAttr(link)}" placeholder="הדבק כאן את הקישור..." oninput="setMortgageSignLink('${c.id}', this.value)" style="width:100%;padding:6px 10px;border:1px solid #d97706;border-radius:6px;font-size:13px;direction:ltr;text-align:left">
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn small" style="background:#16a34a;color:#fff" onclick="sendMortgageSignMessage('${c.id}','whatsapp')">💬 WhatsApp ללקוח</button>
+        <button class="btn small" style="background:#f59e0b;color:#fff" onclick="sendMortgageSignMessage('${c.id}','email')">📧 מייל ללקוח</button>
+      </div>
+    </div>`;
   } else if (t.stage === 'signature' && (t.title.indexOf('כתב התחייבות') === 0 || t.title.startsWith('בקשה לקבלת כתב התחייבות'))) {
     // Ask: are there changes in the mandate? If so, show the legal-review action inline (no separate task)
     const changesFlag = !!t.mandateHasChanges;
@@ -5254,6 +5264,56 @@ function taskItemHtml(c, t) {
     <button class="icon-btn" onclick="openTaskReminderDialog('${c.id}','${t.id}')" title="הגדר תזכורת">${hasReminder?'🔔':'🕐'}</button>
     <button class="icon-btn" onclick="deleteTask('${c.id}','${t.id}')">✕</button>
   </li>`;
+}
+
+function setMortgageSignLink(clientId, val) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  c.mortgageSignLink = (val || '').trim();
+  save();
+}
+
+function _buildMortgageSignMessage(c) {
+  const h = new Date().getHours();
+  const greeting = h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : 'ערב טוב';
+  const nameOnly = (c.borrowers && c.borrowers[0] && (c.borrowers[0].firstName || c.borrowers[0].name)) || c.name || '';
+  const link = (c.mortgageSignLink || '').trim();
+  return greeting + ', ' + nameOnly + '\n\n'
+    + 'יש לחתום על שטרות המשכנתא. מצ"ב קישור לחתימה דיגיטלית:\n'
+    + (link || '[יש להזין את הקישור במשימה "חתימה דיגיטלית על שטרות משכנתא"]') + '\n\n'
+    + 'להעביר תשלום כדלהלן:\n\n'
+    + 'סך 300 ₪ לעו"ד פרידמן עבור טיפול ברישום -\n'
+    + 'בנק הפועלים - 12\n'
+    + 'סניף 655\n'
+    + 'ח-ן 367480\n'
+    + 'ע"ש עו"ד פרידמן דוד\n\n'
+    + 'שלח בבקשה אסמכתא לביצוע.\n\n'
+    + 'בנוסף, יש לשלם אגרה בקישור המצורף לרשות לרישום מקרקעין (טאבו) סך 188 + 18 ₪ עבור הרישום.\n'
+    + 'https://ecom.gov.il/counterspa/home/5/1/Mortgage\n'
+    + 'יש לבחור אגרת "רישום/תיקון משכנתה" + "נסח מקוון" ולשלם באשראי כפי ההוראות.\n'
+    + 'לאחמ"כ ללחוץ "הדפסה" על אישור התשלום/אגרה, להוריד ולשלוח אליי.\n\n'
+    + 'תודה';
+}
+
+function sendMortgageSignMessage(clientId, channel) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  const msg = _buildMortgageSignMessage(c);
+  if (channel === 'whatsapp') {
+    const phone = (c.phone || '').replace(/\D/g, '').replace(/^0/, '972');
+    if (!phone) { alert('אין טלפון ללקוח'); return; }
+    window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
+  } else if (channel === 'email') {
+    const to = c.email || '';
+    const subject = 'חתימה על שטרות משכנתא + הוראות תשלום';
+    if (typeof openContactEmailDialog === 'function') {
+      // Prefer the structured dialog if available
+      openContactEmailDialog(c.id, subject, msg);
+    } else {
+      const url = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg);
+      window.open(url, '_blank');
+    }
+  }
 }
 
 function startRenameTask(clientId, taskId) {
@@ -13061,6 +13121,21 @@ function seedSignatureStageTasks(client) {
         client.tasks.push({ id: uid(), stage: 'signature', title, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], source: 'signature-seed-conditional', carryOver: true });
       }
     }
+  }
+  // Mortgage-deed workflow: for tabu-ownership + [שיפוצים/הרחבה/כל מטרה/גישור]
+  // 4 tasks + a client-message compose button on task 1.
+  if (regType === 'tabu-ownership' && purposes.some(p => ['שיפוצים','הרחבה','כל מטרה','גישור'].includes(p))) {
+    const SHTAR_TASKS = [
+      'חתימה דיגיטלית על שטרות משכנתא',
+      'תשלום אגרה לטאבו (188 + 18 ₪)',
+      'תשלום שכ"ט לעו"ד (300 ₪)',
+      'בוצע רישום בטאבו'
+    ];
+    SHTAR_TASKS.forEach(title => {
+      if (!client.tasks.some(t => t.stage === 'signature' && t.title === title)) {
+        client.tasks.push({ id: uid(), stage: 'signature', title, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], source: 'shtar-mishkanta-seed' });
+      }
+    });
   }
 }
 
