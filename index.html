@@ -1520,6 +1520,9 @@ function pushPersonDocs(client, person, suffix, section, opts) {
         if (ba.hasLoans) {
           client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'פירוט הלוואות' + nameSuffix + suffix, status: 'pending' });
         }
+        if (ba.hasMortgage) {
+          client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'דו"ח יתרות משכנתא' + nameSuffix + suffix, status: 'pending' });
+        }
       });
     }
     // Gemach approvals — only if hasGemachs is explicitly true
@@ -10145,7 +10148,11 @@ function openNewClientModal(editClient, warningMessage) {
           <label>🏦 יתרת משכנתא קיימת על הנכס (₪)</label>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:center">
             <input id="fExistingMortgage" type="text" inputmode="numeric" oninput="updateExistingMortgageSummary()" placeholder="סכום השיעבוד הקיים">
-            <input id="fExistingMortgageBank" placeholder="בנק / גורם משעבד">
+            <input id="fExistingMortgageBank" list="fExistingMortgageBankList" placeholder="בנק / גורם משעבד — לחץ לרשימה או הקלד">
+            <datalist id="fExistingMortgageBankList">
+              ${(state.settings.banksList || []).map(b => `<option value="${escapeAttr(b)}">`).join('')}
+              ${(state.settings.accompanimentBanksList || []).filter(b => !(state.settings.banksList||[]).includes(b)).map(b => `<option value="${escapeAttr(b)}">`).join('')}
+            </datalist>
           </div>
         </div>
         <div id="fContractDatesWrap" class="form-group" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 10px">
@@ -15767,6 +15774,7 @@ function openBankAccountsDialog(which) {
   const banksList = (state.settings.banksList || []);
   const isSelected = bank => selected.some(s => s.bank === bank);
   const hasLoansFor = bank => { const s = selected.find(x => x.bank === bank); return s && s.hasLoans; };
+  const hasMortgageFor = bank => { const s = selected.find(x => x.bank === bank); return s && s.hasMortgage; };
   // Remove any existing overlay
   const existing = document.getElementById('bankAcOverlay');
   if (existing) existing.remove();
@@ -15775,16 +15783,17 @@ function openBankAccountsDialog(which) {
   overlay.setAttribute('data-which', which);
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px';
   overlay.innerHTML = `
-    <div style="background:var(--panel);border-radius:12px;padding:24px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+    <div style="background:var(--panel);border-radius:12px;padding:24px;max-width:680px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
       <h2 style="margin:0 0 16px;font-size:20px;font-weight:700">🏦 בנקים לניהול עו"ש</h2>
-      <p style="color:var(--muted);font-size:12px;margin:0 0 10px">בחר את הבנקים בהם מנוהל עו"ש. לכל בנק ניתן לסמן אם יש הלוואות (יופיע "פירוט הלוואות — [שם בנק]").</p>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 10px">בחר את הבנקים בהם מנוהל עו"ש. לכל בנק ניתן לסמן אם יש הלוואות (יופיע "פירוט הלוואות — [שם בנק]") או אם קיימת משכנתא (יתווסף "דו"ח יתרות משכנתא — [שם בנק]").</p>
       <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px">
         <table style="width:100%;font-size:13px">
           <thead>
             <tr style="background:#eef2ff">
               <th style="padding:6px;text-align:right">בנק</th>
-              <th style="padding:6px;text-align:center;width:80px">בחר</th>
-              <th style="padding:6px;text-align:center;width:100px">יש הלוואות</th>
+              <th style="padding:6px;text-align:center;width:70px">בחר</th>
+              <th style="padding:6px;text-align:center;width:90px">יש הלוואות</th>
+              <th style="padding:6px;text-align:center;width:110px">קיימת משכנתא</th>
             </tr>
           </thead>
           <tbody>
@@ -15793,6 +15802,7 @@ function openBankAccountsDialog(which) {
                 <td style="padding:6px 10px">${escapeHtml(b)}</td>
                 <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcSel" data-bank="${escapeAttr(b)}" ${isSelected(b)?'checked':''} style="width:18px;height:18px;accent-color:var(--accent)"></td>
                 <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcLoans" data-bank="${escapeAttr(b)}" ${hasLoansFor(b)?'checked':''} style="width:18px;height:18px;accent-color:var(--warning)"></td>
+                <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcMort" data-bank="${escapeAttr(b)}" ${hasMortgageFor(b)?'checked':''} style="width:18px;height:18px;accent-color:#dc2626"></td>
               </tr>
             `).join('')}
           </tbody>
@@ -15826,7 +15836,8 @@ function saveBankAccountsDialog(which) {
   if (!overlay) return;
   const sel = Array.from(overlay.querySelectorAll('.bkAcSel:checked')).map(x => x.getAttribute('data-bank'));
   const loansSet = new Set(Array.from(overlay.querySelectorAll('.bkAcLoans:checked')).map(x => x.getAttribute('data-bank')));
-  const data = sel.map(b => ({ bank: b, hasLoans: loansSet.has(b) }));
+  const mortSet = new Set(Array.from(overlay.querySelectorAll('.bkAcMort:checked')).map(x => x.getAttribute('data-bank')));
+  const data = sel.map(b => ({ bank: b, hasLoans: loansSet.has(b), hasMortgage: mortSet.has(b) }));
   const dataEl = document.getElementById('fBankAccountsData' + which);
   if (dataEl) { dataEl.value = JSON.stringify(data); updateBankAccountsLabel(which); }
   closeBankAccountsDialog();
@@ -15839,7 +15850,7 @@ function updateBankAccountsLabel(which) {
   const label = document.getElementById('fBankAccountsLabel' + which);
   if (!label) return;
   if (data.length === 0) { label.textContent = '— בחר בנקים —'; return; }
-  label.textContent = data.map(d => d.bank + (d.hasLoans ? ' 💰' : '')).join(' · ');
+  label.textContent = data.map(d => d.bank + (d.hasLoans ? ' 💰' : '') + (d.hasMortgage ? ' 🏠' : '')).join(' · ');
 }
 
 function ensureBanksList() {
