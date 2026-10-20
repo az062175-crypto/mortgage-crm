@@ -15800,8 +15800,8 @@ function openBankAccountsDialog(which) {
               <tr>
                 <td style="padding:6px 10px">${escapeHtml(b)}</td>
                 <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcSel" data-bank="${escapeAttr(b)}" ${isSelected(b)?'checked':''} style="width:18px;height:18px;accent-color:var(--accent)"></td>
-                <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcLoans" data-bank="${escapeAttr(b)}" ${hasLoansFor(b)?'checked':''} style="width:18px;height:18px;accent-color:var(--warning)"></td>
-                <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcMort" data-bank="${escapeAttr(b)}" ${hasMortgageFor(b)?'checked':''} style="width:18px;height:18px;accent-color:#dc2626"></td>
+                <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcLoans" data-bank="${escapeAttr(b)}" ${hasLoansFor(b)?'checked':''} onchange="if(this.checked){const s=document.querySelector('.bkAcSel[data-bank=&quot;'+this.dataset.bank+'&quot;]');if(s)s.checked=true}" style="width:18px;height:18px;accent-color:var(--warning)"></td>
+                <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcMort" data-bank="${escapeAttr(b)}" ${hasMortgageFor(b)?'checked':''} onchange="if(this.checked){const s=document.querySelector('.bkAcSel[data-bank=&quot;'+this.dataset.bank+'&quot;]');if(s)s.checked=true}" style="width:18px;height:18px;accent-color:#dc2626"></td>
               </tr>
             `).join('')}
           </tbody>
@@ -15833,10 +15833,12 @@ function closeBankAccountsDialog() {
 function saveBankAccountsDialog(which) {
   const overlay = document.getElementById('bankAcOverlay');
   if (!overlay) return;
-  const sel = Array.from(overlay.querySelectorAll('.bkAcSel:checked')).map(x => x.getAttribute('data-bank'));
+  const selSet = new Set(Array.from(overlay.querySelectorAll('.bkAcSel:checked')).map(x => x.getAttribute('data-bank')));
   const loansSet = new Set(Array.from(overlay.querySelectorAll('.bkAcLoans:checked')).map(x => x.getAttribute('data-bank')));
   const mortSet = new Set(Array.from(overlay.querySelectorAll('.bkAcMort:checked')).map(x => x.getAttribute('data-bank')));
-  const data = sel.map(b => ({ bank: b, hasLoans: loansSet.has(b), hasMortgage: mortSet.has(b) }));
+  // Include any bank that has ANY flag ticked (fallback — if user ticked only mortgage/loans without "בחר")
+  const allBanks = new Set([...selSet, ...loansSet, ...mortSet]);
+  const data = Array.from(allBanks).map(b => ({ bank: b, hasLoans: loansSet.has(b), hasMortgage: mortSet.has(b) }));
   const dataEl = document.getElementById('fBankAccountsData' + which);
   if (dataEl) { dataEl.value = JSON.stringify(data); updateBankAccountsLabel(which); }
   closeBankAccountsDialog();
