@@ -1576,16 +1576,15 @@ function pushPersonDocs(client, person, suffix, section, opts) {
       const nowDate = new Date();
       const monthsSinceBirth = (nowDate.getFullYear() - birth.getFullYear()) * 12 + (nowDate.getMonth() - birth.getMonth());
       const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
-      if (monthsSinceBirth <= 3) {
-        // Up to 3 months since birth → 3 payslips BEFORE birth + National Insurance maternity approval
-        for (let i = 1; i <= 3; i++) {
-          const d = new Date(birth.getFullYear(), birth.getMonth() - i, 1);
-          const mLabel = monthNames[d.getMonth()] + ' ' + d.getFullYear();
-          client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'תלוש שכר ' + mLabel + ' (לפני לידה)' + suffix, status: 'pending' });
-        }
-        client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור ביטוח לאומי על דמי לידה' + suffix, status: 'pending' });
-      } else {
-        // More than 3 months since birth → employer approval of return to work
+      // Always: 3 payslips BEFORE birth + National Insurance maternity approval
+      for (let i = 1; i <= 3; i++) {
+        const d = new Date(birth.getFullYear(), birth.getMonth() - i, 1);
+        const mLabel = monthNames[d.getMonth()] + ' ' + d.getFullYear();
+        client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'תלוש שכר ' + mLabel + ' (לפני לידה)' + suffix, status: 'pending' });
+      }
+      client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור ביטוח לאומי על דמי לידה' + suffix, status: 'pending' });
+      // Additionally, if more than 3 months since birth → employer approval of return to work
+      if (monthsSinceBirth > 3) {
         client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור מעסיק על חזרה לעבודה' + suffix, status: 'pending' });
       }
     } else {
