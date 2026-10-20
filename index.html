@@ -5313,15 +5313,48 @@ function sendMortgageSignMessage(clientId, channel) {
     const phone = (c.phone || '').replace(/\D/g, '').replace(/^0/, '972');
     if (!phone) { alert('אין טלפון ללקוח'); return; }
     window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
-  } else if (channel === 'email') {
-    const to = c.email || '';
-    if (typeof openContactEmailDialog === 'function') {
-      openContactEmailDialog(c.id, subject, msg);
-    } else {
-      const url = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg);
-      window.open(url, '_blank');
-    }
+    return;
   }
+  // channel === 'email' — simple dialog: client email only, subject + body preloaded.
+  const to = (c.email || '').trim();
+  const safeMsg = escapeHtml(msg);
+  const safeTo = escapeAttr(to);
+  const safeSubj = escapeAttr(subject);
+  showModal(`
+    <h2 class="modal-title">📧 שליחת מייל ללקוח — רישום שטרות בטאבו</h2>
+    <div class="form-group">
+      <label>אל (מייל הלקוח)</label>
+      <input id="shtTo" type="email" value="${safeTo}" placeholder="${c.name ? escapeAttr('אין מייל שמור ל-' + c.name) : 'הכנס מייל'}" style="width:100%">
+    </div>
+    <div class="form-group">
+      <label>נושא</label>
+      <input id="shtSubj" value="${safeSubj}" style="width:100%">
+    </div>
+    <div class="form-group">
+      <label>גוף המייל</label>
+      <textarea id="shtBody" style="width:100%;min-height:280px;font-family:inherit;direction:rtl">${safeMsg}</textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="_sendShtarEmail('gmail')">📧 פתח ב-Gmail</button>
+      <button class="btn secondary" onclick="_sendShtarEmail('mailto')">📨 פתח בלקוח ברירת מחדל</button>
+      <button class="btn secondary" onclick="closeModal()">סגור</button>
+    </div>
+  `);
+}
+
+function _sendShtarEmail(mode) {
+  const to = (document.getElementById('shtTo')?.value || '').trim();
+  const subj = (document.getElementById('shtSubj')?.value || '').trim();
+  const body = (document.getElementById('shtBody')?.value || '');
+  if (!to) { alert('חסר כתובת מייל'); return; }
+  let url;
+  if (mode === 'gmail') {
+    url = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
+  } else {
+    url = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
+  }
+  window.open(url, '_blank');
+  closeModal();
 }
 
 function startRenameTask(clientId, taskId) {
