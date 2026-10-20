@@ -10107,7 +10107,7 @@ function openNewClientModal(editClient, warningMessage) {
         <div id="borrower1Wrap">
           <div style="font-weight:600;font-size:12px;color:var(--muted);margin-bottom:6px" id="b1Title">פרטי לווה</div>
           <div class="form-row">
-            <div class="form-group" style="flex:1"><label>שם משפחה *</label><input id="fFamily1" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fFirst1').focus()}"></div>
+            <div class="form-group" style="flex:1"><label>שם משפחה *</label><input id="fFamily1" oninput="_mirrorFamilyNameToSpouse(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fFirst1').focus()}"></div>
             <div class="form-group" style="flex:1"><label>שם פרטי *</label><input id="fFirst1" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fMarital').focus()}"></div>
           </div>
           <input type="hidden" id="fName1">
@@ -10143,7 +10143,7 @@ function openNewClientModal(editClient, warningMessage) {
         <div id="borrower2Wrap" style="display:none">
           <div style="font-weight:600;font-size:12px;color:var(--muted);margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)">פרטי בת/בן הזוג</div>
           <div class="form-row">
-            <div class="form-group" style="flex:1"><label>שם משפחה</label><input id="fFamily2" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fFirst2').focus()}"></div>
+            <div class="form-group" style="flex:1"><label>שם משפחה</label><input id="fFamily2" oninput="this.dataset.manual='1'" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fFirst2').focus()}"></div>
             <div class="form-group" style="flex:1"><label>שם פרטי</label><input id="fFirst2" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fId2').focus()}"></div>
           </div>
           <input type="hidden" id="fName2">
@@ -10478,7 +10478,7 @@ function openNewClientModal(editClient, warningMessage) {
     document.getElementById('fPhone').value = c.phone || '';
     { const _e = document.getElementById('fEmail'); if (_e) _e.value = c.email || ''; }
     document.getElementById('fName2').value = b2.name || '';
-    { const parts2 = _splitHebrewName(b2); const _fam = document.getElementById('fFamily2'); const _fir = document.getElementById('fFirst2'); if (_fam) _fam.value = parts2.family; if (_fir) _fir.value = parts2.first; }
+    { const parts2 = _splitHebrewName(b2); const _fam = document.getElementById('fFamily2'); const _fir = document.getElementById('fFirst2'); if (_fam) { _fam.value = parts2.family; if (parts2.family) _fam.dataset.manual = '1'; } if (_fir) _fir.value = parts2.first; }
     document.getElementById('fId2').value = b2.idNumber || '';
     { const _p = document.getElementById('fPhone2'); if (_p) _p.value = b2.phone || ''; }
     { const _e = document.getElementById('fEmail2'); if (_e) _e.value = b2.email || ''; }
@@ -10660,6 +10660,15 @@ function openNewClientModal(editClient, warningMessage) {
     onMaritalChange(); // apply default "married" state — show second borrower
     showCreationReminders();
   }
+}
+
+// Auto-fill the spouse's family name from the husband's — only if the user hasn't typed a different
+// value there manually. Keeping the field fully editable (user can override at any time).
+function _mirrorFamilyNameToSpouse(val) {
+  const spouseEl = document.getElementById('fFamily2');
+  if (!spouseEl) return;
+  if (spouseEl.dataset.manual === '1' && spouseEl.value) return;
+  spouseEl.value = val || '';
 }
 
 function onMaritalChange() {
