@@ -13209,12 +13209,12 @@ function seedSellerStageTasks(client) {
     'חתימה דיגיטלית על שטרות משכנתא',
     'תשלום אגרה לטאבו (188 + 18 ₪)',
     'תשלום שכ"ט לעו"ד (300 ₪)',
-    'בוצע רישום בטאבו'
+    'שודר לטאבו?'
   ];
   client.tasks.forEach(t => {
-    if (t.source === 'shtar-mishkanta-seed' && t.stage === 'signature' && SHTAR_TITLES.includes(t.title)) {
-      t.stage = 'seller';
-    }
+    if (t.source === 'shtar-mishkanta-seed' && t.stage === 'signature') t.stage = 'seller';
+    // Rename old "בוצע רישום בטאבו" → "שודר לטאבו?"
+    if (t.source === 'shtar-mishkanta-seed' && t.title === 'בוצע רישום בטאבו') t.title = 'שודר לטאבו?';
   });
   if (client.registrationType === 'tabu-ownership' && purposes.some(p => ['שיפוצים','הרחבה','כל מטרה','גישור'].includes(p))) {
     SHTAR_TITLES.forEach(title => {
