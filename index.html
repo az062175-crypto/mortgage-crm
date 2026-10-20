@@ -1515,8 +1515,12 @@ function pushPersonDocs(client, person, suffix, section, opts) {
       banks.forEach(ba => {
         const bn = (ba.bank || '').trim();
         const nameSuffix = bn ? ' — ' + bn : '';
-        client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'דפי בנק 4 חודשים' + nameSuffix + suffix, status: 'pending' });
-        client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור בעלות' + nameSuffix + suffix, status: 'pending' });
+        // hasAccount: new field. Legacy entries without this field default to true (back-compat).
+        const hasAccount = ba.hasAccount === undefined ? true : !!ba.hasAccount;
+        if (hasAccount) {
+          client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'דפי בנק 4 חודשים' + nameSuffix + suffix, status: 'pending' });
+          client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור בעלות' + nameSuffix + suffix, status: 'pending' });
+        }
         if (ba.hasLoans) {
           client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'פירוט הלוואות' + nameSuffix + suffix, status: 'pending' });
         }
@@ -15771,7 +15775,8 @@ function openBankAccountsDialog(which) {
   let selected = [];
   try { selected = JSON.parse(raw); } catch(e) {}
   const banksList = (state.settings.banksList || []);
-  const isSelected = bank => selected.some(s => s.bank === bank);
+  // "בחר" column represents hasAccount. Legacy entries (no hasAccount field) → treat as true for back-compat.
+  const isSelected = bank => selected.some(s => s.bank === bank && (s.hasAccount === undefined ? true : s.hasAccount));
   const hasLoansFor = bank => { const s = selected.find(x => x.bank === bank); return s && s.hasLoans; };
   const hasMortgageFor = bank => { const s = selected.find(x => x.bank === bank); return s && s.hasMortgage; };
   // Remove any existing overlay
@@ -15800,8 +15805,8 @@ function openBankAccountsDialog(which) {
               <tr>
                 <td style="padding:6px 10px">${escapeHtml(b)}</td>
                 <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcSel" data-bank="${escapeAttr(b)}" ${isSelected(b)?'checked':''} style="width:18px;height:18px;accent-color:var(--accent)"></td>
-                <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcLoans" data-bank="${escapeAttr(b)}" ${hasLoansFor(b)?'checked':''} onchange="if(this.checked){const s=document.querySelector('.bkAcSel[data-bank=&quot;'+this.dataset.bank+'&quot;]');if(s)s.checked=true}" style="width:18px;height:18px;accent-color:var(--warning)"></td>
-                <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcMort" data-bank="${escapeAttr(b)}" ${hasMortgageFor(b)?'checked':''} onchange="if(this.checked){const s=document.querySelector('.bkAcSel[data-bank=&quot;'+this.dataset.bank+'&quot;]');if(s)s.checked=true}" style="width:18px;height:18px;accent-color:#dc2626"></td>
+                <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcLoans" data-bank="${escapeAttr(b)}" ${hasLoansFor(b)?'checked':''} style="width:18px;height:18px;accent-color:var(--warning)"></td>
+                <td style="padding:6px;text-align:center"><input type="checkbox" class="bkAcMort" data-bank="${escapeAttr(b)}" ${hasMortgageFor(b)?'checked':''} style="width:18px;height:18px;accent-color:#dc2626"></td>
               </tr>
             `).join('')}
           </tbody>
@@ -15836,9 +15841,9 @@ function saveBankAccountsDialog(which) {
   const selSet = new Set(Array.from(overlay.querySelectorAll('.bkAcSel:checked')).map(x => x.getAttribute('data-bank')));
   const loansSet = new Set(Array.from(overlay.querySelectorAll('.bkAcLoans:checked')).map(x => x.getAttribute('data-bank')));
   const mortSet = new Set(Array.from(overlay.querySelectorAll('.bkAcMort:checked')).map(x => x.getAttribute('data-bank')));
-  // Include any bank that has ANY flag ticked (fallback — if user ticked only mortgage/loans without "בחר")
+  // Include any bank with ANY flag; hasAccount reflects the "בחר" column specifically
   const allBanks = new Set([...selSet, ...loansSet, ...mortSet]);
-  const data = Array.from(allBanks).map(b => ({ bank: b, hasLoans: loansSet.has(b), hasMortgage: mortSet.has(b) }));
+  const data = Array.from(allBanks).map(b => ({ bank: b, hasAccount: selSet.has(b), hasLoans: loansSet.has(b), hasMortgage: mortSet.has(b) }));
   const dataEl = document.getElementById('fBankAccountsData' + which);
   if (dataEl) { dataEl.value = JSON.stringify(data); updateBankAccountsLabel(which); }
   closeBankAccountsDialog();
