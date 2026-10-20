@@ -4438,7 +4438,7 @@ function renderClientDetail() {
               <button class="btn small" onclick="openStageMissingEmail('${c.id}')" title="שלח ללקוח רשימת חוסרים בשלב הנוכחי" style="background:#8b5cf6">📧 שלח חוסרים ללקוח</button>
               ${c.stage === 'bank' ? `<button class="btn small" onclick="openBankCollateralEmail('${c.id}')" title="שלח מייל לבנקאי לבקשת בטחונות" style="background:#16a34a">📧 שלח בקשת בטחונות לבנקאי</button>
                 <button class="btn secondary small" onclick="refreshBankTasks('${c.id}')" title="ייצר מחדש משימות לפי סוג עסקה + רישום נכס">🔄 רענן משימות</button>` : ''}
-              ${c.stage === 'seller' ? `<button class="btn small" onclick="openSellerCollateralEmail('${c.id}')" title="שלח מייל למוכר / עו״ד לחתימת מסמכים" style="background:#f97316">📧 שלח מייל למוכר / עו״ד</button>
+              ${c.stage === 'seller' ? `<button class="btn small" onclick="sendMortgageSignMessage('${c.id}','email')" title="שלח ללקוח מייל: קישור לחתימה דיגיטלית + הוראות תשלום" style="background:#f97316">📧 שלח משימות ללקוח</button>
                 <button class="btn secondary small" onclick="refreshSellerTasks('${c.id}')" title="ייצר מחדש משימות בטחונות מוכר לפי סוג עסקה">🔄 רענן משימות</button>` : ''}
             </div>
           </div>
@@ -5290,13 +5290,13 @@ function _buildMortgageSignMessage(c) {
   return greeting + ', ' + nameOnly + '\n\n'
     + 'יש לחתום על שטרות המשכנתא. מצ"ב קישור לחתימה דיגיטלית:\n'
     + (link || '[יש להזין את הקישור במשימה "חתימה דיגיטלית על שטרות משכנתא"]') + '\n\n'
-    + 'להעביר תשלום כדלהלן:\n\n'
+    + 'נא להעביר תשלום כדלהלן:\n\n'
     + 'סך 300 ₪ לעו"ד פרידמן עבור טיפול ברישום -\n'
     + 'בנק הפועלים - 12\n'
     + 'סניף 655\n'
     + 'ח-ן 367480\n'
     + 'ע"ש עו"ד פרידמן דוד\n\n'
-    + 'שלח בבקשה אסמכתא לביצוע.\n\n'
+    + 'נא לשלוח בבקשה אסמכתא לביצוע העברה.\n\n'
     + 'בנוסף, יש לשלם אגרה בקישור המצורף לרשות לרישום מקרקעין (טאבו) סך 188 + 18 ₪ עבור הרישום.\n'
     + 'https://ecom.gov.il/counterspa/home/5/1/Mortgage\n'
     + 'יש לבחור אגרת "רישום/תיקון משכנתה" + "נסח מקוון" ולשלם באשראי כפי ההוראות.\n'
@@ -5308,15 +5308,14 @@ function sendMortgageSignMessage(clientId, channel) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
   const msg = _buildMortgageSignMessage(c);
+  const subject = 'רישום שטרות בטאבו';
   if (channel === 'whatsapp') {
     const phone = (c.phone || '').replace(/\D/g, '').replace(/^0/, '972');
     if (!phone) { alert('אין טלפון ללקוח'); return; }
     window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
   } else if (channel === 'email') {
     const to = c.email || '';
-    const subject = 'חתימה על שטרות משכנתא + הוראות תשלום';
     if (typeof openContactEmailDialog === 'function') {
-      // Prefer the structured dialog if available
       openContactEmailDialog(c.id, subject, msg);
     } else {
       const url = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg);
