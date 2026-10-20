@@ -5048,7 +5048,7 @@ function taskItemHtml(c, t) {
     }
   } else if (t.title === 'כמה אושר שווי ע"פ השמאי' && c.appraiserValue) {
     inlineExtra = `<div style="margin-top:6px;font-size:13px;font-weight:700;color:var(--accent)">💰 שווי השמאי: ${fmtMoney(c.appraiserValue)}</div>`;
-  } else if (t.stage === 'signature' && t.source === 'shtar-mishkanta-seed' && t.title === 'חתימה דיגיטלית על שטרות משכנתא') {
+  } else if (t.source === 'shtar-mishkanta-seed' && t.title === 'חתימה דיגיטלית על שטרות משכנתא') {
     const link = c.mortgageSignLink || '';
     inlineExtra = `<div style="margin-top:8px;padding:8px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px">
       <label style="display:block;font-size:11px;font-weight:700;color:#78350f;margin-bottom:4px">🔗 קישור לחתימה דיגיטלית (יוטמע בהודעה ללקוח)</label>
@@ -13122,21 +13122,6 @@ function seedSignatureStageTasks(client) {
       }
     }
   }
-  // Mortgage-deed workflow: for tabu-ownership + [שיפוצים/הרחבה/כל מטרה/גישור]
-  // 4 tasks + a client-message compose button on task 1.
-  if (regType === 'tabu-ownership' && purposes.some(p => ['שיפוצים','הרחבה','כל מטרה','גישור'].includes(p))) {
-    const SHTAR_TASKS = [
-      'חתימה דיגיטלית על שטרות משכנתא',
-      'תשלום אגרה לטאבו (188 + 18 ₪)',
-      'תשלום שכ"ט לעו"ד (300 ₪)',
-      'בוצע רישום בטאבו'
-    ];
-    SHTAR_TASKS.forEach(title => {
-      if (!client.tasks.some(t => t.stage === 'signature' && t.title === title)) {
-        client.tasks.push({ id: uid(), stage: 'signature', title, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], source: 'shtar-mishkanta-seed' });
-      }
-    });
-  }
 }
 
 // Seller collateral stage tasks — only for יד שנייה / יד ראשונה / מחיר למשתכן
@@ -13207,6 +13192,27 @@ function seedSellerStageTasks(client) {
         client.tasks.push({ id: uid(), stage: 'seller', title, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], source: 'seller-seed-conditional' });
       }
     }
+  }
+  // Mortgage-deed workflow: tabu-ownership + [שיפוצים/הרחבה/כל מטרה/גישור]
+  // 4 tasks; task 1 holds a signature link + "send to client" buttons.
+  // Migrate any older entries saved under 'signature' stage → move to 'seller'.
+  const SHTAR_TITLES = [
+    'חתימה דיגיטלית על שטרות משכנתא',
+    'תשלום אגרה לטאבו (188 + 18 ₪)',
+    'תשלום שכ"ט לעו"ד (300 ₪)',
+    'בוצע רישום בטאבו'
+  ];
+  client.tasks.forEach(t => {
+    if (t.source === 'shtar-mishkanta-seed' && t.stage === 'signature' && SHTAR_TITLES.includes(t.title)) {
+      t.stage = 'seller';
+    }
+  });
+  if (client.registrationType === 'tabu-ownership' && purposes.some(p => ['שיפוצים','הרחבה','כל מטרה','גישור'].includes(p))) {
+    SHTAR_TITLES.forEach(title => {
+      if (!client.tasks.some(t => t.stage === 'seller' && t.title === title)) {
+        client.tasks.push({ id: uid(), stage: 'seller', title, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], source: 'shtar-mishkanta-seed' });
+      }
+    });
   }
 }
 
