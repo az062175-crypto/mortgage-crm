@@ -1038,7 +1038,30 @@ function updateFileStatus(text, isError) {
   }
 }
 
+// Last-saved snapshot of each client (JSON, without _updatedAt) — used to detect which
+// clients actually changed between save() calls so we can bump their _updatedAt stamp.
+let _clientSaveSnapshot = {};
+function _touchChangedClients() {
+  if (!Array.isArray(state.clients)) return;
+  const nowStr = new Date().toISOString();
+  const newSnap = {};
+  state.clients.forEach(c => {
+    if (!c || !c.id) return;
+    // Compare without the _updatedAt field itself
+    const copy = Object.assign({}, c); delete copy._updatedAt;
+    let serial;
+    try { serial = JSON.stringify(copy); } catch(e) { serial = ''; }
+    const prev = _clientSaveSnapshot[c.id];
+    if (prev === undefined || prev !== serial) {
+      c._updatedAt = nowStr;
+    }
+    newSnap[c.id] = serial;
+  });
+  _clientSaveSnapshot = newSnap;
+}
+
 function save() {
+  _touchChangedClients();
   const data = JSON.stringify(state);
   try { localStorage.setItem(STORAGE_KEY, data); } catch (e) {}
   try { window.name = STORAGE_KEY + '::' + data; } catch (e) {}
@@ -18227,9 +18250,52 @@ setInterval(function(){
   if(SB.mode==='on' && SB.token) sbPullState();
 }, 30000);
 
+// Merge remote state into local state — NEVER full-replace, so each device's recent changes
+// (that haven't yet pushed) aren't lost by a pull. Clients unite by id with newer _updatedAt
+// winning; trash unites by id; settings take remote (last-write-wins is fine for single-user).
+function _mergeRemoteIntoLocal(remote) {
+  if (!remote || typeof remote !== 'object') return;
+  // CLIENTS — union by id, pick newer by _updatedAt (falls back to leadAt or 0)
+  const localClients = Array.isArray(state.clients) ? state.clients : [];
+  const remoteClients = Array.isArray(remote.clients) ? remote.clients : [];
+  const localTrashIds = new Set((Array.isArray(state.trash) ? state.trash : []).map(c => c && c.id).filter(Boolean));
+  const remoteTrashIds = new Set((Array.isArray(remote.trash) ? remote.trash : []).map(c => c && c.id).filter(Boolean));
+  // Union of all deletion markers from both sides — deletions always propagate
+  const anyTrashIds = new Set([...localTrashIds, ...remoteTrashIds]);
+  const byId = {};
+  const _ts = c => new Date((c && (c._updatedAt || c.leadAt)) || 0).getTime();
+  localClients.forEach(c => { if (c && c.id && !anyTrashIds.has(c.id)) byId[c.id] = c; });
+  remoteClients.forEach(rc => {
+    if (!rc || !rc.id || anyTrashIds.has(rc.id)) return;
+    const existing = byId[rc.id];
+    if (!existing || _ts(rc) > _ts(existing)) byId[rc.id] = rc;
+  });
+  const mergedClients = Object.values(byId);
+  // TRASH — union by id
+  const trashSeen = new Set();
+  const mergedTrash = [];
+  [...(Array.isArray(state.trash) ? state.trash : []), ...(Array.isArray(remote.trash) ? remote.trash : [])].forEach(t => {
+    if (!t || !t.id || trashSeen.has(t.id)) return;
+    trashSeen.add(t.id);
+    mergedTrash.push(t);
+  });
+  // SETTINGS — take remote verbatim (preserves most recent config)
+  const mergedSettings = (remote.settings && typeof remote.settings === 'object')
+    ? remote.settings
+    : (state.settings || JSON.parse(JSON.stringify(DEFAULT_DATA.settings)));
+  // Build the new state object — carry over any loose fields from remote too
+  const newState = Object.assign({}, remote, {
+    clients: mergedClients,
+    trash: mergedTrash,
+    settings: mergedSettings
+  });
+  state = newState;
+}
+
 function sbApplyRemoteState(obj){
   if(!obj||typeof obj!=='object')return;
-  state=obj;
+  // Smart merge instead of full replace — keeps local changes that haven't yet pushed
+  _mergeRemoteIntoLocal(obj);
   if(!state.settings)state.settings=JSON.parse(JSON.stringify(DEFAULT_DATA.settings));
   if(!Array.isArray(state.clients))state.clients=[];
   if(!Array.isArray(state.settings.bankers))state.settings.bankers=[];
