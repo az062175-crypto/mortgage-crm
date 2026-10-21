@@ -13850,19 +13850,36 @@ function openStageMissingEmail(clientId, allStages) {
   const stageLabel = allStages ? 'כל הפתוחים' : ((stageInfo(stage) || {}).label || stage);
   const pendingTasks = (c.tasks || []).filter(t => (allStages || t.stage === stage) && (t.status || 'active') !== 'done');
   const pendingReqs = (c.requirements || []).filter(r => (allStages || r.stage === stage) && r.status === 'pending');
-  if (pendingTasks.length === 0 && pendingReqs.length === 0) {
+  // Virtual pending items — "missing-info" prompts that aren't real tasks but should still appear
+  // in the list of things to ask the client about. Right now: tenant mobile when the property is
+  // rented and no tenant phone has been entered.
+  const virtualItems = [];
+  const _tenant = (c.dealDetails && c.dealDetails.tenant) || {};
+  const _tenantPhone = (_tenant.phone || '').trim();
+  const _tenantName = (_tenant.name || '').trim();
+  if (c.isRented && !_tenantPhone) {
+    virtualItems.push({ id: 'tenant-phone', label: 'נייד של השוכרים' + (_tenantName ? ' (' + _tenantName + ')' : '') });
+  }
+  if (pendingTasks.length === 0 && pendingReqs.length === 0 && virtualItems.length === 0) {
     alert(allStages ? 'אין פריטים פתוחים בתיק — הכל טופל.' : ('אין פריטים חסרים בשלב "' + stageLabel + '" — כל המשימות והמסמכים טופלו.'));
     return;
   }
   const rowsHtml = [];
-  if (pendingTasks.length) {
-    rowsHtml.push('<div style="font-weight:700;color:#1e40af;font-size:13px;margin:10px 0 6px;border-bottom:1px solid #dbeafe;padding-bottom:4px">📋 משימות פתוחות (' + pendingTasks.length + ')</div>');
+  if (pendingTasks.length || virtualItems.length) {
+    rowsHtml.push('<div style="font-weight:700;color:#1e40af;font-size:13px;margin:10px 0 6px;border-bottom:1px solid #dbeafe;padding-bottom:4px">📋 משימות פתוחות (' + (pendingTasks.length + virtualItems.length) + ')</div>');
     pendingTasks.forEach((t, i) => {
       const cleanTitle = _cleanItemTitle(t.title);
       const sub = t.subTopic ? ' · ' + escapeHtml(_cleanItemTitle(t.subTopic)) : '';
       rowsHtml.push(`<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;cursor:pointer">
         <input type="checkbox" class="stageMissItem" data-kind="task" data-id="${escapeAttr(t.id)}" data-label="${escapeAttr(cleanTitle + (t.subTopic ? ' · ' + _cleanItemTitle(t.subTopic) : ''))}" checked style="width:16px;height:16px;accent-color:var(--accent)">
         <span style="flex:1;font-size:13px">${escapeHtml(cleanTitle)}${sub}</span>
+      </label>`);
+    });
+    // Virtual items — pre-checked, highlighted differently so the user sees they're "missing data" prompts
+    virtualItems.forEach(v => {
+      rowsHtml.push(`<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;margin-bottom:4px;cursor:pointer">
+        <input type="checkbox" class="stageMissItem" data-kind="virtual" data-id="${escapeAttr(v.id)}" data-label="${escapeAttr(v.label)}" checked style="width:16px;height:16px;accent-color:var(--accent)">
+        <span style="flex:1;font-size:13px">${escapeHtml(v.label)} <span style="font-size:10px;color:#4338ca">(פרט חסר)</span></span>
       </label>`);
     });
   }
