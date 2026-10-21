@@ -18380,6 +18380,37 @@ setInterval(function(){
   if(SB.mode==='on' && SB.token) sbPullState();
 }, 30000);
 
+// Deep merge two versions of the same client — scalars from the newer, arrays unioned by id
+// so no history is lost when both devices made changes. Prevents commLog / tasks / approvals /
+// stageHistory from being overwritten when one device's _updatedAt beats the other's.
+const _CLIENT_UNION_ARRAYS = ['tasks','requirements','approvals','commLog','stageHistory','leadNotes','obligations'];
+function _mergeTwoClientVersions(a, b) {
+  if (!a) return b; if (!b) return a;
+  const _ts = c => new Date((c && (c._updatedAt || c.leadAt)) || 0).getTime();
+  const newer = _ts(a) >= _ts(b) ? a : b;
+  const older = newer === a ? b : a;
+  const merged = Object.assign({}, newer);
+  _CLIENT_UNION_ARRAYS.forEach(k => {
+    const na = Array.isArray(newer[k]) ? newer[k] : [];
+    const oa = Array.isArray(older[k]) ? older[k] : [];
+    if (na.length === 0 && oa.length === 0) return;
+    const seen = new Set();
+    const out = [];
+    [...na, ...oa].forEach(it => {
+      if (!it) return;
+      let key;
+      if (it.id) key = 'id:' + it.id;
+      else if (it.at) key = 'at:' + it.at + '::' + (it.kind || it.type || it.title || '');
+      else { try { key = 'j:' + JSON.stringify(it); } catch(e) { return; } }
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(it);
+    });
+    merged[k] = out;
+  });
+  return merged;
+}
+
 // Build a merged state: start from remote, then layer in any LOCAL clients/trash that are
 // either (a) missing in remote, or (b) have a newer _updatedAt than the remote copy.
 // Falls back silently to the raw remote on any error so sync never breaks the UI.
@@ -18397,7 +18428,8 @@ function _buildMergedStateFromRemote(remote) {
     const allTrashIds = new Set();
     localTrash.forEach(t => { if (t && t.id) allTrashIds.add(t.id); });
     remoteTrash.forEach(t => { if (t && t.id) allTrashIds.add(t.id); });
-    // Build map of clients by id, remote first, then local wins only when newer or missing
+    // Build map of clients by id — same-id clients get deep-merged so no history (emails, tasks,
+    // approvals, stage history, etc.) is dropped from either side.
     const map = {};
     remoteClients.forEach(rc => { if (rc && rc.id && !allTrashIds.has(rc.id)) map[rc.id] = rc; });
     localClients.forEach(lc => {
@@ -18405,7 +18437,7 @@ function _buildMergedStateFromRemote(remote) {
       if (allTrashIds.has(lc.id)) return;
       const existing = map[lc.id];
       if (!existing) { map[lc.id] = lc; return; }
-      if (_ts(lc) > _ts(existing)) map[lc.id] = lc;
+      map[lc.id] = _mergeTwoClientVersions(lc, existing);
     });
     merged.clients = Object.values(map);
     // Trash — union by id
