@@ -1823,12 +1823,18 @@ function ltvDenom(c) {
   return appraiser;
 }
 
+// Sum of financing already on the deal that the regulator counts beyond the new loan request:
+// existing mortgage on the property + contractor loan (for יד ראשונה deals when toggled on).
+function _preExistingBurden(c) {
+  const existing = Number(c.existingMortgage) || 0;
+  const contractor = (c.hasContractorLoan ? (Number(c.contractorLoan) || 0) : 0);
+  return existing + contractor;
+}
+
 function financingPct(c) {
   const denom = ltvDenom(c);
   const l = Number(c.loanAmount) || 0;
-  // Combined: existing mortgage + new request — for LTV regulation
-  const existing = Number(c.existingMortgage) || 0;
-  const total = l + existing;
+  const total = l + _preExistingBurden(c);
   if (denom <= 0) return null;
   return Math.round((total / denom) * 1000) / 10;
 }
@@ -1838,15 +1844,18 @@ function financingPctBreakdown(c) {
   const denom = ltvDenom(c);
   if (denom <= 0) return null;
   const existing = Number(c.existingMortgage) || 0;
+  const contractor = (c.hasContractorLoan ? (Number(c.contractorLoan) || 0) : 0);
   const newLoan = Number(c.loanAmount) || 0;
   const r = n => Math.round(n * 1000) / 10;
   return {
     denom,
     existing,
+    contractor,
     newLoan,
     existingPct: r(existing / denom),
+    contractorPct: r(contractor / denom),
     newPct: r(newLoan / denom),
-    totalPct: r((existing + newLoan) / denom)
+    totalPct: r((existing + contractor + newLoan) / denom)
   };
 }
 
@@ -10327,6 +10336,17 @@ function openNewClientModal(editClient, warningMessage) {
             <div><label style="font-size:11px;color:#166534">תאריך תשלום</label><input id="fContractPaymentDate" type="date" style="width:100%;border:1px solid #86efac"></div>
           </div>
         </div>
+        <div id="fContractorLoanToggleWrap" class="form-group" style="display:none;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px 10px">
+          <label style="display:flex;align-items:center;gap:8px;color:#9a3412;font-weight:700;cursor:pointer">
+            <input type="checkbox" id="fHasContractorLoan" onchange="_toggleContractorLoan()" style="width:16px;height:16px;accent-color:#f97316">
+            🏗️ קיימת הלוואת קבלן
+          </label>
+          <div id="fContractorLoanWrap" style="display:none;margin-top:8px">
+            <label style="font-size:11px;color:#9a3412">סכום הלוואת הקבלן (₪)</label>
+            <input id="fContractorLoan" type="text" inputmode="numeric" oninput="onMoneyInput(this);updateFinPct()" placeholder="סכום ההלוואה מהקבלן" style="width:100%;border:1px solid #fdba74">
+            <div style="font-size:11px;color:#9a3412;margin-top:4px">הסכום ייכלל בחישוב אחוז המימון יחד עם ההלוואה המבוקשת.</div>
+          </div>
+        </div>
         <div id="fApprovedAmtRow" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px">
           <span style="color:#166534">💰 סכום שאושר:</span> <strong id="fApprovedAmtVal">—</strong>
         </div>
@@ -10585,6 +10605,12 @@ function openNewClientModal(editClient, warningMessage) {
     // Existing mortgage (for שיפוצים / כל מטרה / הרחבה / בניה עצמי)
     const _inpEM = document.getElementById('fExistingMortgage');
     if (_inpEM) _inpEM.value = c.existingMortgage ? Number(c.existingMortgage).toLocaleString('he-IL') : '';
+    // Contractor loan (יד ראשונה)
+    const _hasCL = document.getElementById('fHasContractorLoan');
+    const _clInp = document.getElementById('fContractorLoan');
+    if (_hasCL) _hasCL.checked = !!c.hasContractorLoan;
+    if (_clInp && c.contractorLoan) _clInp.value = Number(c.contractorLoan).toLocaleString('he-IL');
+    if (typeof _toggleContractorLoan === 'function') _toggleContractorLoan();
     const _inpEMB = document.getElementById('fExistingMortgageBank');
     if (_inpEMB) _inpEMB.value = c.existingMortgageBank || '';
     if (typeof updateExistingMortgageSummary === 'function') updateExistingMortgageSummary();
@@ -10803,6 +10829,11 @@ function updatePurposeLabel() {
   const cdWrap = document.getElementById('fContractDatesWrap');
   if (cdWrap) {
     cdWrap.style.display = vals.some(v => CONTRACT_PRICE_PURPOSES.has(v)) ? '' : 'none';
+  }
+  // Contractor loan toggle — only for יד ראשונה (first-hand) deals
+  const clWrap = document.getElementById('fContractorLoanToggleWrap');
+  if (clWrap) {
+    clWrap.style.display = vals.includes('יד ראשונה') ? '' : 'none';
   }
   // Show project details for יד ראשונה / מחיר למשתכן
   const projWrap = document.getElementById('fProjectDetailsWrap');
@@ -12494,11 +12525,16 @@ function updateFinPct() {
   const { denom, label, isMachir, contract } = _formDenomForLtv();
   const l = parseFormattedNum(document.getElementById('fLoanAmt').value);
   const existing = parseFormattedNum((document.getElementById('fExistingMortgage')||{}).value || '');
-  const total = l + existing;
+  // Contractor loan — only when the toggle is checked (otherwise ignore any value in the field)
+  const contractorCb = document.getElementById('fHasContractorLoan');
+  const contractorAmt = (contractorCb && contractorCb.checked)
+    ? parseFormattedNum((document.getElementById('fContractorLoan')||{}).value || '')
+    : 0;
+  const burden = existing + contractorAmt; // non-requested financing already on the deal
+  const total = l + burden;
   const disp = document.getElementById('finPctDisplay');
   const _pctEl = document.getElementById('fLoanPct');
   // The "אחוז" field next to loan amount always reflects the COMBINED LTV
-  // (existing mortgage + new loan) since that is what regulator and downstream logic care about
   if (_pctEl && document.activeElement !== _pctEl) {
     if (denom > 0 && total > 0) _pctEl.value = Math.round((total / denom) * 1000) / 10;
     else _pctEl.value = '';
@@ -12506,16 +12542,19 @@ function updateFinPct() {
   if (denom <= 0) { disp.innerHTML = 'אחוז מימון: —'; disp.style.background = '#f8fafc'; disp.style.color = 'var(--muted)'; return; }
   const pctNew = Math.round((l / denom) * 1000) / 10;
   const pctExisting = existing > 0 ? Math.round((existing / denom) * 1000) / 10 : 0;
+  const pctContractor = contractorAmt > 0 ? Math.round((contractorAmt / denom) * 1000) / 10 : 0;
   const pctTotal = Math.round((total / denom) * 1000) / 10;
-  const displayPct = existing > 0 ? pctTotal : pctNew;
+  const anyBurden = burden > 0;
+  const displayPct = anyBurden ? pctTotal : pctNew;
   const color = displayPct <= 60 ? '#16a34a' : displayPct <= 75 ? '#f59e0b' : '#dc2626';
   let extra = '';
-  if (existing > 0) {
-    extra += `<div style="font-size:12px;margin-top:4px;color:#78350f;background:#fef3c7;padding:6px 8px;border-radius:6px;line-height:1.6">
-      <div>• אחוז מימון קיים: <strong>${pctExisting}%</strong> (${fmtMoney(existing)})</div>
-      <div>• אחוז מימון חדש: <strong>${pctNew}%</strong> (${fmtMoney(l)})</div>
-      <div>• סה"כ מצטבר: <strong style="color:${color}">${pctTotal}%</strong> (${fmtMoney(total)} מתוך ${fmtMoney(denom)})</div>
-    </div>`;
+  if (anyBurden) {
+    extra += `<div style="font-size:12px;margin-top:4px;color:#78350f;background:#fef3c7;padding:6px 8px;border-radius:6px;line-height:1.6">`;
+    if (existing > 0) extra += `<div>• משכנתא קיימת: <strong>${pctExisting}%</strong> (${fmtMoney(existing)})</div>`;
+    if (contractorAmt > 0) extra += `<div>• הלוואת קבלן: <strong>${pctContractor}%</strong> (${fmtMoney(contractorAmt)})</div>`;
+    extra += `<div>• הלוואה חדשה מבוקשת: <strong>${pctNew}%</strong> (${fmtMoney(l)})</div>`;
+    extra += `<div>• סה"כ מצטבר: <strong style="color:${color}">${pctTotal}%</strong> (${fmtMoney(total)} מתוך ${fmtMoney(denom)})</div>`;
+    extra += `</div>`;
   }
   if (isMachir && contract > 0) {
     const equityLeft = contract - l;
@@ -12529,7 +12568,7 @@ function updateFinPct() {
     const aptLabel = APARTMENT_LABEL[aptType];
     if (displayPct > limit) {
       const maxTotal = Math.floor((denom * limit / 100) / 1000) * 1000;
-      const maxNewLoan = Math.max(0, maxTotal - existing);
+      const maxNewLoan = Math.max(0, maxTotal - burden);
       const diff = l - maxNewLoan;
       extra += `<div style="margin-top:6px;padding:10px 12px;background:#fee2e2;border:2px solid #dc2626;border-radius:8px;font-size:12px;color:#7f1d1d;line-height:1.6">
         <div style="font-weight:800;font-size:13px;margin-bottom:4px">⚠️ חריגה מהרגולציה — ${aptLabel} (מגבלה: ${limit}%)</div>
@@ -12541,10 +12580,22 @@ function updateFinPct() {
       </div>`;
     }
   }
-  const label2 = existing > 0 ? label + ' · כולל משכנתא קיימת' : label;
-  disp.innerHTML = `אחוז מימון (לפי ${label2}): <strong style="font-size:18px;color:${color}">${displayPct}%</strong> <span style="color:var(--muted);font-size:12px">(${fmtMoney(existing > 0 ? total : l)} מתוך ${fmtMoney(denom)})</span>${extra}`;
+  const burdenLabels = [];
+  if (existing > 0) burdenLabels.push('משכנתא קיימת');
+  if (contractorAmt > 0) burdenLabels.push('הלוואת קבלן');
+  const label2 = burdenLabels.length ? (label + ' · כולל ' + burdenLabels.join(' + ')) : label;
+  disp.innerHTML = `אחוז מימון (לפי ${label2}): <strong style="font-size:18px;color:${color}">${displayPct}%</strong> <span style="color:var(--muted);font-size:12px">(${fmtMoney(anyBurden ? total : l)} מתוך ${fmtMoney(denom)})</span>${extra}`;
   disp.style.background = color + '15';
   disp.style.color = 'var(--text)';
+}
+
+// Called when "קיימת הלוואת קבלן" checkbox toggles — shows/hides amount field + recalculates LTV
+function _toggleContractorLoan() {
+  const cb = document.getElementById('fHasContractorLoan');
+  const wrap = document.getElementById('fContractorLoanWrap');
+  if (!cb || !wrap) return;
+  wrap.style.display = cb.checked ? '' : 'none';
+  if (typeof updateFinPct === 'function') updateFinPct();
 }
 
 // Called from the existing-mortgage panel — reformats amount & refreshes the finPct display.
@@ -12727,6 +12778,9 @@ function submitNewClient() {
     loanAmount: loanAmt,
     existingMortgage: parseFormattedNum((document.getElementById('fExistingMortgage')||{}).value || '') || 0,
     existingMortgageBank: ((document.getElementById('fExistingMortgageBank')||{}).value || '').trim(),
+    hasContractorLoan: !!(document.getElementById('fHasContractorLoan') && document.getElementById('fHasContractorLoan').checked),
+    contractorLoan: (document.getElementById('fHasContractorLoan') && document.getElementById('fHasContractorLoan').checked)
+      ? (parseFormattedNum((document.getElementById('fContractorLoan')||{}).value || '') || 0) : 0,
     isRented: document.getElementById('fIsRented').checked,
     hasBankAccompaniment: !!(document.getElementById('fBankAccomp') && document.getElementById('fBankAccomp').checked),
     bankAccompanimentBanks: Array.from(document.querySelectorAll('.fBankAccompChk:checked')).map(cb => cb.value),
