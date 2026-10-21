@@ -2465,6 +2465,10 @@ function restoreFromTrash(clientId) {
   const c = state.trash.find(x => x.id === clientId);
   if (!c) return;
   delete c._deletedAt;
+  // Mark the restoration so cross-device sync knows this id was deliberately brought back —
+  // if a remote device still has it in trash, the merge compares timestamps and lets the newer
+  // _restoredAt override the stale _deletedAt instead of re-trashing the client.
+  c._restoredAt = new Date().toISOString();
   state.trash = state.trash.filter(x => x.id !== clientId);
   state.clients.push(c);
   saveNow();
@@ -18237,65 +18241,15 @@ async function sbMergeFromServer(){
     var r = await sbFetchState();
     if (!r || !r.state) return;
     var remote = r.state;
-    var localIds = new Set((state.clients||[]).map(function(c){return c.id}));
-    // Build a set of ids that we deleted locally — don't re-add them from the server!
-    var trashedIds = new Set((state.trash||[]).map(function(c){return c.id}));
-    var merged = 0;
-    (remote.clients||[]).forEach(function(rc){
-      if (trashedIds.has(rc.id)) {
-        // We deleted this client locally. Skip — don't resurrect it.
-        return;
-      }
-      if (!localIds.has(rc.id)) {
-        // Server has a client we don't (and we didn't delete it) — merge it in
-        state.clients.push(rc);
-        merged++;
-      } else {
-        // Both have this client — pick whichever was edited last
-        var lc = state.clients.find(function(x){return x.id===rc.id});
-        var lLast = new Date(lc._updatedAt || lc.leadAt || 0).getTime();
-        var rLast = new Date(rc._updatedAt || rc.leadAt || 0).getTime();
-        if (rLast > lLast) {
-          var idx = state.clients.indexOf(lc);
-          state.clients[idx] = rc;
-          merged++;
-        }
-      }
-    });
-    // Also merge the remote trash — but dedupe (same id = same deletion)
-    if (Array.isArray(remote.trash) && remote.trash.length) {
-      var localTrashIds = new Set((state.trash||[]).map(function(c){return c.id}));
-      remote.trash.forEach(function(rc){
-        if (!localTrashIds.has(rc.id)) {
-          state.trash = state.trash || [];
-          state.trash.push(rc);
-          localTrashIds.add(rc.id);
-        }
-      });
+    // Reuse the restore-aware merge logic from pull — gives us a fully consistent state object.
+    var merged = _buildMergedStateFromRemote(remote);
+    if (merged && typeof merged === 'object') {
+      // Only overwrite the parts we deliberately merge; leave settings untouched so the push still
+      // carries whatever local settings edits were made.
+      if (Array.isArray(merged.clients)) state.clients = merged.clients;
+      if (Array.isArray(merged.trash))   state.trash   = merged.trash;
     }
-    // Dedupe local trash by id (removes any legacy duplicates)
-    if (Array.isArray(state.trash)) {
-      var seen = new Set();
-      state.trash = state.trash.filter(function(c){
-        if (seen.has(c.id)) return false;
-        seen.add(c.id);
-        return true;
-      });
-    }
-    // CLEANUP: if a client appears in both clients[] and trash[], remove from clients[]
-    // (trash is the authoritative "deleted" marker)
-    if (Array.isArray(state.trash) && state.trash.length && Array.isArray(state.clients)) {
-      var trashSet = new Set(state.trash.map(function(c){return c.id}));
-      var before = state.clients.length;
-      state.clients = state.clients.filter(function(c){ return !trashSet.has(c.id); });
-      if (state.clients.length < before) {
-        console.log('[sync] cleaned ' + (before - state.clients.length) + ' resurrected clients');
-      }
-    }
-    if (merged > 0) {
-      console.log('[sync] merged ' + merged + ' clients from server before push');
-    }
-  } catch(e){ console.warn('[sync] merge-from-server failed:', e.message); }
+  } catch(e){ console.warn('[sync] merge-from-server failed:', e && e.message); }
 }
 async function sbPushState(){
   SB.pending=false;
@@ -18426,35 +18380,55 @@ function _buildMergedStateFromRemote(remote) {
   try {
     if (!remote || typeof remote !== 'object') return remote;
     const _ts = c => new Date((c && (c._updatedAt || c.leadAt)) || 0).getTime();
+    const _tsRestore = c => new Date((c && c._restoredAt) || 0).getTime();
+    const _tsDelete = c => new Date((c && c._deletedAt) || 0).getTime();
     // Base = remote, we'll overlay clients/trash
     const merged = Object.assign({}, remote);
     const localClients = Array.isArray(state && state.clients) ? state.clients : [];
     const remoteClients = Array.isArray(remote.clients) ? remote.clients : [];
     const localTrash = Array.isArray(state && state.trash) ? state.trash : [];
     const remoteTrash = Array.isArray(remote.trash) ? remote.trash : [];
-    // All trashed ids from both sides — never resurrect a deleted client
-    const allTrashIds = new Set();
-    localTrash.forEach(t => { if (t && t.id) allTrashIds.add(t.id); });
-    remoteTrash.forEach(t => { if (t && t.id) allTrashIds.add(t.id); });
+    // Find the newest restore time per id across both alive copies — if newer than the delete time
+    // of the trash entry, the restoration wins and the client stays alive on both devices.
+    const latestRestoreAtById = {};
+    [...localClients, ...remoteClients].forEach(c => {
+      if (!c || !c.id) return;
+      const r = _tsRestore(c);
+      if (r > (latestRestoreAtById[c.id] || 0)) latestRestoreAtById[c.id] = r;
+    });
+    // Determine which trashed ids are effectively still trashed (not restored since being deleted).
+    // Also keep the "winning" trash entry (freshest _deletedAt) so re-trashing wins over an older restore.
+    const trashWinningById = {};
+    [...remoteTrash, ...localTrash].forEach(t => {
+      if (!t || !t.id) return;
+      const dt = _tsDelete(t);
+      const curr = trashWinningById[t.id];
+      if (!curr || dt > _tsDelete(curr)) trashWinningById[t.id] = t;
+    });
+    const effectivelyTrashedIds = new Set();
+    Object.keys(trashWinningById).forEach(id => {
+      const t = trashWinningById[id];
+      const rst = latestRestoreAtById[id] || 0;
+      if (rst <= _tsDelete(t)) effectivelyTrashedIds.add(id);
+    });
     // Build map of clients by id — same-id clients get deep-merged so no history (emails, tasks,
     // approvals, stage history, etc.) is dropped from either side.
     const map = {};
-    remoteClients.forEach(rc => { if (rc && rc.id && !allTrashIds.has(rc.id)) map[rc.id] = rc; });
+    remoteClients.forEach(rc => { if (rc && rc.id && !effectivelyTrashedIds.has(rc.id)) map[rc.id] = rc; });
     localClients.forEach(lc => {
       if (!lc || !lc.id) return;
-      if (allTrashIds.has(lc.id)) return;
+      if (effectivelyTrashedIds.has(lc.id)) return;
       const existing = map[lc.id];
       if (!existing) { map[lc.id] = lc; return; }
       map[lc.id] = _mergeTwoClientVersions(lc, existing);
     });
     merged.clients = Object.values(map);
-    // Trash — union by id
-    const trashSeen = new Set();
+    // Trash — only include effectively trashed ids (restorations purge them)
     merged.trash = [];
-    [...remoteTrash, ...localTrash].forEach(t => {
-      if (!t || !t.id || trashSeen.has(t.id)) return;
-      trashSeen.add(t.id);
-      merged.trash.push(t);
+    const trashSeen = new Set();
+    effectivelyTrashedIds.forEach(id => {
+      const t = trashWinningById[id];
+      if (t && !trashSeen.has(id)) { trashSeen.add(id); merged.trash.push(t); }
     });
     return merged;
   } catch (e) {
