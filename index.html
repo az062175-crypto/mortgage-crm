@@ -12635,29 +12635,42 @@ function _formExistingMortgageBreakdown() {
   };
 }
 
+// Pre-existing financing already on the deal (not the new loan request). Used by both the
+// pct→amount and amount→pct conversions in the form so the "אחוז" field always matches the
+// true combined LTV, and the "סכום" is calculated after netting the burden.
+function _formBurden() {
+  const existing = parseFormattedNum((document.getElementById('fExistingMortgage')||{}).value || '') || 0;
+  const clCb = document.getElementById('fHasContractorLoan');
+  const contractor = (clCb && clCb.checked)
+    ? (parseFormattedNum((document.getElementById('fContractorLoan')||{}).value || '') || 0)
+    : 0;
+  return existing + contractor;
+}
+
 function onLoanAmtInput() {
   const amtEl = document.getElementById('fLoanAmt');
   onMoneyInput(amtEl);
   const { denom } = _formDenomForLtv();
   const l = parseFormattedNum(amtEl.value);
-  const existing = parseFormattedNum((document.getElementById('fExistingMortgage')||{}).value || '');
+  const burden = _formBurden();
   const pctEl = document.getElementById('fLoanPct');
   if (pctEl) {
-    if (denom > 0 && (l + existing) > 0) pctEl.value = Math.round(((l + existing) / denom) * 1000) / 10;
+    if (denom > 0 && (l + burden) > 0) pctEl.value = Math.round(((l + burden) / denom) * 1000) / 10;
     else pctEl.value = '';
   }
   updateFinPct();
 }
 
 function onLoanPctInput() {
-  // The pct field is the COMBINED LTV (existing + new). Derive new loan = (pct * denom / 100) - existing
+  // The pct field is the COMBINED LTV. Derive new loan = (pct * denom / 100) - burden
+  // where burden = existing mortgage + contractor loan (when active).
   const { denom } = _formDenomForLtv();
   const pct = Number(document.getElementById('fLoanPct').value) || 0;
-  const existing = parseFormattedNum((document.getElementById('fExistingMortgage')||{}).value || '');
+  const burden = _formBurden();
   const amtEl = document.getElementById('fLoanAmt');
   if (denom > 0 && pct > 0 && amtEl) {
     const total = Math.round(denom * pct / 100);
-    const newLoan = Math.max(0, total - existing);
+    const newLoan = Math.max(0, total - burden);
     amtEl.value = newLoan.toLocaleString('he-IL') + ' ₪';
   }
   updateFinPct();
