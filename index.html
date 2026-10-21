@@ -1591,14 +1591,43 @@ function pushPersonDocs(client, person, suffix, section, opts) {
     client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'שומת מס לשנת ' + (currYear-1) + suffix, status: 'pending' });
     client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור רו"ח לשנת ' + currYear + suffix, status: 'pending' });
   }
+  // Helper — pull the specific names the user entered for a given income type.
+  // Prefers person.employersByType[type]; falls back to parsing the flat person.employers field.
+  const _namesForType = (type) => {
+    const byType = person.employersByType && typeof person.employersByType === 'object'
+      ? person.employersByType[type] : null;
+    if (Array.isArray(byType) && byType.length) return byType.map(x => (x || '').trim()).filter(Boolean);
+    return [];
+  };
   if (types.includes('אברך')) {
-    client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור כולל (ימים, שעות, סך מלגה)' + suffix, status: 'pending' });
+    const kollels = _namesForType('אברך');
+    if (kollels.length) {
+      kollels.forEach(name => {
+        client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור כולל — ' + name + ' (ימים, שעות, סך מלגה)' + suffix, status: 'pending' });
+      });
+    } else {
+      client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור כולל (ימים, שעות, סך מלגה)' + suffix, status: 'pending' });
+    }
   }
   if (types.includes('אישור רב')) {
-    client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור רב חתום בפני דיין (שם + סך הכנסה)' + suffix, status: 'pending' });
+    const rabbis = _namesForType('אישור רב');
+    if (rabbis.length) {
+      rabbis.forEach(name => {
+        client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור רב ' + name + ' חתום בפני דיין (שם + סך הכנסה)' + suffix, status: 'pending' });
+      });
+    } else {
+      client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור רב חתום בפני דיין (שם + סך הכנסה)' + suffix, status: 'pending' });
+    }
   }
   if (types.includes('אישור ביטוח לאומי')) {
-    client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור ביטוח לאומי' + suffix, status: 'pending' });
+    const bltypes = _namesForType('אישור ביטוח לאומי');
+    if (bltypes.length) {
+      bltypes.forEach(name => {
+        client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור ביטוח לאומי — ' + name + suffix, status: 'pending' });
+      });
+    } else {
+      client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור ביטוח לאומי' + suffix, status: 'pending' });
+    }
   }
   if (types.includes('חל"ד')) {
     const birth = person.chladBirthDate ? new Date(person.chladBirthDate) : null;
