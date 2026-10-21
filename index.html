@@ -12568,9 +12568,12 @@ function updateFinPct() {
   const { denom, label, isMachir, contract } = _formDenomForLtv();
   const l = parseFormattedNum(document.getElementById('fLoanAmt').value);
   const existing = parseFormattedNum((document.getElementById('fExistingMortgage')||{}).value || '');
-  // Contractor loan — only when the toggle is checked (otherwise ignore any value in the field)
+  // Contractor loan — only when the whole panel is VISIBLE (deal is יד ראשונה) AND toggle is checked.
+  // If the user removed יד ראשונה the panel is hidden and the stored amount must be ignored.
+  const contractorToggleWrap = document.getElementById('fContractorLoanToggleWrap');
+  const contractorWrapVisible = contractorToggleWrap && contractorToggleWrap.style.display !== 'none';
   const contractorCb = document.getElementById('fHasContractorLoan');
-  const contractorAmt = (contractorCb && contractorCb.checked)
+  const contractorAmt = (contractorWrapVisible && contractorCb && contractorCb.checked)
     ? parseFormattedNum((document.getElementById('fContractorLoan')||{}).value || '')
     : 0;
   const burden = existing + contractorAmt; // non-requested financing already on the deal
@@ -12681,10 +12684,13 @@ function _formExistingMortgageBreakdown() {
 // Pre-existing financing already on the deal (not the new loan request). Used by both the
 // pct→amount and amount→pct conversions in the form so the "אחוז" field always matches the
 // true combined LTV, and the "סכום" is calculated after netting the burden.
+// Contractor loan only counts when the panel is visible (deal is still יד ראשונה).
 function _formBurden() {
   const existing = parseFormattedNum((document.getElementById('fExistingMortgage')||{}).value || '') || 0;
+  const toggleWrap = document.getElementById('fContractorLoanToggleWrap');
+  const clVisible = toggleWrap && toggleWrap.style.display !== 'none';
   const clCb = document.getElementById('fHasContractorLoan');
-  const contractor = (clCb && clCb.checked)
+  const contractor = (clVisible && clCb && clCb.checked)
     ? (parseFormattedNum((document.getElementById('fContractorLoan')||{}).value || '') || 0)
     : 0;
   return existing + contractor;
@@ -12834,8 +12840,10 @@ function submitNewClient() {
     loanAmount: loanAmt,
     existingMortgage: parseFormattedNum((document.getElementById('fExistingMortgage')||{}).value || '') || 0,
     existingMortgageBank: ((document.getElementById('fExistingMortgageBank')||{}).value || '').trim(),
-    hasContractorLoan: !!(document.getElementById('fHasContractorLoan') && document.getElementById('fHasContractorLoan').checked),
-    contractorLoan: (document.getElementById('fHasContractorLoan') && document.getElementById('fHasContractorLoan').checked)
+    // Contractor loan — only persisted when deal is יד ראשונה AND toggle is checked.
+    // If the user changed the deal type away from יד ראשונה, zero it out so stale values don't leak into LTV.
+    hasContractorLoan: (purposes.includes('יד ראשונה') && !!(document.getElementById('fHasContractorLoan') && document.getElementById('fHasContractorLoan').checked)),
+    contractorLoan: (purposes.includes('יד ראשונה') && document.getElementById('fHasContractorLoan') && document.getElementById('fHasContractorLoan').checked)
       ? (parseFormattedNum((document.getElementById('fContractorLoan')||{}).value || '') || 0) : 0,
     isRented: document.getElementById('fIsRented').checked,
     hasBankAccompaniment: !!(document.getElementById('fBankAccomp') && document.getElementById('fBankAccomp').checked),
