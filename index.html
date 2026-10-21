@@ -5282,15 +5282,15 @@ function taskItemHtml(c, t) {
     const executed = Number(t.executedAmount) || 0;
     const expected = Number(t.expectedAmount) || 0;
     const diff = expected - executed;
-    inlineExtra = `<div style="margin-top:8px;padding:8px 10px;background:#fef3c7;border:1px solid #fbbf24;border-radius:8px">
+    inlineExtra = `<div style="margin-top:8px;padding:10px 12px;background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;width:100%;box-sizing:border-box">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <label style="font-size:11px;color:#78350f;font-weight:700">💰 סכום שבוצע:</label>
         <input type="text" inputmode="numeric" value="${executed ? Number(executed).toLocaleString('he-IL') + ' ₪' : ''}" placeholder="${expected ? Number(expected).toLocaleString('he-IL') + ' ₪' : '100,000 ₪'}" oninput="onMoneyInput(this)" onchange="setExecutedAmount('${c.id}','${t.id}', parseFormattedNum(this.value))" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" style="padding:4px 8px;border:1px solid #fbbf24;border-radius:6px;font-size:13px;width:150px;font-family:monospace">
         <span style="font-size:11px;color:var(--muted)">מתוך אישור: <strong>${fmtMoney(expected)}</strong></span>
       </div>
-      <div style="margin-top:6px">
-        <label style="font-size:11px;color:#78350f;font-weight:700;display:block;margin-bottom:2px">📝 הערות (חופשי):</label>
-        <textarea onchange="setExecutionNotes('${c.id}','${t.id}',this.value)" placeholder="לדוגמא: הועבר בהעברה בנקאית לחשבון המוכר / חלק הועבר, יתרה תועבר בשבוע הבא / ..." style="width:100%;min-height:60px;padding:6px 8px;border:1px solid #fbbf24;border-radius:6px;font-size:12px;font-family:inherit;resize:vertical">${escapeHtml(t.executionNotes||'')}</textarea>
+      <div style="margin-top:6px;display:flex;align-items:center;gap:6px">
+        <label style="font-size:11px;color:#78350f;font-weight:700;white-space:nowrap">📝 הערות:</label>
+        <input type="text" onchange="setExecutionNotes('${c.id}','${t.id}',this.value)" value="${escapeAttr(t.executionNotes||'')}" placeholder="לדוגמא: הועבר בהעברה בנקאית / חלק הועבר, יתרה בשבוע הבא" style="flex:1;padding:4px 8px;border:1px solid #fbbf24;border-radius:6px;font-size:12px;font-family:inherit">
       </div>
       ${executed > 0 && diff > 0 ? `<div style="margin-top:6px;padding:6px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;font-size:12px;color:#991b1b">⚠️ יתרה לביצוע: <strong>${fmtMoney(diff)}</strong> — נוצרה משימה חדשה "בוצע סך..." לשלב זה</div>` : ''}
       ${executed > 0 && diff <= 0 ? `<div style="margin-top:6px;font-size:12px;color:#16a34a;font-weight:700">✓ בוצע במלואו</div>` : ''}
