@@ -1624,6 +1624,14 @@ function pushPersonDocs(client, person, suffix, section, opts) {
   if (person.customIncome && person.customIncome.trim()) {
     client.requirements.push({ id: uid(), stage: 'client', section: sec, name: person.customIncome.trim() + suffix, status: 'pending' });
   }
+  // Any custom income type (added via "+ הוסף סוג הכנסה חדש") that isn't one of the built-in types
+  // above — add a generic requirement so the user doesn't forget to collect proof of this income.
+  const KNOWN_INCOME_TYPES = new Set(['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','חל"ד','ללא הכנסות','ללא']);
+  (types || []).forEach(t => {
+    const name = (t || '').trim();
+    if (!name || KNOWN_INCOME_TYPES.has(name)) return;
+    client.requirements.push({ id: uid(), stage: 'client', section: sec, name: 'אישור הכנסה — ' + name + suffix, status: 'pending' });
+  });
 }
 
 function seedDocumentRequirements(client) {
