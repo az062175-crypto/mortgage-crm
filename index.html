@@ -8117,8 +8117,9 @@ function getMissingClientFieldsSpec(c) {
   // Borrower 1
   specs.push({ path: 'borrowers.0.name', label: 'לווה 1 · שם מלא', type: 'text' });
   specs.push({ path: 'borrowers.0.idNumber', label: 'לווה 1 · ת"ז', type: 'text' });
-  specs.push({ path: 'borrowers.0.phone', label: 'לווה 1 · נייד', type: 'tel' });
-  specs.push({ path: 'borrowers.0.email', label: 'לווה 1 · מייל', type: 'email' });
+  // Fallback paths — the top-level c.phone/c.email count as "filled" for the primary borrower too
+  specs.push({ path: 'borrowers.0.phone', fallbackPath: 'phone', label: 'לווה 1 · נייד', type: 'tel' });
+  specs.push({ path: 'borrowers.0.email', fallbackPath: 'email', label: 'לווה 1 · מייל', type: 'email' });
   specs.push({ path: 'borrowers.0.dob', label: 'לווה 1 · תאריך לידה', type: 'date' });
   specs.push({ path: 'borrowers.0.idIssueDate', label: 'לווה 1 · תאריך הנפקת ת"ז', type: 'date' });
   specs.push({ path: 'borrowers.0.employmentType', label: 'לווה 1 · סוג העסקה', type: 'select', options: ['שכיר','עצמאי','אברך','אישור רב','אישור ביטוח לאומי','חל"ד'] });
@@ -8174,7 +8175,12 @@ function _isFieldEmpty(v, type) {
 
 function getMissingClientFields(c) {
   const spec = getMissingClientFieldsSpec(c);
-  return spec.filter(f => _isFieldEmpty(_getPath(c, f.path), f.type));
+  return spec.filter(f => {
+    if (!_isFieldEmpty(_getPath(c, f.path), f.type)) return false;
+    // If a fallback path is defined and that one has a value — treat the field as present too
+    if (f.fallbackPath && !_isFieldEmpty(_getPath(c, f.fallbackPath), f.type)) return false;
+    return true;
+  });
 }
 
 function openMissingFieldsPopup(clientId) {
