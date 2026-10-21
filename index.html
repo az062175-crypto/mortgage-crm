@@ -6130,6 +6130,24 @@ function setExecutedAmount(clientId, taskId, val) {
   const allExec = (c.tasks || []).filter(x => x.stage === 'execution' && x.hasAmount).reduce((sum, x) => sum + (Number(x.executedAmount) || 0), 0);
   c.executedAmount = allExec;
 
+  // Safety net — as long as the TOTAL executed is still below the approved amount AND no active
+  // execution task exists to collect the next tranche, seed another "בוצע סך... (יתרה)" task for
+  // the remaining balance. This guarantees the chain keeps going until the full approval is executed.
+  const accepted = (c.approvals || []).slice().reverse().find(a => a.accepted);
+  const approvedAmt = accepted ? (Number(accepted.amount) || 0) : 0;
+  if (approvedAmt > 0 && allExec < approvedAmt) {
+    const hasActiveExec = (c.tasks || []).some(x => x.stage === 'execution' && x.hasAmount && (x.status || 'active') !== 'done');
+    if (!hasActiveExec) {
+      const remaining = approvedAmt - allExec;
+      c.tasks.push({
+        id: uid(), stage: 'execution', title: 'בוצע סך... (יתרה)',
+        status: 'active', done: false, doneAt: null,
+        createdAt: now(), history: [{ status: 'active', at: now() }],
+        source: 'execution-seed', hasAmount: true, expectedAmount: remaining,
+      });
+    }
+  }
+
   save();
   if (currentTab === 'detail') renderClientDetail();
   if (currentTab === 'dashboard') renderDashboard();
