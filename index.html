@@ -18894,12 +18894,52 @@ setInterval(function(){
 // so no history is lost when both devices made changes. Prevents commLog / tasks / approvals /
 // stageHistory from being overwritten when one device's _updatedAt beats the other's.
 const _CLIENT_UNION_ARRAYS = ['tasks','requirements','approvals','commLog','stageHistory','leadNotes','obligations'];
+// Contact / identity scalars we NEVER want to blank out silently via merge — if one side has a
+// value and the other is empty, keep the value. Prevents a stale device from erasing an email,
+// phone, or ID number that was just typed on a different device.
+const _CLIENT_PROTECT_IF_EMPTY = ['email','phone','idNumber','name','targetDate','propertyAddress',
+  'propertyBuilding','propertyApartment','propertyCity','propertyGush','propertyHelka','propertyTatHelka',
+  'contractSignDate','contractPaymentDate','bankerId','existingMortgageBank','sourceCategory','sourceNotes','notes'];
+function _isEmptyVal(v) {
+  if (v === null || v === undefined) return true;
+  if (typeof v === 'string') return v.trim() === '';
+  return false;
+}
+function _mergeBorrowerLike(newer, older) {
+  if (!newer) return older; if (!older) return newer;
+  const out = Object.assign({}, newer);
+  ['email','phone','idNumber','name','familyName','firstName','dob','idIssueDate'].forEach(k => {
+    if (_isEmptyVal(out[k]) && !_isEmptyVal(older[k])) out[k] = older[k];
+  });
+  return out;
+}
 function _mergeTwoClientVersions(a, b) {
   if (!a) return b; if (!b) return a;
   const _ts = c => new Date((c && (c._updatedAt || c.leadAt)) || 0).getTime();
   const newer = _ts(a) >= _ts(b) ? a : b;
   const older = newer === a ? b : a;
   const merged = Object.assign({}, newer);
+  // Protect top-level identity/contact scalars from being blanked by a stale device.
+  _CLIENT_PROTECT_IF_EMPTY.forEach(k => {
+    if (_isEmptyVal(merged[k]) && !_isEmptyVal(older[k])) merged[k] = older[k];
+  });
+  // Same rule inside each borrower (match by index — the only stable key the forms use).
+  if (Array.isArray(newer.borrowers) || Array.isArray(older.borrowers)) {
+    const nb = Array.isArray(newer.borrowers) ? newer.borrowers : [];
+    const ob = Array.isArray(older.borrowers) ? older.borrowers : [];
+    const len = Math.max(nb.length, ob.length);
+    const out = [];
+    for (let i = 0; i < len; i++) out.push(_mergeBorrowerLike(nb[i], ob[i]));
+    merged.borrowers = out;
+  }
+  if (Array.isArray(newer.guarantors) || Array.isArray(older.guarantors)) {
+    const nb = Array.isArray(newer.guarantors) ? newer.guarantors : [];
+    const ob = Array.isArray(older.guarantors) ? older.guarantors : [];
+    const len = Math.max(nb.length, ob.length);
+    const out = [];
+    for (let i = 0; i < len; i++) out.push(_mergeBorrowerLike(nb[i], ob[i]));
+    merged.guarantors = out;
+  }
   _CLIENT_UNION_ARRAYS.forEach(k => {
     const na = Array.isArray(newer[k]) ? newer[k] : [];
     const oa = Array.isArray(older[k]) ? older[k] : [];
