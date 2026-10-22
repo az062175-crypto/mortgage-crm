@@ -6263,7 +6263,7 @@ function openZechiaInstructionsDialog(clientId) {
       <div class="form-group"><label>אל</label><input id="zechTo" value="${escapeAttr(clientEmail)}" style="width:100%"></div>
       <div class="form-group"><label>נושא</label><input id="zechSubject" value="${escapeAttr(subject)}" style="width:100%"></div>
       <div class="form-group"><label>גוף המייל</label><textarea id="zechBody" style="width:100%;min-height:220px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px">${escapeHtml(body)}</textarea></div>
-      ${guideUrl ? '' : `<div style="background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:6px;font-size:12px;color:#92400e;margin-bottom:8px">💡 לא הוגדר קישור למדריך PDF. הגדר ב: הגדרות ← 📨 אישור זכיה — הוראות ללקוח</div>`}
+      ${(state.settings && state.settings.zechiaGuidePdf) ? `<div style="background:#dcfce7;border:1px solid #86efac;padding:8px 12px;border-radius:6px;font-size:12px;color:#166534;margin-bottom:8px">📎 ה-PDF יצורף אוטומטית בטיוטת Gmail — תבדוק ותשלח</div>` : (guideUrl ? '' : `<div style="background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:6px;font-size:12px;color:#92400e;margin-bottom:8px">💡 להעלאת קובץ PDF שיצורף אוטומטית, לך ל: הגדרות ← 📨 אישור זכיה — הוראות ללקוח</div>`)}
       <div class="modal-actions">
         <button class="btn" onclick="sendZechiaEmail('${clientId}')" style="background:#3b82f6">📧 פתח ב-Gmail</button>
         <button class="btn secondary" onclick="closeModal()">סגור</button>
@@ -6298,15 +6298,37 @@ function _zechiaSwitchTab(which) {
   }
 }
 
-function sendZechiaEmail(clientId) {
+async function sendZechiaEmail(clientId) {
   const to = (document.getElementById('zechTo').value || '').trim();
   if (!to) { alert('אין כתובת מייל ללקוח. הוסף מייל ללקוח או ערוך את השדה.'); return; }
   const subject = document.getElementById('zechSubject').value;
   const body = document.getElementById('zechBody').value;
-  const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
-  logCommunication(clientId, 'email', { to, subject, body });
-  window.open(url, '_blank', 'noopener');
-  closeModal();
+  const guidePdf = state.settings && state.settings.zechiaGuidePdf;
+  const btn = document.querySelector('#zechPanelEmail .btn');
+  // No PDF stored → fall back to Gmail compose URL (no attachment possible)
+  if (!guidePdf || !guidePdf.dataBase64) {
+    const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    logCommunication(clientId, 'email', { to, subject, body });
+    window.open(url, '_blank', 'noopener');
+    closeModal();
+    alert('💡 כדי לצרף את ה-PDF אוטומטית, העלה אותו ב: הגדרות ← 📨 אישור זכיה — הוראות ללקוח');
+    return;
+  }
+  // Have PDF → create a Gmail draft with the attachment via API
+  if (btn) { btn.disabled = true; btn.textContent = 'יוצר טיוטה…'; }
+  try {
+    await gmailCreateDraftWithAttachments({
+      to, subject, bodyText: body,
+      attachments: [{ filename: guidePdf.filename || 'מדריך אישור זכיה.pdf', mimeType: guidePdf.mimeType || 'application/pdf', dataBase64: guidePdf.dataBase64 }]
+    });
+    logCommunication(clientId, 'email', { to, subject, body, note: 'טיוטה עם מצורף' });
+    closeModal();
+    alert('✓ נוצרה טיוטה ב-Gmail עם המדריך מצורף. פותחת את תיקיית הטיוטות — בדוק ושלח משם.');
+    window.open('https://mail.google.com/mail/u/0/#drafts', '_blank', 'noopener');
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = '📧 פתח ב-Gmail'; }
+    alert('⚠️ יצירת הטיוטה נכשלה: ' + (err && err.message ? err.message : err) + '\n\nנסה שוב, או השתמש בקישור הציבורי במקום הקובץ.');
+  }
 }
 
 function sendZechiaWhatsApp(clientId) {
@@ -14244,6 +14266,58 @@ async function gmailCreateDraft({ to, cc, subject, htmlBody }) {
   return await resp.json();
 }
 
+// Create a Gmail draft with one or more attachments. attachments = [{filename, mimeType, dataBase64}]
+async function gmailCreateDraftWithAttachments({ to, cc, subject, bodyText, attachments }) {
+  const token = await gmailGetOrRequestToken();
+  const boundary = 'donna_boundary_' + Math.random().toString(36).slice(2, 12);
+  const parts = [];
+  const headerLines = [];
+  if (to) headerLines.push('To: ' + to);
+  if (cc) headerLines.push('Cc: ' + cc);
+  headerLines.push('Subject: =?UTF-8?B?' + _utf8ToBase64(subject || '') + '?=');
+  headerLines.push('MIME-Version: 1.0');
+  headerLines.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
+  parts.push(headerLines.join('\r\n'));
+  parts.push('');
+  // Body part (plain text, UTF-8)
+  parts.push('--' + boundary);
+  parts.push('Content-Type: text/plain; charset=UTF-8');
+  parts.push('Content-Transfer-Encoding: base64');
+  parts.push('');
+  parts.push(_utf8ToBase64(bodyText || ''));
+  // Attachment parts
+  (attachments || []).forEach(att => {
+    if (!att || !att.dataBase64) return;
+    parts.push('--' + boundary);
+    parts.push('Content-Type: ' + (att.mimeType || 'application/octet-stream') + '; name="' + (att.filename || 'file') + '"');
+    parts.push('Content-Transfer-Encoding: base64');
+    parts.push('Content-Disposition: attachment; filename="' + (att.filename || 'file') + '"');
+    parts.push('');
+    // Gmail requires the attachment base64 to be line-wrapped at 76 chars
+    const raw = String(att.dataBase64 || '').replace(/\s+/g, '');
+    parts.push(raw.match(/.{1,76}/g).join('\r\n'));
+  });
+  parts.push('--' + boundary + '--');
+  const mime = parts.join('\r\n');
+  // base64url encode the whole MIME blob (binary-safe)
+  const b64 = btoa(unescape(encodeURIComponent(mime)));
+  const raw = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const doPost = async (tk) => fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + tk, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: { raw } })
+  });
+  let resp = await doPost(token);
+  if (resp.status === 401) {
+    localStorage.removeItem('gmail_token');
+    localStorage.removeItem('gmail_token_expiry');
+    const newToken = await gmailRequestToken();
+    resp = await doPost(newToken);
+  }
+  if (!resp.ok) throw new Error('Gmail API failed: ' + await resp.text());
+  return await resp.json();
+}
+
 // Build a beautifully styled HTML email body from plain text with markers
 function buildStyledEmailHtml(bodyText, type) {
   const theme = type === 'seller'
@@ -16365,6 +16439,8 @@ function resetInsuranceEmailTemplate() {
 function renderZechiaInstructionsSection() {
   const tpl = state.settings.zechiaInstructionsTemplate || DEFAULT_ZECHIA_INSTRUCTIONS_TPL;
   const guideUrl = state.settings.zechiaGuideUrl || '';
+  const guidePdf = state.settings.zechiaGuidePdf || null;
+  const sizeKb = guidePdf && guidePdf.dataBase64 ? Math.round(guidePdf.dataBase64.length * 0.75 / 1024) : 0;
   return `<div class="panel">
     <h2 class="panel-title">📨 אישור זכיה — הוראות ללקוח</h2>
     <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px 14px;border-radius:8px;font-size:12px;color:#1e3a8a;margin-bottom:14px">
@@ -16374,20 +16450,56 @@ function renderZechiaInstructionsSection() {
       <code>{bankerName}</code> · <code>{bankerEmail}</code> — פרטי הבנקאי בתיק<br>
       <code>{guideUrl}</code> — קישור "חשוף" למדריך · <code>{guideLine}</code> — שורה שלמה "קישור למדריך: ..." (ריקה אם לא הוגדר קישור)
     </div>
+
     <div class="form-group">
-      <label>קישור ציבורי למדריך PDF (Drive — "כל מי שיש לו את הקישור")</label>
-      <input id="zechGuideUrl" value="${escapeAttr(guideUrl)}" placeholder="https://drive.google.com/file/d/..." style="width:100%">
-      <div style="font-size:11px;color:var(--muted);margin-top:4px">העלה את ה-PDF ל-Drive, הגדר "כל מי שיש לו את הקישור", העתק את הקישור ושים כאן.</div>
+      <label>📎 קובץ מדריך PDF (יצורף אוטומטית בטיוטת Gmail)</label>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <input type="file" id="zechPdfInput" accept="application/pdf" onchange="_zechiaOnPdfPicked(event)" style="flex:1;min-width:220px">
+        ${guidePdf ? `<span style="font-size:12px;color:#166534;background:#dcfce7;padding:4px 10px;border-radius:12px">✓ ${escapeHtml(guidePdf.filename || 'מדריך.pdf')} · ${sizeKb} KB</span>
+        <button class="btn secondary small" onclick="_zechiaRemovePdf()" style="padding:4px 10px;font-size:12px">הסר קובץ</button>` : '<span style="font-size:12px;color:var(--muted)">לא הועלה קובץ</span>'}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">הקובץ נשמר במערכת. בלחיצה על 📧 יצרו לך טיוטת Gmail עם הקובץ מצורף — תבדוק ותשלח. גודל מומלץ: עד 2MB.</div>
     </div>
+
+    <div class="form-group">
+      <label>או: קישור ציבורי למדריך (Drive — "כל מי שיש לו את הקישור")</label>
+      <input id="zechGuideUrl" value="${escapeAttr(guideUrl)}" placeholder="https://drive.google.com/file/d/..." style="width:100%">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">משמש לוואטסאפ (לא תומך בצירוף קובץ), ולמייל כשלא הועלה קובץ PDF.</div>
+    </div>
+
     <div class="form-group">
       <label>גוף ההודעה</label>
       <textarea id="zechTpl" style="width:100%;min-height:260px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px">${escapeHtml(tpl)}</textarea>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn" onclick="saveZechiaInstructions()" style="background:#22c55e">💾 שמור</button>
-      <button class="btn secondary" onclick="resetZechiaInstructions()">🔄 שחזר לברירת מחדל</button>
+      <button class="btn" onclick="saveZechiaInstructions()" style="background:#22c55e">💾 שמור טקסט וקישור</button>
+      <button class="btn secondary" onclick="resetZechiaInstructions()">🔄 שחזר תבנית לברירת מחדל</button>
     </div>
   </div>`;
+}
+
+function _zechiaOnPdfPicked(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { alert('הקובץ גדול מדי (מעל 10MB).'); e.target.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = reader.result || '';
+    const comma = String(result).indexOf(',');
+    const dataBase64 = comma >= 0 ? String(result).slice(comma + 1) : String(result);
+    state.settings.zechiaGuidePdf = { filename: file.name || 'מדריך.pdf', mimeType: file.type || 'application/pdf', dataBase64 };
+    save();
+    renderSettings();
+  };
+  reader.onerror = () => alert('טעינת הקובץ נכשלה');
+  reader.readAsDataURL(file);
+}
+
+function _zechiaRemovePdf() {
+  if (!confirm('להסיר את קובץ המדריך השמור?')) return;
+  delete state.settings.zechiaGuidePdf;
+  save();
+  renderSettings();
 }
 function saveZechiaInstructions() {
   state.settings.zechiaInstructionsTemplate = document.getElementById('zechTpl').value;
