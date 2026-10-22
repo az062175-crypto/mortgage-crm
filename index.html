@@ -6266,7 +6266,7 @@ function openZechiaInstructionsDialog(clientId) {
       <div class="form-group"><label>גוף המייל</label><textarea id="zechBody" style="width:100%;min-height:220px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px">${escapeHtml(body)}</textarea></div>
       ${(state.settings && state.settings.zechiaGuidePdf) ? `<div style="background:#dcfce7;border:1px solid #86efac;padding:8px 12px;border-radius:6px;font-size:12px;color:#166534;margin-bottom:8px">📎 ה-PDF יצורף אוטומטית בטיוטת Gmail — תבדוק ותשלח</div>` : (guideUrl ? '' : `<div style="background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:6px;font-size:12px;color:#92400e;margin-bottom:8px">💡 להעלאת קובץ PDF שיצורף אוטומטית, לך ל: הגדרות ← 📨 אישור זכיה — הוראות ללקוח</div>`)}
       <div class="modal-actions">
-        <button class="btn" onclick="sendZechiaEmail('${clientId}')" style="background:#3b82f6">📧 פתח ב-Gmail</button>
+        <button class="btn" onclick="sendZechiaEmail('${clientId}')" style="background:#3b82f6">📧 שלח עכשיו</button>
         <button class="btn secondary" onclick="closeModal()">סגור</button>
       </div>
     </div>
@@ -6306,29 +6306,18 @@ async function sendZechiaEmail(clientId) {
   const body = document.getElementById('zechBody').value;
   const guidePdf = state.settings && state.settings.zechiaGuidePdf;
   const btn = document.querySelector('#zechPanelEmail .btn');
-  // No PDF stored → fall back to Gmail compose URL (no attachment possible)
-  if (!guidePdf || !guidePdf.dataBase64) {
-    const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
-    logCommunication(clientId, 'email', { to, subject, body });
-    window.open(url, '_blank', 'noopener');
-    closeModal();
-    alert('💡 כדי לצרף את ה-PDF אוטומטית, העלה אותו ב: הגדרות ← 📨 אישור זכיה — הוראות ללקוח');
-    return;
-  }
-  // Have PDF → create a Gmail draft with the attachment via API
-  if (btn) { btn.disabled = true; btn.textContent = 'יוצר טיוטה…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'שולחת…'; }
   try {
-    await gmailCreateDraftWithAttachments({
-      to, subject, bodyText: body,
-      attachments: [{ filename: guidePdf.filename || 'מדריך אישור זכיה.pdf', mimeType: guidePdf.mimeType || 'application/pdf', dataBase64: guidePdf.dataBase64 }]
-    });
-    logCommunication(clientId, 'email', { to, subject, body, note: 'טיוטה עם מצורף' });
+    const attachments = (guidePdf && guidePdf.dataBase64)
+      ? [{ filename: guidePdf.filename || 'מדריך אישור זכיה.pdf', mimeType: guidePdf.mimeType || 'application/pdf', dataBase64: guidePdf.dataBase64 }]
+      : [];
+    await gmailSendMessageWithAttachments({ to, subject, bodyText: body, attachments });
+    logCommunication(clientId, 'email', { to, subject, body, note: attachments.length ? 'נשלח עם מצורף' : 'נשלח' });
     closeModal();
-    _showToast('✓ טיוטה נוצרה ב-Gmail עם המדריך מצורף');
-    window.open('https://mail.google.com/mail/u/0/#drafts', '_blank', 'noopener');
+    _showToast('✓ המייל נשלח ל-' + to);
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = '📧 פתח ב-Gmail'; }
-    alert('⚠️ יצירת הטיוטה נכשלה: ' + (err && err.message ? err.message : err) + '\n\nנסה שוב, או השתמש בקישור הציבורי במקום הקובץ.');
+    if (btn) { btn.disabled = false; btn.textContent = '📧 שלח עכשיו'; }
+    alert('⚠️ שליחת המייל נכשלה: ' + (err && err.message ? err.message : err));
   }
 }
 
@@ -14281,6 +14270,62 @@ async function gmailCreateDraft({ to, cc, subject, htmlBody }) {
     const err = await resp.text();
     throw new Error(err);
   }
+  return await resp.json();
+}
+
+// Build a raw base64url-encoded MIME message with optional attachments.
+function _gmailBuildRawMime({ to, cc, subject, bodyText, attachments }) {
+  const boundary = 'donna_boundary_' + Math.random().toString(36).slice(2, 12);
+  const parts = [];
+  const headerLines = [];
+  if (to) headerLines.push('To: ' + to);
+  if (cc) headerLines.push('Cc: ' + cc);
+  headerLines.push('Subject: =?UTF-8?B?' + _utf8ToBase64(subject || '') + '?=');
+  headerLines.push('MIME-Version: 1.0');
+  headerLines.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
+  parts.push(headerLines.join('\r\n'));
+  parts.push('');
+  const escBody = String(bodyText || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  const htmlBody = '<div dir="rtl" style="text-align:right;font-family:arial,sans-serif;font-size:14px;line-height:1.6">' + escBody + '</div>';
+  parts.push('--' + boundary);
+  parts.push('Content-Type: text/html; charset=UTF-8');
+  parts.push('Content-Transfer-Encoding: base64');
+  parts.push('');
+  parts.push(_utf8ToBase64(htmlBody));
+  (attachments || []).forEach(att => {
+    if (!att || !att.dataBase64) return;
+    parts.push('--' + boundary);
+    parts.push('Content-Type: ' + (att.mimeType || 'application/octet-stream') + '; name="' + (att.filename || 'file') + '"');
+    parts.push('Content-Transfer-Encoding: base64');
+    parts.push('Content-Disposition: attachment; filename="' + (att.filename || 'file') + '"');
+    parts.push('');
+    const raw = String(att.dataBase64 || '').replace(/\s+/g, '');
+    parts.push(raw.match(/.{1,76}/g).join('\r\n'));
+  });
+  parts.push('--' + boundary + '--');
+  const mime = parts.join('\r\n');
+  const b64 = btoa(unescape(encodeURIComponent(mime)));
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Send a message directly via Gmail API — bypasses the drafts folder entirely.
+// Only call this when the USER has explicitly authorized direct-send for this specific flow.
+async function gmailSendMessageWithAttachments({ to, cc, subject, bodyText, attachments }) {
+  const token = await gmailGetOrRequestToken();
+  const raw = _gmailBuildRawMime({ to, cc, subject, bodyText, attachments });
+  const doPost = async (tk) => fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + tk, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw })
+  });
+  let resp = await doPost(token);
+  if (resp.status === 401) {
+    localStorage.removeItem('gmail_token');
+    localStorage.removeItem('gmail_token_expiry');
+    const newToken = await gmailRequestToken();
+    resp = await doPost(newToken);
+  }
+  if (!resp.ok) throw new Error('Gmail send failed: ' + await resp.text());
   return await resp.json();
 }
 
