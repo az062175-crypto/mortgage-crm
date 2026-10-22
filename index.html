@@ -6209,6 +6209,117 @@ function sendInsuranceWhatsApp(clientId, phone) {
   closeModal();
 }
 
+// ---- אישור זכיה — הוראות ללקוח ----
+const DEFAULT_ZECHIA_INSTRUCTIONS_TPL = `{greeting} {name},
+
+הבנק מבקש לקבל אישור זכיה ישירות מהאיזור האישי של משרד השיכון.
+מצ"ב קובץ הדרכה.
+
+פרטי הבנקאי בתיק:
+שם: {bankerName}
+מייל: {bankerEmail}
+
+{guideLine}
+
+בתודה מראש,
+יצחק`;
+
+function _zechiaBuildMessage(c) {
+  const clientName = (c.borrowers && c.borrowers[0] && c.borrowers[0].name) || c.name || '';
+  const banker = c.bankerId ? (state.settings.bankers || []).find(b => b.id === c.bankerId) : null;
+  const bankerName = banker ? (banker.name || '—') : '—';
+  const bankerEmail = banker && banker.email ? banker.email : '—';
+  const guideUrl = (state.settings && state.settings.zechiaGuideUrl) || '';
+  const guideLine = guideUrl ? ('קישור למדריך: ' + guideUrl) : '';
+  const greeting = greetingByHour();
+  const tpl = (state.settings && state.settings.zechiaInstructionsTemplate) || DEFAULT_ZECHIA_INSTRUCTIONS_TPL;
+  return tpl
+    .replace(/\{greeting\}/g, greeting)
+    .replace(/\{name\}/g, clientName)
+    .replace(/\{bankerName\}/g, bankerName)
+    .replace(/\{bankerEmail\}/g, bankerEmail)
+    .replace(/\{guideUrl\}/g, guideUrl)
+    .replace(/\{guideLine\}/g, guideLine)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function openZechiaInstructionsDialog(clientId) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  const b1 = (c.borrowers && c.borrowers[0]) || {};
+  const clientEmail = b1.email || c.email || '';
+  const clientPhone = b1.phone || c.phone || '';
+  const subject = 'אישור זכיה — ' + (b1.name || c.name || '');
+  const body = _zechiaBuildMessage(c);
+  const guideUrl = (state.settings && state.settings.zechiaGuideUrl) || '';
+  showModal(`
+    <h2 class="modal-title">📨 שליחת הוראות — אישור זכיה</h2>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button id="zechTabEmail" class="btn" onclick="_zechiaSwitchTab('email')" style="background:#3b82f6">📧 מייל</button>
+      <button id="zechTabWa" class="btn secondary" onclick="_zechiaSwitchTab('wa')">💬 וואטסאפ</button>
+    </div>
+    <div id="zechPanelEmail">
+      <div class="form-group"><label>אל</label><input id="zechTo" value="${escapeAttr(clientEmail)}" style="width:100%"></div>
+      <div class="form-group"><label>נושא</label><input id="zechSubject" value="${escapeAttr(subject)}" style="width:100%"></div>
+      <div class="form-group"><label>גוף המייל</label><textarea id="zechBody" style="width:100%;min-height:220px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px">${escapeHtml(body)}</textarea></div>
+      ${guideUrl ? '' : `<div style="background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:6px;font-size:12px;color:#92400e;margin-bottom:8px">💡 לא הוגדר קישור למדריך PDF. הגדר ב: הגדרות ← 📨 אישור זכיה — הוראות ללקוח</div>`}
+      <div class="modal-actions">
+        <button class="btn" onclick="sendZechiaEmail('${clientId}')" style="background:#3b82f6">📧 פתח ב-Gmail</button>
+        <button class="btn secondary" onclick="closeModal()">סגור</button>
+      </div>
+    </div>
+    <div id="zechPanelWa" style="display:none">
+      <div class="form-group"><label>אל (טלפון)</label><input id="zechWaPhone" value="${escapeAttr(clientPhone)}" style="width:100%"></div>
+      <div class="form-group"><label>הודעה</label><textarea id="zechWaBody" style="width:100%;min-height:220px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px">${escapeHtml(body)}</textarea></div>
+      <div style="background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:6px;font-size:12px;color:#92400e;margin-bottom:8px">💡 וואטסאפ לא תומך בצירוף אוטומטי של קובץ. לאחר פתיחת השיחה, צרף/י את מדריך ה-PDF ידנית.</div>
+      <div class="modal-actions">
+        <button class="btn" onclick="sendZechiaWhatsApp('${clientId}')" style="background:#22c55e">💬 פתח WhatsApp</button>
+        <button class="btn secondary" onclick="closeModal()">סגור</button>
+      </div>
+    </div>
+  `);
+  document.getElementById('modalContent').style.maxWidth = '700px';
+}
+
+function _zechiaSwitchTab(which) {
+  const email = document.getElementById('zechPanelEmail');
+  const wa = document.getElementById('zechPanelWa');
+  const tE = document.getElementById('zechTabEmail');
+  const tW = document.getElementById('zechTabWa');
+  if (which === 'wa') {
+    email.style.display = 'none'; wa.style.display = '';
+    tE.className = 'btn secondary'; tE.style.background = '';
+    tW.className = 'btn'; tW.style.background = '#22c55e';
+  } else {
+    email.style.display = ''; wa.style.display = 'none';
+    tW.className = 'btn secondary'; tW.style.background = '';
+    tE.className = 'btn'; tE.style.background = '#3b82f6';
+  }
+}
+
+function sendZechiaEmail(clientId) {
+  const to = (document.getElementById('zechTo').value || '').trim();
+  if (!to) { alert('אין כתובת מייל ללקוח. הוסף מייל ללקוח או ערוך את השדה.'); return; }
+  const subject = document.getElementById('zechSubject').value;
+  const body = document.getElementById('zechBody').value;
+  const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+  logCommunication(clientId, 'email', { to, subject, body });
+  window.open(url, '_blank', 'noopener');
+  closeModal();
+}
+
+function sendZechiaWhatsApp(clientId) {
+  let normalized = (document.getElementById('zechWaPhone').value || '').replace(/[^0-9]/g, '');
+  if (!normalized) { alert('אין מספר טלפון ללקוח'); return; }
+  if (normalized.startsWith('0')) normalized = '972' + normalized.slice(1);
+  const message = document.getElementById('zechWaBody').value;
+  const url = 'https://wa.me/' + normalized + '?text=' + encodeURIComponent(message);
+  logCommunication(clientId, 'whatsapp', { messagePreview: (message||'').slice(0, 100) });
+  window.open(url, '_blank', 'noopener');
+  closeModal();
+}
+
 function setExecutionNotes(clientId, taskId, val) {
   const c = state.clients.find(x => x.id === clientId);
   const t = c && c.tasks.find(x => x.id === taskId);
@@ -6770,6 +6881,7 @@ function renderReqsHtml(c, filter) {
       </div>
       <button class="icon-btn" onclick="startRenameReq('${c.id}','${r.id}')" title="ערוך שם" style="color:var(--accent)">✎</button>
       <button class="icon-btn" onclick="openContactEmailDialog('${c.id}','${escapeAttr(r.name)}')" title="שלח מייל בנוגע למסמך" style="color:var(--accent)">📧</button>
+      ${r.name === 'אישור זכיה למשרד ולמייל הבנקאי' ? `<button class="icon-btn" onclick="openZechiaInstructionsDialog('${c.id}')" title="שלח הוראות לקבלת אישור זכיה" style="color:#f59e0b">📨</button>` : ''}
       <button class="icon-btn" onclick="deleteReq('${c.id}','${r.id}')">✕</button>
     </div>`;
   let html = '';
@@ -16250,6 +16362,46 @@ function resetInsuranceEmailTemplate() {
   renderSettings();
 }
 
+function renderZechiaInstructionsSection() {
+  const tpl = state.settings.zechiaInstructionsTemplate || DEFAULT_ZECHIA_INSTRUCTIONS_TPL;
+  const guideUrl = state.settings.zechiaGuideUrl || '';
+  return `<div class="panel">
+    <h2 class="panel-title">📨 אישור זכיה — הוראות ללקוח</h2>
+    <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px 14px;border-radius:8px;font-size:12px;color:#1e3a8a;margin-bottom:14px">
+      💡 תבנית זו נטענת כשלוחצים על כפתור 📨 שליד שורת "אישור זכיה למשרד ולמייל הבנקאי" בדרישות הלקוח.
+      <br><strong>משתני החלפה זמינים:</strong><br>
+      <code>{greeting}</code> — ברכה לפי שעה · <code>{name}</code> — שם הלקוח<br>
+      <code>{bankerName}</code> · <code>{bankerEmail}</code> — פרטי הבנקאי בתיק<br>
+      <code>{guideUrl}</code> — קישור "חשוף" למדריך · <code>{guideLine}</code> — שורה שלמה "קישור למדריך: ..." (ריקה אם לא הוגדר קישור)
+    </div>
+    <div class="form-group">
+      <label>קישור ציבורי למדריך PDF (Drive — "כל מי שיש לו את הקישור")</label>
+      <input id="zechGuideUrl" value="${escapeAttr(guideUrl)}" placeholder="https://drive.google.com/file/d/..." style="width:100%">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">העלה את ה-PDF ל-Drive, הגדר "כל מי שיש לו את הקישור", העתק את הקישור ושים כאן.</div>
+    </div>
+    <div class="form-group">
+      <label>גוף ההודעה</label>
+      <textarea id="zechTpl" style="width:100%;min-height:260px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px">${escapeHtml(tpl)}</textarea>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" onclick="saveZechiaInstructions()" style="background:#22c55e">💾 שמור</button>
+      <button class="btn secondary" onclick="resetZechiaInstructions()">🔄 שחזר לברירת מחדל</button>
+    </div>
+  </div>`;
+}
+function saveZechiaInstructions() {
+  state.settings.zechiaInstructionsTemplate = document.getElementById('zechTpl').value;
+  state.settings.zechiaGuideUrl = (document.getElementById('zechGuideUrl').value || '').trim();
+  save();
+  alert('✓ נשמר');
+}
+function resetZechiaInstructions() {
+  if (!confirm('לשחזר את התבנית לברירת המחדל? (הקישור למדריך יישמר)')) return;
+  delete state.settings.zechiaInstructionsTemplate;
+  save();
+  renderSettings();
+}
+
 function renderBankInstitutionCodesSection() {
   const list = (Array.isArray(state.settings.bankInstitutionCodes) && state.settings.bankInstitutionCodes.length)
     ? state.settings.bankInstitutionCodes : DEFAULT_BANK_INSTITUTION_CODES;
@@ -16999,6 +17151,7 @@ function renderSettings() {
     { id: 'shtarEmail', label: '📧 תבנית מייל רישום שטרות', icon: '📧' },
     { id: 'insuranceEmail', label: '🛡 תבנית מייל ביטוח', icon: '🛡' },
     { id: 'sigCoordEmail', label: '✍️ תבנית תיאום חתימות (לבנקאי)', icon: '✍️' },
+    { id: 'zechiaInstructions', label: '📨 אישור זכיה — הוראות ללקוח', icon: '📨' },
     { id: 'bankNameMap', label: '🏦 מיפוי שמות בנקים', icon: '🏦' },
     { id: 'banksList', label: '🏦 בנקים לניהול עו"ש', icon: '🏦' },
     { id: 'bankInstCodes', label: '🏦 קודי מוסד בנקים', icon: '🏦' },
@@ -17044,6 +17197,7 @@ function renderSettingsSection(id) {
   if (id === 'shtarEmail') return renderShtarEmailTemplateSection();
   if (id === 'insuranceEmail') return renderInsuranceEmailTemplateSection();
   if (id === 'sigCoordEmail') return renderSigCoordEmailTemplateSection();
+  if (id === 'zechiaInstructions') return renderZechiaInstructionsSection();
   if (id === 'bankNameMap') return renderBankNameMapSection();
   if (id === 'banksList') return renderBanksListSection();
   if (id === 'bankInstCodes') return renderBankInstitutionCodesSection();
