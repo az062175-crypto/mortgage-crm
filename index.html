@@ -10538,6 +10538,24 @@ function closeModal() {
   // keep the lead in 'lead' stage (don't consume the pending flag on submit failure/cancel).
   pendingCloseLeadId = null;
   pendingCloseLeadTaskId = null;
+  // Apply any remote state that arrived while a modal was open — we deferred it so an
+  // in-flight edit wouldn't be wiped by a pull.
+  try { if (typeof _flushPendingRemoteState === 'function') _flushPendingRemoteState(); } catch (e) {}
+}
+
+// True while a modal is open — the sync layer uses this to defer remote-state application
+// so an in-progress edit (typing an email, filling a form) isn't blown away by a pull.
+function _isModalOpen() {
+  const bd = document.getElementById('modalBackdrop');
+  return !!(bd && bd.classList.contains('open'));
+}
+let _pendingRemoteState = null;
+function _flushPendingRemoteState() {
+  if (!_pendingRemoteState) return;
+  const s = _pendingRemoteState;
+  _pendingRemoteState = null;
+  try { sbApplyRemoteState(s); } catch (e) {}
+  try { if (typeof renderAll === 'function') renderAll(); } catch (e) {}
 }
 document.getElementById('modalBackdrop').addEventListener('click', (e) => {
   if (e.target.id !== 'modalBackdrop') return;
@@ -19073,6 +19091,14 @@ function _buildMergedStateFromRemote(remote) {
 
 function sbApplyRemoteState(obj){
   if(!obj||typeof obj!=='object')return;
+  // CRITICAL: if the user is in the middle of editing a modal (typing an email, filling a form),
+  // we MUST NOT replace state out from under them — otherwise the form reads the fresh remote
+  // version on save and the user's typed data vanishes. Queue the remote state and apply it as
+  // soon as the modal closes.
+  if (typeof _isModalOpen === 'function' && _isModalOpen()) {
+    _pendingRemoteState = obj;
+    return;
+  }
   // Merge local-only / newer-local changes into the remote state before adopting it.
   // Fallback to raw remote if the merge throws.
   state = _buildMergedStateFromRemote(obj);
