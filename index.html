@@ -18906,21 +18906,44 @@ var _origSave=save;
 var _sbRecoverAttempt = 0;
 save=function(){
   var r=_origSave();
-  if (SB.mode === 'on') {
-    sbQueueSave();
-  } else {
-    // Sync is off but we have local changes — try to recover (refresh token / restart start-up)
-    var sess = typeof sbLoadSession === 'function' ? sbLoadSession() : null;
-    if (sess && !_sbRecoverAttempt) {
-      _sbRecoverAttempt = 1;
-      sbRefresh().then(function(ok){
-        if (ok) { SB.mode = 'on'; sbQueueSave(true); }
-        _sbRecoverAttempt = 0;
-      }).catch(function(){ _sbRecoverAttempt = 0; });
-    }
-  }
+  _sbAutoHeal();  // Ensure sync is live; if not, revive it
+  if (SB.mode === 'on') sbQueueSave();
   return r;
 };
+
+// Keep sync alive without the user having to think about it:
+//  - If we have a saved session but SB.mode is somehow off, revive by refreshing the token.
+//  - On success: push any local changes + pull remote so both sides converge immediately.
+function _sbAutoHeal(){
+  if (SB.mode === 'on' && SB.token) return;
+  if (_sbRecoverAttempt) return;
+  var sess = typeof sbLoadSession === 'function' ? sbLoadSession() : null;
+  if (!sess) return;
+  _sbRecoverAttempt = 1;
+  sbRefresh().then(function(ok){
+    if (ok) {
+      SB.mode = 'on';
+      sbBadge('ok'); sbUpdateLast();
+      try { sbQueueSave(true); } catch(e){}
+      try { sbPullState(); } catch(e){}
+      try { if (typeof sbConnectRT === 'function') sbConnectRT(); } catch(e){}
+    }
+  }).catch(function(){}).then(function(){ _sbRecoverAttempt = 0; });
+}
+
+// Health heartbeat — every 20 seconds, make sure sync is still alive.
+setInterval(_sbAutoHeal, 20000);
+// When the user returns to the tab after it was in the background, immediately heal + pull.
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState !== 'visible') return;
+  _sbAutoHeal();
+  try { if (SB.mode === 'on') sbPullState(); } catch(e){}
+});
+// Browser reports online again after a disconnect — flush pending writes immediately.
+window.addEventListener('online', function(){
+  _sbAutoHeal();
+  try { if (SB.mode === 'on') { sbQueueSave(true); sbPullState(); } } catch(e){}
+});
 
 // Manual full sync — forces an immediate push + pull cycle and reports the result as a toast,
 // so the user has a reliable "I know this landed on the other device" button. Also auto-refreshes
