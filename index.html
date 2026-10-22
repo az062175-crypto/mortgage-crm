@@ -6323,7 +6323,7 @@ async function sendZechiaEmail(clientId) {
     });
     logCommunication(clientId, 'email', { to, subject, body, note: 'טיוטה עם מצורף' });
     closeModal();
-    alert('✓ נוצרה טיוטה ב-Gmail עם המדריך מצורף. פותחת את תיקיית הטיוטות — בדוק ושלח משם.');
+    _showToast('✓ טיוטה נוצרה ב-Gmail עם המדריך מצורף');
     window.open('https://mail.google.com/mail/u/0/#drafts', '_blank', 'noopener');
   } catch (err) {
     if (btn) { btn.disabled = false; btn.textContent = '📧 פתח ב-Gmail'; }
@@ -7211,9 +7211,26 @@ function _celebrateTaskDone() {
   if (document.getElementById('taskDoneKeyframes')) return;
   const s = document.createElement('style');
   s.id = 'taskDoneKeyframes';
-  s.textContent = '@keyframes taskDonePop{0%{transform:translate(50%,-50%) scale(0.3);opacity:0}25%{transform:translate(50%,-50%) scale(1.15);opacity:1}55%{transform:translate(50%,-50%) scale(1);opacity:1}85%{transform:translate(50%,-50%) scale(1);opacity:1}100%{transform:translate(50%,-50%) scale(0.9);opacity:0}}';
+  s.textContent = '@keyframes taskDonePop{0%{transform:translate(50%,-50%) scale(0.3);opacity:0}25%{transform:translate(50%,-50%) scale(1.15);opacity:1}55%{transform:translate(50%,-50%) scale(1);opacity:1}85%{transform:translate(50%,-50%) scale(1);opacity:1}100%{transform:translate(50%,-50%) scale(0.9);opacity:0}}@keyframes donnaToastSlide{0%{transform:translateY(-20px);opacity:0}10%{transform:translateY(0);opacity:1}85%{transform:translateY(0);opacity:1}100%{transform:translateY(-20px);opacity:0}}';
   document.head.appendChild(s);
 })();
+
+// Non-blocking toast — replaces alert() for quick confirmations
+function _showToast(msg, kind) {
+  const el = document.createElement('div');
+  const bg = kind === 'err' ? 'linear-gradient(135deg,#b91c1c,#ef4444)' : 'linear-gradient(135deg,#166534,#22c55e)';
+  el.textContent = msg;
+  el.style.cssText = [
+    'position:fixed','top:80px','inset-inline-end:20px',
+    'background:' + bg,'color:#fff',
+    'padding:12px 20px','border-radius:12px','font-size:14px','font-weight:600',
+    'z-index:999999','box-shadow:0 8px 24px rgba(0,0,0,0.2)',
+    'pointer-events:none','max-width:360px',
+    'animation:donnaToastSlide 3.2s ease-out forwards'
+  ].join(';');
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3300);
+}
 
 function openAppraiserValueDialog(clientId, taskId) {
   const c = state.clients.find(x => x.id === clientId);
