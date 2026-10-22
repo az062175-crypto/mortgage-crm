@@ -6965,6 +6965,7 @@ function markTaskNotRequired(clientId, taskId) {
   t.status = 'done';
   t.done = true;
   t.doneAt = now();
+  t._updatedAt = t.doneAt;
   t.notRequired = true;
   t.history = t.history || [];
   t.history.push({ status: 'done', at: now(), note: 'לא נדרש' });
@@ -6980,6 +6981,7 @@ function setTaskStatus(clientId, taskId, status) {
   const t = c.tasks.find(t => t.id === taskId);
   if (status !== 'done' && t.notRequired) { t.notRequired = false; }
   if (t.status === status) return;
+  t._updatedAt = new Date().toISOString();
   // Submission-stage: block "ניידים של הלווים" if borrowers don't have phones
   if (status === 'done' && t.stage === 'submission' && t.title === 'ניידים של הלווים') {
     const missingPhones = (c.borrowers || []).filter(b => !(b.phone && b.phone.trim())).length;
@@ -8464,6 +8466,8 @@ function setReqStatus(clientId, reqId, status) {
   const c = state.clients.find(x => x.id === clientId);
   const r = c.requirements.find(r => r.id === reqId);
   r.status = status;
+  r._updatedAt = new Date().toISOString();
+  if (status === 'provided' && !r.providedAt) r.providedAt = r._updatedAt;
   // If no more pending docs — clear the missing-docs request timestamp so the 24h nag stops
   const stillPending = (c.requirements || []).some(x => x.status === 'pending');
   if (!stillPending && c.missingDocsRequestSentAt) {
@@ -19034,19 +19038,31 @@ function _mergeTwoClientVersions(a, b) {
     const na = Array.isArray(newer[k]) ? newer[k] : [];
     const oa = Array.isArray(older[k]) ? older[k] : [];
     if (na.length === 0 && oa.length === 0) return;
-    const seen = new Set();
-    const out = [];
+    // Score each item by its OWN timestamps — so when the same item appears on both sides,
+    // the one that was mutated more recently wins. Prevents a container-level "newer wins"
+    // from erasing a task/req status that was changed on the other device.
+    const _itemScore = (it) => {
+      if (!it) return 0;
+      const t = (v) => { try { return new Date(v).getTime() || 0; } catch (e) { return 0; } };
+      return Math.max(
+        t(it._updatedAt), t(it.doneAt), t(it.providedAt), t(it.at),
+        t(it.createdAt), t(it.updatedAt)
+      );
+    };
+    const map = {};
     [...na, ...oa].forEach(it => {
       if (!it) return;
       let key;
       if (it.id) key = 'id:' + it.id;
       else if (it.at) key = 'at:' + it.at + '::' + (it.kind || it.type || it.title || '');
       else { try { key = 'j:' + JSON.stringify(it); } catch(e) { return; } }
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push(it);
+      const existing = map[key];
+      if (!existing) { map[key] = it; return; }
+      // Same item on both sides — pick the one with the more recent OWN timestamp.
+      // Tie: prefer the one coming from the newer container (first in iteration order).
+      if (_itemScore(it) > _itemScore(existing)) map[key] = it;
     });
-    merged[k] = out;
+    merged[k] = Object.values(map);
   });
   return merged;
 }
