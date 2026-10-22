@@ -5347,7 +5347,8 @@ function taskItemHtml(c, t) {
         <td style="padding:4px 6px;text-align:center"><button type="button" onclick="removeExecutionRow('${c.id}','${t.id}','${e.id}')" title="הסר שורה" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button></td>
       </tr>`;
     }).join('');
-    const remColor = remaining <= 0 ? '#16a34a' : (totalExec > 0 ? '#b45309' : '#78350f');
+    const overExec = (expected > 0 && totalExec > expected);
+    const remColor = overExec ? '#991b1b' : (remaining <= 0 ? '#16a34a' : (totalExec > 0 ? '#b45309' : '#78350f'));
     inlineExtra = `<div style="margin-top:8px;padding:10px 12px;background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;width:100%;box-sizing:border-box">
       <table style="width:100%;font-size:12px;border-collapse:collapse">
         <thead>
@@ -5363,9 +5364,9 @@ function taskItemHtml(c, t) {
         </thead>
         <tbody>${execRows || '<tr><td colspan="4" style="padding:8px;text-align:center;color:#92400e;font-size:11px">אין ביצועים עדיין. לחץ "+ הוסף ביצוע" להתחיל.</td></tr>'}</tbody>
         <tfoot>
-          <tr style="background:${remaining <= 0 ? '#dcfce7' : '#fee2e2'};color:${remColor};font-weight:800">
-            <td style="padding:6px;text-align:end">${remaining <= 0 ? '✓ בוצע במלואו' : 'יתרה שטרם בוצעה:'}</td>
-            <td colspan="2" style="padding:6px;text-align:end">${remaining <= 0 ? fmtMoney(totalExec) : fmtMoney(remaining)}</td>
+          <tr style="background:${overExec ? '#fee2e2' : (remaining <= 0 ? '#dcfce7' : '#fee2e2')};color:${remColor};font-weight:800">
+            <td style="padding:6px;text-align:end">${overExec ? '⚠️ חריגה מהאישור!' : (remaining <= 0 ? '✓ בוצע במלואו' : 'יתרה שטרם בוצעה:')}</td>
+            <td colspan="2" style="padding:6px;text-align:end">${overExec ? ('בוצע ' + fmtMoney(totalExec) + ' מתוך ' + fmtMoney(expected) + ' — תקן את הסכומים') : (remaining <= 0 ? fmtMoney(totalExec) : fmtMoney(remaining))}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -6175,7 +6176,11 @@ function _recomputeExecTaskStatus(c, t) {
   const executions = Array.isArray(t.executions) ? t.executions : [];
   const totalExec = executions.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const expected = Number(t.expectedAmount) || 0;
-  if (expected > 0 && totalExec >= expected) {
+  // Over-execution — more was executed than the bank approved. Keep the task OPEN so the user
+  // sees the mismatch and can correct one of the rows before closing.
+  if (expected > 0 && totalExec > expected) {
+    t.status = 'active'; t.done = false; t.doneAt = null;
+  } else if (expected > 0 && totalExec === expected) {
     t.status = 'done'; t.done = true; if (!t.doneAt) t.doneAt = now();
   } else {
     t.status = 'active'; t.done = false; t.doneAt = null;
@@ -6901,6 +6906,15 @@ function setTaskStatus(clientId, taskId, status) {
     if (currentTab === 'detail') renderClientDetail();
     if (currentTab === 'tasks') renderTasksTab();
     return;
+  }
+  // Block closing a "בוצע סך" execution task when the executions sum EXCEEDS the approved amount
+  if (status === 'done' && t.stage === 'execution' && t.hasAmount && Array.isArray(t.executions)) {
+    const _totalExec = t.executions.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const _expected = Number(t.expectedAmount) || 0;
+    if (_expected > 0 && _totalExec > _expected) {
+      alert('לא ניתן לסמן "בוצע" — סך הביצועים (' + Math.round(_totalExec).toLocaleString('he-IL') + ') חורג מהסכום שאושר (' + Math.round(_expected).toLocaleString('he-IL') + '). תקן את הסכומים ברשימה.');
+      return;
+    }
   }
   // Block "done" on הרכב הלוואה if loan composition table is empty
   if (status === 'done' && t.title === 'הרכב הלוואה') {
