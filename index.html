@@ -14296,12 +14296,14 @@ async function gmailCreateDraftWithAttachments({ to, cc, subject, bodyText, atta
   headerLines.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
   parts.push(headerLines.join('\r\n'));
   parts.push('');
-  // Body part (plain text, UTF-8)
+  // Body part — send as HTML with dir=rtl so Hebrew flows right-to-left correctly
+  const escBody = String(bodyText || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  const htmlBody = '<div dir="rtl" style="text-align:right;font-family:arial,sans-serif;font-size:14px;line-height:1.6">' + escBody + '</div>';
   parts.push('--' + boundary);
-  parts.push('Content-Type: text/plain; charset=UTF-8');
+  parts.push('Content-Type: text/html; charset=UTF-8');
   parts.push('Content-Transfer-Encoding: base64');
   parts.push('');
-  parts.push(_utf8ToBase64(bodyText || ''));
+  parts.push(_utf8ToBase64(htmlBody));
   // Attachment parts
   (attachments || []).forEach(att => {
     if (!att || !att.dataBase64) return;
