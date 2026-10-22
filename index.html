@@ -18845,14 +18845,15 @@ async function sbFetchState(){
   if(!rows.length)return {state:null,updated_at:null};
   return {state:rows[0].state,updated_at:rows[0].updated_at,updated_by:rows[0].updated_by};
 }
-// Merge-before-push: fetch the latest server state and merge any clients
-// that exist on the server but NOT locally — this prevents losing a client
-// another device just created when we overwrite the server with our (older) state.
+// Merge-before-push: fetch the latest server state, merge locally, and remember the server's
+// updated_at as our "known version" — used as a precondition on the subsequent PATCH so a
+// concurrent write from another device is detected and we retry instead of silently clobbering it.
 async function sbMergeFromServer(){
   try{
     var r = await sbFetchState();
     if (!r || !r.state) return;
     var remote = r.state;
+    SB.rowUpdated = r.updated_at || SB.rowUpdated;
     // Reuse the restore-aware merge logic from pull — gives us a fully consistent state object.
     var merged = _buildMergedStateFromRemote(remote);
     if (merged && typeof merged === 'object') {
@@ -18863,36 +18864,61 @@ async function sbMergeFromServer(){
     }
   } catch(e){ console.warn('[sync] merge-from-server failed:', e && e.message); }
 }
+
+// Serialize pushes — never run two in parallel; coalesce back-to-back save() calls into the next push.
 async function sbPushState(){
   SB.pending=false;
   if(!SB.token||SB.mode!=='on')return;
+  if (SB._pushing) { SB.pending = true; return; }
+  SB._pushing = true;
   sbBadge('saving');
+  var MAX_ATTEMPTS = 4;
   try{
-    // STEP 1 — pull latest from server and merge non-conflicting changes BEFORE pushing.
-    // This prevents the classic "last-write-wins" data loss.
-    await sbMergeFromServer();
-    if(SB.user&&SB.user.email){
-      state._lastEditor=SB.user.email;
-      state._lastEditedAt=new Date().toISOString();
+    for (var attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      // STEP 1 — merge the latest server state into our local state and capture its updated_at.
+      await sbMergeFromServer();
+      if(SB.user&&SB.user.email){
+        state._lastEditor=SB.user.email;
+        state._lastEditedAt=new Date().toISOString();
+      }
+      try { _writeLocalSnapshot(); } catch(e){}
+      var nowIso = new Date().toISOString();
+      var body = JSON.stringify({state:state, updated_at: nowIso});
+      // STEP 2 — optimistic concurrency: PATCH only when updated_at still matches what we just pulled.
+      // If someone else wrote between pull and push, the WHERE matches zero rows → retry.
+      var precond = SB.rowUpdated ? ('&updated_at=eq.' + encodeURIComponent(SB.rowUpdated)) : '';
+      var url = SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1' + precond;
+      var r = await fetch(url, {
+        method:'PATCH', headers:Object.assign(sbHdrs(true), {Prefer:'return=representation'}),
+        body:body
+      });
+      if (r.status === 401) {
+        try { await sbRefresh(); } catch(e){}
+        r = await fetch(url, {
+          method:'PATCH', headers:Object.assign(sbHdrs(true), {Prefer:'return=representation'}),
+          body:body
+        });
+      }
+      if (!r.ok) { var t = await r.text(); throw new Error('שמירה נכשלה ('+r.status+') '+t.slice(0,120)); }
+      var rows = await r.json();
+      if (rows && rows[0]) {
+        // Success — our write landed. Capture the new updated_at and we're done.
+        SB.rowUpdated = rows[0].updated_at;
+        sbBadge('ok'); sbUpdateLast();
+        return;
+      }
+      // Zero rows updated → the row's updated_at moved on under us. Pull, re-merge, retry.
+      console.warn('[sync] push collision, retrying (attempt ' + attempt + '/' + MAX_ATTEMPTS + ')');
+      await new Promise(function(res){ setTimeout(res, 150 * attempt); });
     }
-    // STEP 2 — write a local snapshot before push (rolling backup, last 20 states)
-    try { _writeLocalSnapshot(); } catch(e){}
-    var body=JSON.stringify({state:state,updated_at:new Date().toISOString()});
-    var r=await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1',{
-      method:'PATCH',headers:Object.assign(sbHdrs(true),{Prefer:'return=representation'}),
-      body:body});
-    // Auto-refresh on 401 and retry once
-    if(r.status===401){
-      try { await sbRefresh(); } catch(e){}
-      r=await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1',{
-        method:'PATCH',headers:Object.assign(sbHdrs(true),{Prefer:'return=representation'}),
-        body:body});
-    }
-    if(!r.ok){var t=await r.text();throw new Error('שמירה נכשלה ('+r.status+') '+t.slice(0,120))}
-    var rows=await r.json();
-    if(rows&&rows[0])SB.rowUpdated=rows[0].updated_at;
-    sbBadge('ok');sbUpdateLast();
-  }catch(e){sbBadge('err',e.message);setTimeout(function(){sbQueueSave()},5000);}
+    throw new Error('שמירה נכשלה — התנגשות סינכרון חוזרת (' + MAX_ATTEMPTS + ' ניסיונות)');
+  } catch(e) {
+    sbBadge('err', e.message);
+    setTimeout(function(){ sbQueueSave(); }, 5000);
+  } finally {
+    SB._pushing = false;
+    if (SB.pending) { SB.pending = false; setTimeout(function(){ sbPushState(); }, 50); }
+  }
 }
 // Rolling local snapshots — up to 20, oldest dropped. Lives in localStorage, each with a timestamp.
 function _writeLocalSnapshot(){
