@@ -1718,6 +1718,14 @@ function migrateClient(c) {
       if (t.stage === 'appraisal' && t.title === 'שמאות מוכנה?' && !t.floating) t.floating = true;
     });
   }
+  // Auto-advance past an empty stage on every load — e.g. "בטחונות בנק" that ended up with no
+  // tasks + no pending reqs should move forward automatically, so the user doesn't see a stuck panel.
+  try {
+    if (typeof autoAdvanceIfStageComplete === 'function') {
+      // Advance repeatedly in case several consecutive stages are empty, but cap at 10 steps for safety.
+      for (let _i = 0; _i < 10; _i++) { if (!autoAdvanceIfStageComplete(c)) break; }
+    }
+  } catch (e) {}
   // Consolidate "בוצע סך" chain into a SINGLE task with an executions[] list — the new UX is a
   // table of executions (amount+date+notes) with the remaining balance at the bottom. One task,
   // many rows. Runs on every load so legacy chain-style data gets migrated transparently.
@@ -2177,6 +2185,11 @@ function moveStage(client, newStage, options) {
   if (newStage === 'execution') {
     seedExecutionStageTasks(client);
   }
+  // If the newly-entered stage ended up empty (no tasks + no pending reqs) — advance again.
+  // Chains forward through any string of empty stages until we land on one with real work.
+  if (newStage !== 'archive' && newStage !== 'execution') {
+    try { autoAdvanceIfStageComplete(client); } catch (e) {}
+  }
 }
 
 function seedExecutionStageTasks(client) {
@@ -2227,7 +2240,8 @@ function autoAdvanceIfStageComplete(client) {
   if (stage === 'execution') return false;
   const stageTasks = client.tasks.filter(t => t.stage === stage && !t.floating);
   const stageReqs = client.requirements.filter(r => r.stage === stage && r.status !== 'not-required');
-  const allTasksDone = stageTasks.length > 0 && stageTasks.every(t => t.status === 'done');
+  // Treat an empty stage (no tasks, no pending reqs) as complete — nothing to wait on, advance.
+  const allTasksDone = stageTasks.length === 0 || stageTasks.every(t => t.status === 'done');
   const allReqsMet = stageReqs.every(r => r.status === 'provided');
   // For appraisal stage: also require the "sent to appraiser" marker to be done
   if (stage === 'appraisal' && (client.appraisalSentStatus || 'active') !== 'done') return false;
