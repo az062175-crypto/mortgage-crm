@@ -548,6 +548,7 @@
     <span id="sb-t">לא מחובר</span>
   </span>
   <span id="sb-last" style="opacity:0.85"></span>
+  <button onclick="sbForcePushNow()" title="דחף שינויים לענן עכשיו ומשוך את הגרסה החיה" style="background:rgba(34,197,94,0.25);border:1px solid rgba(34,197,94,0.6);color:white;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit;margin-inline-start:8px">⟳ סנכרן עכשיו</button>
   <span style="flex:1"></span>
   <span id="sb-who" style="opacity:0.85;font-size:11px"></span>
   <button onclick="sbSignOut()" style="background:transparent;border:1px solid rgba(255,255,255,0.3);color:white;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit">התנתק</button>
@@ -18419,7 +18420,16 @@ async function sbRefresh(){
     method:'POST',headers:sbHdrs(false),
     body:JSON.stringify({refresh_token:old.refresh_token})});
   var body=await r.json();
-  if(!r.ok){sbSaveSession(null);return null}
+  if(!r.ok){
+    // Token expired/revoked — mark session dead and alert the user explicitly rather than silently
+    sbSaveSession(null);
+    SB.mode = 'off';
+    sbBadge('err','פג תוקף — חובה להתחבר מחדש');
+    try { if (!window._sbRefreshFailAlerted) { window._sbRefreshFailAlerted = true;
+      alert('⚠️ פג תוקף החיבור לענן — נתונים חדשים לא נשמרים!\n\nלחץ/י על "☁ התחבר לענן" בפינה כדי להתחבר מחדש.');
+    } } catch(e){}
+    return null;
+  }
   sbApplySession(body);return body;
 }
 function sbApplySession(s){
@@ -18889,9 +18899,64 @@ async function sbStart(source){
   }
 }
 
-// Hook into save()
+// Hook into save() — pushes to cloud when connected, and attempts to RE-CONNECT when a save
+// comes in and sync is off (e.g. token expired silently). This closes the "I keep editing but
+// nothing's syncing" window the user kept hitting.
 var _origSave=save;
-save=function(){var r=_origSave();if(SB.mode==='on')sbQueueSave();return r;};
+var _sbRecoverAttempt = 0;
+save=function(){
+  var r=_origSave();
+  if (SB.mode === 'on') {
+    sbQueueSave();
+  } else {
+    // Sync is off but we have local changes — try to recover (refresh token / restart start-up)
+    var sess = typeof sbLoadSession === 'function' ? sbLoadSession() : null;
+    if (sess && !_sbRecoverAttempt) {
+      _sbRecoverAttempt = 1;
+      sbRefresh().then(function(ok){
+        if (ok) { SB.mode = 'on'; sbQueueSave(true); }
+        _sbRecoverAttempt = 0;
+      }).catch(function(){ _sbRecoverAttempt = 0; });
+    }
+  }
+  return r;
+};
+
+// Manual full sync — forces an immediate push + pull cycle and reports the result as a toast,
+// so the user has a reliable "I know this landed on the other device" button. Also auto-refreshes
+// the token if it expired. Avoids the ambiguous "connected but not syncing" state.
+async function sbForcePushNow(){
+  function _toast(msg, bg){
+    var el=document.createElement('div');
+    el.textContent=msg;
+    el.style.cssText='position:fixed;top:60px;inset-inline-start:50%;transform:translateX(50%);background:'+bg+';color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;z-index:999999;box-shadow:0 10px 30px rgba(0,0,0,0.3);max-width:80vw;text-align:center';
+    document.body.appendChild(el);
+    setTimeout(function(){ try { el.remove(); } catch(e){} }, 3500);
+  }
+  if (SB.mode !== 'on' || !SB.token) {
+    _toast('לא מחובר לענן — התחבר/י דרך הכפתור בתפריט', '#dc2626');
+    return;
+  }
+  try {
+    sbBadge('saving');
+    // Refresh token if we're close to expiry (prevents a silent 401 chain of failed pushes)
+    try { await sbRefresh(); } catch(e){}
+    await sbPushState();
+    // Then pull — bring in anything other devices pushed meanwhile
+    SB.rowUpdated = null; // force sbPullState to re-apply even if version matches
+    SB.pending = false;
+    await sbPullState();
+    _toast('✓ סנכרון הסתיים — ' + (state.clients || []).length + ' לקוחות בענן', '#16a34a');
+    if (currentTab === 'detail') renderClientDetail();
+    if (currentTab === 'tasks') renderTasksTab();
+    if (currentTab === 'clients') renderClientsList();
+    if (currentTab === 'dashboard') renderDashboard();
+    renderKanban();
+  } catch(e) {
+    _toast('❌ סנכרון נכשל: ' + (e && e.message ? e.message : e), '#dc2626');
+    console.error('[sync] force-push failed', e);
+  }
+}
 
 // Cloud button — always visible in top bar; label & action depend on signed-in state
 function sbRefreshCloudBtn(){
