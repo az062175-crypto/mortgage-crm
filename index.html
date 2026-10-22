@@ -1718,6 +1718,50 @@ function migrateClient(c) {
       if (t.stage === 'appraisal' && t.title === 'שמאות מוכנה?' && !t.floating) t.floating = true;
     });
   }
+  // Consolidate "בוצע סך" chain into a SINGLE task with an executions[] list — the new UX is a
+  // table of executions (amount+date+notes) with the remaining balance at the bottom. One task,
+  // many rows. Runs on every load so legacy chain-style data gets migrated transparently.
+  try {
+    if (Array.isArray(c.tasks)) {
+      const execChain = c.tasks.filter(x => x.stage === 'execution' && x.hasAmount);
+      if (execChain.length > 0) {
+        const master = execChain.slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))[0];
+        if (!Array.isArray(master.executions)) master.executions = [];
+        // Pull executedAmount from every chain task (including master) into executions[]
+        execChain.forEach(t => {
+          const amt = Number(t.executedAmount) || 0;
+          if (amt <= 0 && !t.executionNotes) return;
+          const existingAlready = master.executions.some(e => e._fromTaskId === t.id);
+          if (existingAlready) return;
+          master.executions.push({
+            id: 'exec_' + Math.random().toString(36).slice(2, 10),
+            amount: amt,
+            date: (t.doneAt || '').slice(0, 10),
+            notes: t.executionNotes || '',
+            _fromTaskId: t.id
+          });
+        });
+        // Remove non-master execution chain tasks (keep master)
+        c.tasks = c.tasks.filter(x => x === master || x.stage !== 'execution' || !x.hasAmount);
+        // Reset master's own executedAmount — the executions[] array is now authoritative
+        delete master.executedAmount;
+        delete master.executionNotes;
+        delete master._followupTaskId;
+        // Fix title + expected amount from the current approval
+        if (/\(יתרה\)/.test(master.title || '')) master.title = 'בוצע סך';
+        const _acc = (c.approvals || []).slice().reverse().find(a => a.accepted);
+        const _approved = _acc ? (Number(_acc.amount) || 0) : 0;
+        if (_approved > 0) master.expectedAmount = _approved;
+        const _totalExec = master.executions.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        if (_approved > 0 && _totalExec >= _approved) {
+          master.status = 'done'; master.done = true;
+          if (!master.doneAt) master.doneAt = now();
+        } else {
+          master.status = 'active'; master.done = false; master.doneAt = null;
+        }
+      }
+    }
+  } catch (e) {}
   // Backfill: seed/migrate the mortgage-deed workflow for clients that already passed the seller stage
   try {
     const _purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
@@ -5278,22 +5322,47 @@ function taskItemHtml(c, t) {
       <input type="date" value="${escapeAttr(t.customDate||'')}" onchange="setTaskCustomDate('${c.id}','${t.id}',this.value)" style="padding:4px 8px;border:1px solid #86efac;border-radius:6px;font-size:13px">
     </div>`;
   } else if (t.stage === 'execution' && t.hasAmount) {
-    // "בוצע סך" — amount input + free text notes
-    const executed = Number(t.executedAmount) || 0;
+    // "בוצע סך" — table of executions (amount+date+notes), with remaining balance at the bottom
+    const executions = Array.isArray(t.executions) ? t.executions : [];
     const expected = Number(t.expectedAmount) || 0;
-    const diff = expected - executed;
+    const totalExec = executions.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const remaining = Math.max(0, expected - totalExec);
+    const execRows = executions.map(e => {
+      const amtStr = (Number(e.amount) || 0) > 0 ? Number(e.amount).toLocaleString('he-IL') + ' ₪' : '';
+      return `<tr style="background:#fff">
+        <td style="padding:4px 6px"><input type="text" inputmode="numeric" value="${escapeAttr(amtStr)}" placeholder="סכום" oninput="onMoneyInput(this)" onchange="setExecutionRowField('${c.id}','${t.id}','${e.id}','amount',parseFormattedNum(this.value))" style="width:100%;padding:3px 6px;border:1px solid #fbbf24;border-radius:4px;font-size:12px;font-family:monospace;text-align:end"></td>
+        <td style="padding:4px 6px"><input type="date" value="${escapeAttr(e.date||'')}" onchange="setExecutionRowField('${c.id}','${t.id}','${e.id}','date',this.value)" style="width:100%;padding:3px 6px;border:1px solid #fbbf24;border-radius:4px;font-size:12px"></td>
+        <td style="padding:4px 6px"><input type="text" value="${escapeAttr(e.notes||'')}" placeholder="הערה" onchange="setExecutionRowField('${c.id}','${t.id}','${e.id}','notes',this.value)" style="width:100%;padding:3px 6px;border:1px solid #fbbf24;border-radius:4px;font-size:12px"></td>
+        <td style="padding:4px 6px;text-align:center"><button type="button" onclick="removeExecutionRow('${c.id}','${t.id}','${e.id}')" title="הסר שורה" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button></td>
+      </tr>`;
+    }).join('');
+    const remColor = remaining <= 0 ? '#16a34a' : (totalExec > 0 ? '#b45309' : '#78350f');
     inlineExtra = `<div style="margin-top:8px;padding:10px 12px;background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;width:100%;box-sizing:border-box">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <label style="font-size:11px;color:#78350f;font-weight:700">💰 סכום שבוצע:</label>
-        <input type="text" inputmode="numeric" value="${executed ? Number(executed).toLocaleString('he-IL') + ' ₪' : ''}" placeholder="${expected ? Number(expected).toLocaleString('he-IL') + ' ₪' : '100,000 ₪'}" oninput="onMoneyInput(this)" onchange="setExecutedAmount('${c.id}','${t.id}', parseFormattedNum(this.value))" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" style="padding:4px 8px;border:1px solid #fbbf24;border-radius:6px;font-size:13px;width:150px;font-family:monospace">
-        <span style="font-size:11px;color:var(--muted)">מתוך אישור: <strong>${fmtMoney(expected)}</strong></span>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead>
+          <tr style="background:#fde68a;color:#78350f;font-weight:700">
+            <th style="padding:4px 6px;text-align:end">סכום שבוצע</th>
+            <th style="padding:4px 6px;text-align:center">תאריך</th>
+            <th style="padding:4px 6px;text-align:center">הערה</th>
+            <th style="padding:4px 6px;width:36px"></th>
+          </tr>
+          <tr style="background:#fef3c7;color:#78350f">
+            <td colspan="4" style="padding:4px 6px;text-align:end"><span style="font-size:11px;color:#92400e">סכום מקור (אישור הבנק):</span> <strong style="font-size:13px">${fmtMoney(expected)}</strong></td>
+          </tr>
+        </thead>
+        <tbody>${execRows || '<tr><td colspan="4" style="padding:8px;text-align:center;color:#92400e;font-size:11px">אין ביצועים עדיין. לחץ "+ הוסף ביצוע" להתחיל.</td></tr>'}</tbody>
+        <tfoot>
+          <tr style="background:${remaining <= 0 ? '#dcfce7' : '#fee2e2'};color:${remColor};font-weight:800">
+            <td style="padding:6px;text-align:end">${remaining <= 0 ? '✓ בוצע במלואו' : 'יתרה שטרם בוצעה:'}</td>
+            <td colspan="2" style="padding:6px;text-align:end">${remaining <= 0 ? fmtMoney(totalExec) : fmtMoney(remaining)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center">
+        <button type="button" class="btn small secondary" style="padding:3px 10px;font-size:11px" onclick="addExecutionRow('${c.id}','${t.id}')">+ הוסף ביצוע</button>
+        <span style="font-size:11px;color:#78350f">סה"כ בוצע: <strong>${fmtMoney(totalExec)}</strong></span>
       </div>
-      <div style="margin-top:6px;display:flex;align-items:center;gap:6px">
-        <label style="font-size:11px;color:#78350f;font-weight:700;white-space:nowrap">📝 הערות:</label>
-        <input type="text" onchange="setExecutionNotes('${c.id}','${t.id}',this.value)" value="${escapeAttr(t.executionNotes||'')}" placeholder="לדוגמא: הועבר בהעברה בנקאית / חלק הועבר, יתרה בשבוע הבא" style="flex:1;padding:4px 8px;border:1px solid #fbbf24;border-radius:6px;font-size:12px;font-family:inherit">
-      </div>
-      ${executed > 0 && diff > 0 ? `<div style="margin-top:6px;padding:6px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;font-size:12px;color:#991b1b">⚠️ יתרה לביצוע: <strong>${fmtMoney(diff)}</strong> — נוצרה משימה חדשה "בוצע סך..." לשלב זה</div>` : ''}
-      ${executed > 0 && diff <= 0 ? `<div style="margin-top:6px;font-size:12px;color:#16a34a;font-weight:700">✓ בוצע במלואו</div>` : ''}
     </div>`;
   } else if (t.stage === 'execution' && t.hasBankerEmail) {
     // "הזמנת שטרי משכנתא" / "הזמנת כתב התחייבות"
@@ -6086,6 +6155,58 @@ function setExecutionNotes(clientId, taskId, val) {
   if (!t) return;
   t.executionNotes = val;
   save();
+}
+
+// Executions-table helpers — replace the single-amount per-task chain with one task that holds
+// an executions[] array (amount + date + notes per row). The task auto-marks done when the sum
+// of executions reaches the approved amount; stays active otherwise.
+function _recomputeExecTaskStatus(c, t) {
+  const executions = Array.isArray(t.executions) ? t.executions : [];
+  const totalExec = executions.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const expected = Number(t.expectedAmount) || 0;
+  if (expected > 0 && totalExec >= expected) {
+    t.status = 'done'; t.done = true; if (!t.doneAt) t.doneAt = now();
+  } else {
+    t.status = 'active'; t.done = false; t.doneAt = null;
+  }
+  // Keep client-level total for backward-compat consumers
+  c.executedAmount = totalExec;
+}
+
+function addExecutionRow(clientId, taskId) {
+  const c = state.clients.find(x => x.id === clientId);
+  const t = c && c.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  if (!Array.isArray(t.executions)) t.executions = [];
+  const today = new Date().toISOString().slice(0, 10);
+  t.executions.push({ id: 'exec_' + Math.random().toString(36).slice(2, 10), amount: 0, date: today, notes: '' });
+  _recomputeExecTaskStatus(c, t);
+  save();
+  if (currentTab === 'detail') renderClientDetail();
+  if (currentTab === 'tasks') renderTasksTab();
+}
+
+function setExecutionRowField(clientId, taskId, execId, field, value) {
+  const c = state.clients.find(x => x.id === clientId);
+  const t = c && c.tasks.find(x => x.id === taskId);
+  if (!t || !Array.isArray(t.executions)) return;
+  const row = t.executions.find(x => x.id === execId);
+  if (!row) return;
+  if (field === 'amount') row.amount = Number(value) || 0;
+  else row[field] = value;
+  _recomputeExecTaskStatus(c, t);
+  save();
+  if (currentTab === 'detail') renderClientDetail();
+}
+
+function removeExecutionRow(clientId, taskId, execId) {
+  const c = state.clients.find(x => x.id === clientId);
+  const t = c && c.tasks.find(x => x.id === taskId);
+  if (!t || !Array.isArray(t.executions)) return;
+  t.executions = t.executions.filter(x => x.id !== execId);
+  _recomputeExecTaskStatus(c, t);
+  save();
+  if (currentTab === 'detail') renderClientDetail();
 }
 
 function setExecutedAmount(clientId, taskId, val) {
