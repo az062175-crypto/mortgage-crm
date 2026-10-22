@@ -6997,6 +6997,20 @@ function setTaskStatus(clientId, taskId, status) {
   }
   const advanced = autoAdvanceIfStageComplete(c);
   save();
+  // Done-celebration — brief visual confirmation then move the task to the bottom.
+  // Delays the re-render by 1s so the user actually sees "it worked" before the row disappears.
+  if (status === 'done') {
+    _celebrateTaskDone();
+    setTimeout(() => {
+      if (advanced) renderKanban();
+      if (currentTab === 'detail') renderClientDetail();
+      if (currentTab === 'tasks') renderTasksTab();
+      const _tle = document.getElementById('tabLeads');
+      const _lv = _tle && _tle.style.display !== 'none';
+      if (currentTab === 'leads' || _lv || c.stage === 'lead') renderLeadsTab();
+    }, 1000);
+    return;
+  }
   if (advanced) renderKanban();
   if (currentTab === 'detail') renderClientDetail();
   if (currentTab === 'tasks') renderTasksTab();
@@ -7005,6 +7019,33 @@ function setTaskStatus(clientId, taskId, status) {
   const leadsVisible = tabLeadsEl && tabLeadsEl.style.display !== 'none';
   if (currentTab === 'leads' || leadsVisible || c.stage === 'lead') renderLeadsTab();
 }
+
+// Floating "✓ בוצע!" toast — flashes briefly when a task is marked done, so the user sees
+// confirmation before the row jumps to the "done" section at the bottom.
+function _celebrateTaskDone() {
+  const el = document.createElement('div');
+  el.className = 'task-done-toast';
+  el.innerHTML = '<span style="font-size:36px">✓</span><div>בוצע!</div>';
+  el.style.cssText = [
+    'position:fixed','top:50%','inset-inline-start:50%',
+    'transform:translate(50%,-50%)',
+    'background:linear-gradient(135deg,#16a34a,#22c55e)','color:#fff',
+    'padding:20px 40px','border-radius:18px','font-size:22px','font-weight:800',
+    'z-index:999999','box-shadow:0 12px 40px rgba(22,163,74,0.5)',
+    'display:flex','align-items:center','gap:14px','pointer-events:none',
+    'animation:taskDonePop 1s ease-out forwards'
+  ].join(';');
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1050);
+}
+// Inject the keyframes once per page load
+(function _injectTaskDoneKeyframes(){
+  if (document.getElementById('taskDoneKeyframes')) return;
+  const s = document.createElement('style');
+  s.id = 'taskDoneKeyframes';
+  s.textContent = '@keyframes taskDonePop{0%{transform:translate(50%,-50%) scale(0.3);opacity:0}25%{transform:translate(50%,-50%) scale(1.15);opacity:1}55%{transform:translate(50%,-50%) scale(1);opacity:1}85%{transform:translate(50%,-50%) scale(1);opacity:1}100%{transform:translate(50%,-50%) scale(0.9);opacity:0}}';
+  document.head.appendChild(s);
+})();
 
 function openAppraiserValueDialog(clientId, taskId) {
   const c = state.clients.find(x => x.id === clientId);
