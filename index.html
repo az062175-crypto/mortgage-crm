@@ -3284,10 +3284,9 @@ function renderDashboard() {
                 <div style="color:var(--muted);font-size:10px;margin-top:2px">נשלח: ${fmtDateTime(a.client.missingDocsFollowUpAt || a.client.missingDocsRequestSentAt)}</div>
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
-                <button class="btn small" style="background:#16a34a;color:#fff" onclick="markMissingDocsReceived('${a.client.id}')" title="סמן שכל המסמכים הגיעו">✓ התקבל</button>
                 ${a.isStale ? `<button class="btn small" style="background:#22c55e;color:#fff" onclick="sendMissingDocsWhatsApp('${a.client.id}',true)">💬 המשך WhatsApp</button>
                 <button class="btn small" style="background:#f59e0b;color:#fff" onclick="sendMissingDocsRequest('${a.client.id}',true)">📧 המשך מייל</button>` : ''}
-                <button class="btn secondary small" onclick="openMissingDocsPopup('${a.client.id}')">👁 פתח</button>
+                <button class="btn small" style="background:#3b82f6;color:#fff" onclick="openMissingDocsPopup('${a.client.id}')" title="פתח ולסמן כל מסמך שהתקבל">👁 פתח ולסמן</button>
               </div>
             </div>`;
           }).join('')}
@@ -8292,6 +8291,16 @@ function markMissingDocsReceived(clientId) {
   refreshTaskAlertsFloat();
 }
 
+// Floating-popup only: dismiss the "24h without response" popup without touching the dashboard reminder
+// or individual document statuses. The dashboard stays visible until every doc is marked provided.
+function dismissMissingDocsPopup(clientId) {
+  const c = state.clients.find(x => x.id === clientId);
+  if (!c) return;
+  c.missingDocsPopupDismissedAt = now();
+  saveNow();
+  refreshTaskAlertsFloat();
+}
+
 // Track which stale requests we've already popped a browser alert for, so we don't spam.
 const _staleMissingDocsPopped = new Set();
 
@@ -8301,7 +8310,12 @@ function checkStaleMissingDocsPopup() {
     if (typeof getStaleMissingDocsAlerts !== 'function') return;
     const alerts = getStaleMissingDocsAlerts().filter(a => a.isStale);
     alerts.forEach(a => {
-      const key = a.client.id + '::' + (a.client.missingDocsFollowUpAt || a.client.missingDocsRequestSentAt || '');
+      const c = a.client;
+      const lastAt = c.missingDocsFollowUpAt || c.missingDocsRequestSentAt || '';
+      // Floating popup only — if the user dismissed it after the latest send, don't re-pop
+      // (even if the dashboard still shows the reminder).
+      if (c.missingDocsPopupDismissedAt && new Date(c.missingDocsPopupDismissedAt).getTime() >= new Date(lastAt).getTime()) return;
+      const key = c.id + '::' + lastAt;
       if (_staleMissingDocsPopped.has(key)) return;
       _staleMissingDocsPopped.add(key);
       showStaleMissingDocsPopup(a);
@@ -8319,7 +8333,7 @@ function showStaleMissingDocsPopup(a) {
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn small" style="background:#22c55e;color:#fff" onclick="sendMissingDocsWhatsApp('${a.client.id}',true);this.closest('div').parentElement.remove()">💬 המשך WhatsApp</button>
       <button class="btn small" style="background:#f59e0b;color:#fff" onclick="sendMissingDocsRequest('${a.client.id}',true);this.closest('div').parentElement.remove()">📧 המשך מייל</button>
-      <button class="btn small" style="background:#16a34a;color:#fff" onclick="markMissingDocsReceived('${a.client.id}');this.closest('div').parentElement.remove()">✓ התקבל</button>
+      <button class="btn small" style="background:#16a34a;color:#fff" onclick="dismissMissingDocsPopup('${a.client.id}');this.closest('div').parentElement.remove()" title="התראה זו לא תקפוץ שוב — הסימון בדשבורד נשאר עד שתסמן כל מסמך שהתקבל">✓ סגור התראה</button>
       <button class="btn small" style="background:#6366f1;color:#fff" onclick="snoozeMissingDocsAlert('${a.client.id}',1);this.closest('div').parentElement.remove()" title="התזכורת לא תקפוץ שוב עד מחר">⏰ תזכיר מחר</button>
       <button class="btn small secondary" onclick="_openSnoozePicker('${a.client.id}', this)" title="דחה לתאריך אחר">📅 תאריך אחר</button>
       <button class="btn small secondary" onclick="this.closest('div').parentElement.remove()">סגור</button>
