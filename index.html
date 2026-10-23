@@ -8375,6 +8375,11 @@ function getStaleMissingDocsAlerts() {
     const stillPending = (c.requirements || []).some(r => r.status === 'pending');
     if (!stillPending) return;
     const lastAt = c.missingDocsFollowUpAt || c.missingDocsRequestSentAt;
+    // If the user marked the request as received AFTER the last send, this alert is closed —
+    // skip even if sync later restored missingDocsRequestSentAt from another device.
+    if (c.missingDocsReceivedAt && new Date(c.missingDocsReceivedAt).getTime() >= new Date(lastAt).getTime()) return;
+    // Snooze: if missingDocsFollowUpAt is in the future (set by snoozeMissingDocsAlert), skip until it arrives.
+    if (new Date(lastAt).getTime() > nowMs) return;
     const hours = (nowMs - new Date(lastAt).getTime()) / 3600000;
     out.push({ client: c, hours: Math.round(hours), isStale: hours >= 24, channel: c.missingDocsRequestChannel || 'email' });
   });
