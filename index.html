@@ -18941,12 +18941,11 @@ function sbQueueSave(immediate){
   if(SB.mode!=='on')return;
   SB.pending=true;sbBadge('pending');
   clearTimeout(SB.saveTimer);
-  if (immediate) {
-    // Flush right away — no debounce. Used for critical actions like client creation/deletion.
-    sbPushState();
-  } else {
-    SB.saveTimer=setTimeout(sbPushState,1200);
-  }
+  // Instant-save model: push immediately on every change. The mutex in sbPushState (SB._pushing +
+  // SB.pending) coalesces bursts automatically — rapid clicks collapse into one trailing push, so
+  // we never spam the server, but a single edit flushes right away.
+  // A very short safety debounce (80ms) only groups synchronous same-tick writes.
+  SB.saveTimer=setTimeout(sbPushState, immediate ? 0 : 80);
 }
 
 // Explicit "save and push to cloud immediately" — call after critical mutations (create/delete client, etc.)
