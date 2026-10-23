@@ -10603,36 +10603,43 @@ function openNewClientModal(editClient, warningMessage) {
       <!-- Col 1: Personal -->
       <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px">
         <div style="font-weight:700;color:var(--accent);font-size:13px;margin-bottom:10px">1. פרטי לקוח</div>
-        <div id="borrower1Wrap">
-          <div style="font-weight:600;font-size:12px;color:var(--muted);margin-bottom:6px" id="b1Title">פרטי לווה</div>
-          <div class="form-row">
-            <div class="form-group" style="flex:1"><label>שם משפחה *</label><input id="fFamily1" oninput="_mirrorFamilyNameToSpouse(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fFirst1').focus()}"></div>
-            <div class="form-group" style="flex:1"><label>שם פרטי *</label><input id="fFirst1" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fMarital').focus()}"></div>
-          </div>
-          <input type="hidden" id="fName1">
-        </div>
-        <div class="form-group">
+
+        <div class="form-group" style="margin-bottom:12px">
           <label>מצב משפחתי *</label>
           <select id="fMarital" onchange="onMaritalChange()">
             <option value="single">רווק / נשוי — לווה יחיד</option>
             <option value="married" selected>נשוי — שני לווים</option>
           </select>
         </div>
-        <div class="form-group"><label>מספר זהות</label><input id="fId1"></div>
-        <div class="form-row">
-          <div class="form-group" style="flex:1"><label>תאריך לידה</label><input id="fDob1" type="date" max="${todayLocal()}"></div>
-          <div class="form-group" style="flex:1"><label>תאריך הנפקת ת"ז</label><input id="fIdIssue1" type="date" max="${todayLocal()}"></div>
+
+        <!-- Borrower 1 card -->
+        <div id="borrower1Wrap" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="background:#3b82f6;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px">לווה 1</span>
+            <span id="b1Title" style="font-weight:600;font-size:13px;color:#1e3a8a">פרטי הבעל</span>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1"><label>שם משפחה *</label><input id="fFamily1" oninput="_mirrorFamilyNameToSpouse(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fFirst1').focus()}"></div>
+            <div class="form-group" style="flex:1"><label>שם פרטי *</label><input id="fFirst1" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fId1').focus()}"></div>
+          </div>
+          <input type="hidden" id="fName1">
+          <div class="form-group"><label>מספר זהות</label><input id="fId1"></div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1"><label>תאריך לידה</label><input id="fDob1" type="date" max="${todayLocal()}"></div>
+            <div class="form-group" style="flex:1"><label>תאריך הנפקת ת"ז</label><input id="fIdIssue1" type="date" max="${todayLocal()}"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1"><label>טלפון</label><input id="fPhone" type="tel"></div>
+            <div class="form-group" style="flex:1"><label>מייל</label><input id="fEmail" type="email" placeholder="name@example.com"></div>
+          </div>
         </div>
-        <div class="form-group">
-          <label>טלפון קשר</label>
-          <input id="fPhone" type="tel">
-        </div>
-        <div class="form-group">
-          <label>מייל</label>
-          <input id="fEmail" type="email" placeholder="name@example.com">
-        </div>
-        <div id="borrower2Wrap" style="display:none">
-          <div style="font-weight:600;font-size:12px;color:var(--muted);margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)">פרטי בת/בן הזוג</div>
+
+        <!-- Borrower 2 card — identical layout -->
+        <div id="borrower2Wrap" style="display:none;background:#fdf4ff;border:1px solid #f0abfc;border-radius:10px;padding:12px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="background:#a855f7;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px">לווה 2</span>
+            <span style="font-weight:600;font-size:13px;color:#6b21a8">פרטי בת הזוג</span>
+          </div>
           <div class="form-row">
             <div class="form-group" style="flex:1"><label>שם משפחה</label><input id="fFamily2" oninput="this.dataset.manual='1'" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fFirst2').focus()}"></div>
             <div class="form-group" style="flex:1"><label>שם פרטי</label><input id="fFirst2" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fId2').focus()}"></div>
@@ -10640,12 +10647,12 @@ function openNewClientModal(editClient, warningMessage) {
           <input type="hidden" id="fName2">
           <div class="form-group"><label>מספר זהות</label><input id="fId2"></div>
           <div class="form-row">
-            <div class="form-group" style="flex:1"><label>טלפון</label><input id="fPhone2" type="tel"></div>
-            <div class="form-group" style="flex:1"><label>מייל</label><input id="fEmail2" type="email" placeholder="name@example.com"></div>
-          </div>
-          <div class="form-row">
             <div class="form-group" style="flex:1"><label>תאריך לידה</label><input id="fDob2" type="date" max="${todayLocal()}"></div>
             <div class="form-group" style="flex:1"><label>תאריך הנפקת ת"ז</label><input id="fIdIssue2" type="date" max="${todayLocal()}"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:1"><label>טלפון</label><input id="fPhone2" type="tel"></div>
+            <div class="form-group" style="flex:1"><label>מייל</label><input id="fEmail2" type="email" placeholder="name@example.com"></div>
           </div>
         </div>
       </div>
