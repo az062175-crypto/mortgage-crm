@@ -208,6 +208,10 @@
   /* Grid layout for detail */
   .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 900px) { .detail-grid { grid-template-columns: 1fr; } .kanban { grid-template-columns: repeat(4, 1fr); } .timers { grid-template-columns: 1fr; } }
+  /* Client new/edit modal: 3-col → 2-col when viewport can't comfortably fit three. */
+  @media (max-width: 1060px) {
+    .modal .newClientGrid { grid-template-columns: repeat(2, 1fr) !important; }
+  }
 
   /* ---------------- Mobile (up to 768px) — mobile-first redesign ---------------- */
   @media (max-width: 768px) {
@@ -10988,9 +10992,10 @@ function openNewClientModal(editClient, warningMessage) {
       <button class="btn secondary" onclick="closeModal()">ביטול</button>
     </div>
   `);
-  // Widen the modal for 3 columns and prevent accidental backdrop-close (only ✕ / שמור / ביטול close it)
+  // Widen the modal for 3 columns and prevent accidental backdrop-close (only ✕ / שמור / ביטול close it).
+  // Cap width to the viewport so narrow windows (split screen, laptop at 1024px) don't clip the left edge.
   const _mcCl = document.getElementById('modalContent');
-  _mcCl.style.maxWidth = '1000px';
+  _mcCl.style.maxWidth = 'min(1000px, calc(100vw - 40px))';
   _mcCl.style.position = 'relative';
   _mcCl.dataset.noBackdropClose = '1';
   if (isEdit) {
