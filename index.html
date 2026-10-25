@@ -1757,6 +1757,12 @@ function migrateClient(c) {
       if (t.stage === 'appraisal' && t.title === 'שמאות מוכנה?' && !t.floating) t.floating = true;
     });
   }
+  // Cleanup: "הפניה לשמאי" is always a TASK, never a REQUIREMENT. If an old client or a stray settings
+  // seed created one as a requirement, remove it — otherwise it shows up twice (once in requirements,
+  // once in tasks) under the "שמאות" subsection in the client-doc list.
+  if (Array.isArray(c.requirements)) {
+    c.requirements = c.requirements.filter(r => !(r && r.name === 'הפניה לשמאי'));
+  }
   // Auto-advance past an empty stage on every load — e.g. "בטחונות בנק" that ended up with no
   // tasks + no pending reqs should move forward automatically, so the user doesn't see a stuck panel.
   try {
@@ -7230,19 +7236,22 @@ function _showToast(msg, kind) {
 function openAppraiserValueDialog(clientId, taskId) {
   const c = state.clients.find(x => x.id === clientId);
   const label = propertyValueLabel(c);
+  // Pre-fill with existing appraiser value if any, otherwise contract price — so a "no change" case is one click.
+  const preset = Number(c.appraiserValue) > 0 ? Number(c.appraiserValue) : (Number(c.propertyValue) || '');
   showModal(`
     <h2 class="modal-title">כמה אושר שווי ע"פ השמאי</h2>
     <p style="color:var(--muted);font-size:13px;margin:0 0 10px">${label}: <strong>${fmtMoney(c.propertyValue)}</strong></p>
     <div class="form-group">
       <label>שווי השמאי (₪) *</label>
-      <input id="avAmount" type="number" min="0" step="1000" style="width:100%;font-size:16px">
+      <input id="avAmount" type="number" min="0" step="1000" style="width:100%;font-size:16px" value="${preset || ''}">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">מולא לפי מחיר החוזה. ערוך אם השמאי נתן ערך אחר, או שמור ישר.</div>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="submitAppraiserValue('${clientId}','${taskId}')">שמור</button>
       <button class="btn secondary" onclick="closeModal()">ביטול</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('avAmount').focus(), 50);
+  setTimeout(() => { const el = document.getElementById('avAmount'); if (el) { el.focus(); el.select && el.select(); } }, 50);
 }
 
 function submitAppraiserValue(clientId, taskId) {
@@ -7363,12 +7372,17 @@ if (!document.getElementById('confettiStyle')) {
 
 function openPrincipalApprovalDialog(clientId, taskId) {
   const c = state.clients.find(x => x.id === clientId);
+  // Pre-fill with the requested loan amount — if the bank approved exactly what we asked, one click to save.
+  const preset = (window._paCtx && window._paCtx.taskId===taskId && window._paCtx.amount)
+    ? window._paCtx.amount
+    : (Number(c.loanAmount) || '');
   showModal(`
     <h2 class="modal-title">התקבל אישור עקרוני</h2>
     <p style="color:var(--muted);font-size:13px;margin:0 0 10px">סכום מבוקש: <strong>${fmtMoney(c.loanAmount)}</strong></p>
     <div class="form-group">
       <label>הסכום שאושר (₪) *</label>
-      <input id="paAmount" type="number" min="0" step="1000" style="width:100%;font-size:16px" placeholder="לדוגמה: 1500000" value="${(window._paCtx && window._paCtx.taskId===taskId) ? (window._paCtx.amount||'') : ''}">
+      <input id="paAmount" type="number" min="0" step="1000" style="width:100%;font-size:16px" placeholder="לדוגמה: 1500000" value="${preset || ''}">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">מולא לפי הסכום המבוקש. ערוך אם הבנק אישר סכום אחר, או שמור ישר.</div>
     </div>
     <div id="paWarn" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 12px;border-radius:8px;font-weight:600;font-size:13px;margin-bottom:12px"></div>
     <div class="modal-actions">
@@ -7376,7 +7390,7 @@ function openPrincipalApprovalDialog(clientId, taskId) {
       <button class="btn secondary" onclick="closeModal()">ביטול</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('paAmount').focus(), 50);
+  setTimeout(() => { const el = document.getElementById('paAmount'); if (el) { el.focus(); el.select && el.select(); } }, 50);
 }
 
 function submitPrincipalApproval(clientId, taskId) {
@@ -18280,6 +18294,11 @@ function _silentSyncStageDefaults() {
   });
   const tasksMap = (state.settings && state.settings.stageTasks) || {};
   const reqsMap = (state.settings && state.settings.stageRequirements) || {};
+  // Hard-prune: "הפניה לשמאי" is always a task, never a stage requirement. Strip it if it slipped
+  // into settings (via an older migration or a mis-click in the settings UI).
+  if (reqsMap.appraisal && Array.isArray(reqsMap.appraisal)) {
+    reqsMap.appraisal = reqsMap.appraisal.filter(n => n !== 'הפניה לשמאי');
+  }
   let changed = false;
   // Universal appraisal task: "הפניה לשמאי" — must exist on every client that reached the appraisal stage
   const apprIdx = STAGES.findIndex(s => s.id === 'appraisal');
