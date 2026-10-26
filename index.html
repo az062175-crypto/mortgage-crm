@@ -6054,7 +6054,10 @@ function openContactEmailDialog(clientId, contextTitle) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
   const clientName = c.name || '—';
-  const subject = _emailSubjectClient(c) + (contextTitle ? ' · ' + contextTitle : '');
+  // Two subject forms: full (for third parties) and client-only (just task title).
+  // The subject rebuilds live as the user ticks recipients — all-client → short, any-other → full.
+  const subjectFull = _emailSubjectClient(c) + (contextTitle ? ' · ' + contextTitle : '');
+  const subjectClient = contextTitle || clientName;
   const greeting = greetingByHour();
   const bodyPreset = `${greeting},\n\n\n\nבתודה מראש,\nיצחק`;
   // Client & borrowers — at the top of the list
@@ -6081,7 +6084,7 @@ function openContactEmailDialog(clientId, contextTitle) {
       <div id="contactEmailList" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px">
         ${all.map(r => `
           <label class="ct-em-row" data-name="${escapeAttr((r.name||'').toLowerCase())}" data-cat="${escapeAttr((r.category||'').toLowerCase())}" style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background=''">
-            <input type="checkbox" class="ctEmailChk" data-email="${escapeAttr(r.email)}" data-name="${escapeAttr(r.name||'')}" style="width:16px;height:16px;accent-color:var(--accent)">
+            <input type="checkbox" class="ctEmailChk" data-email="${escapeAttr(r.email)}" data-name="${escapeAttr(r.name||'')}" data-is-client="${r.isClient?'1':'0'}" style="width:16px;height:16px;accent-color:var(--accent)">
             <span><strong>${escapeHtml(r.name||'')}</strong> · <span style="color:var(--muted);font-size:11px">${escapeHtml(r.category||'')}${r.company?' · '+escapeHtml(r.company):''}</span> · <span style="color:var(--accent);font-size:11px">${escapeHtml(r.email)}</span></span>
           </label>
         `).join('')}
@@ -6090,7 +6093,7 @@ function openContactEmailDialog(clientId, contextTitle) {
     </div>
     <div class="form-group">
       <label>נושא</label>
-      <input id="ctEmailSubject" value="${escapeAttr(subject)}" style="width:100%">
+      <input id="ctEmailSubject" value="${escapeAttr(subjectFull)}" data-subject-full="${escapeAttr(subjectFull)}" data-subject-client="${escapeAttr(subjectClient)}" style="width:100%">
     </div>
     <div class="form-group">
       <label>גוף המייל</label>
@@ -6103,9 +6106,21 @@ function openContactEmailDialog(clientId, contextTitle) {
   `);
   document.getElementById('modalContent').style.maxWidth = '700px';
   document.querySelectorAll('.ctEmailChk').forEach(cb => cb.addEventListener('change', () => {
-    const n = document.querySelectorAll('.ctEmailChk:checked').length;
-    document.getElementById('ctEmailCount').textContent = n;
+    const checked = Array.from(document.querySelectorAll('.ctEmailChk:checked'));
+    document.getElementById('ctEmailCount').textContent = checked.length;
+    // Live subject flip: all picks are clients (and at least one) → short task-title subject;
+    // any non-client in the mix (or nothing yet) → full "name · ת"ז ID · task" subject.
+    const subj = document.getElementById('ctEmailSubject');
+    if (!subj || subj.dataset.userEdited === '1') return;
+    const hasOther = checked.some(cb2 => cb2.getAttribute('data-is-client') !== '1');
+    const next = (checked.length > 0 && !hasOther)
+      ? (subj.getAttribute('data-subject-client') || '')
+      : (subj.getAttribute('data-subject-full') || '');
+    if (subj.value !== next) subj.value = next;
   }));
+  // Track manual edits — once the user types in the subject, stop auto-flipping it.
+  const _subjEl = document.getElementById('ctEmailSubject');
+  if (_subjEl) _subjEl.addEventListener('input', () => { _subjEl.dataset.userEdited = '1'; });
   // Focus body cursor at the empty middle line
   setTimeout(() => {
     const ta = document.getElementById('ctEmailBody');
