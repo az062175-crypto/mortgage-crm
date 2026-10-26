@@ -601,6 +601,7 @@
   <div class="topbar-sep"></div>
   <button class="tab-btn" data-tab="tasks">✅ משימות</button>
   <button class="tab-btn active" data-tab="dashboard">📊 דשבורד</button>
+  <button class="tab-btn" data-tab="control" title="המנהל האישי שלך — דחיפויות, סיכונים, תדריך בוקר">🎯 לוח בקרה</button>
   <button class="tab-btn" data-tab="settings">⚙️ הגדרות</button>
   <button class="tab-btn tab-btn-add" id="btnNewLead" title="צור ליד חדש">+ ליד חדש</button>
   <button class="tab-btn tab-btn-add" id="btnNew" title="צור לקוח חדש">+ לקוח חדש</button>
@@ -632,6 +633,7 @@ function closeTopbarMenu(){const m=document.getElementById('topbarMenu');if(m)m.
 
 <div class="content">
   <div id="tabDashboard"></div>
+  <div id="tabControl" style="display:none"></div>
   <div id="tabLeads" style="display:none"></div>
   <div id="tabClients" style="display:none"></div>
   <div id="tabTasks" style="display:none"></div>
@@ -642,6 +644,7 @@ function closeTopbarMenu(){const m=document.getElementById('topbarMenu');if(m)m.
 <!-- Mobile Bottom Navigation -->
 <nav id="mobileBottomNav">
   <button class="nav-item" data-tab="dashboard" onclick="switchTab('dashboard')"><span class="icon">📊</span><span>דשבורד</span></button>
+  <button class="nav-item" data-tab="control" onclick="switchTab('control')"><span class="icon">🎯</span><span>לוח בקרה</span></button>
   <button class="nav-item" data-tab="leads" onclick="switchTab('leads')"><span class="icon">📞</span><span>לידים</span></button>
   <button class="nav-item" data-tab="clients" onclick="switchTab('clients')"><span class="icon">👥</span><span>לקוחות</span></button>
   <button class="nav-item" data-tab="tasks" onclick="switchTab('tasks')"><span class="icon">✅</span><span>משימות</span></button>
@@ -2337,10 +2340,11 @@ function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('#mobileBottomNav .nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  ['tabDashboard','tabLeads','tabClients','tabTasks','tabSettings','tabDetail'].forEach(id => {
+  ['tabDashboard','tabControl','tabLeads','tabClients','tabTasks','tabSettings','tabDetail'].forEach(id => {
     document.getElementById(id).style.display = 'none';
   });
   if (tab === 'dashboard') { document.getElementById('tabDashboard').style.display = ''; renderDashboard(); }
+  if (tab === 'control') { document.getElementById('tabControl').style.display = ''; renderControlBoard(); }
   if (tab === 'leads') {
     // Clicking the "לידים" tab shows active leads (waiting leads accessed via the chip)
     leadsFilter = { status: 'active', search: '' };
@@ -2905,6 +2909,339 @@ function markNoteRead(clientId, noteId) {
   n.readByOwner = true;
   save();
   renderDashboard();
+}
+
+// ============================================================
+// לוח בקרה — the "Chief of Staff" view. Reads live state, ranks urgency, surfaces risks.
+// Seven sections, each independent. Never mutates state — read-only diagnostics.
+// ============================================================
+function _cbActiveClients() {
+  return (state.clients || []).filter(c => c.stage !== 'lead' && c.stage !== 'archive');
+}
+function _cbDaysBetween(a, b) {
+  if (!a) return 0;
+  return Math.floor(((b || Date.now()) - new Date(a).getTime()) / 86400000);
+}
+function _cbIsClientWaiting(c) {
+  if (!c.missingDocsRequestSentAt) return 0;
+  const stillPending = (c.requirements || []).some(r => r.status === 'pending');
+  if (!stillPending) return 0;
+  if (c.missingDocsReceivedAt && new Date(c.missingDocsReceivedAt) >= new Date(c.missingDocsFollowUpAt || c.missingDocsRequestSentAt)) return 0;
+  return _cbDaysBetween(c.missingDocsFollowUpAt || c.missingDocsRequestSentAt);
+}
+
+// ---- Section 1: עשה עכשיו — top 5 urgent actions ----
+function _cbUrgentTasks() {
+  const nowMs = Date.now();
+  const rows = [];
+  _cbActiveClients().forEach(c => {
+    const stageWeight = (c.stage === 'approval' || c.stage === 'execution' || c.stage === 'signature') ? 50 : 10;
+    const bigDealBonus = (Number(c.loanAmount) || 0) > 1000000 ? 25 : 0;
+    (c.tasks || []).forEach(t => {
+      if (!t || t.status === 'done') return;
+      let score = stageWeight + bigDealBonus;
+      let reason = [];
+      if (t.dueDate) {
+        const d = Math.floor((nowMs - new Date(t.dueDate + 'T23:59:59').getTime()) / 86400000);
+        if (d > 0) { score += 50 + d * 10; reason.push(`באיחור של ${d} ימים`); }
+        else if (d === 0) { score += 30; reason.push('דדליין היום'); }
+        else if (d >= -2) { score += 15; reason.push(`דדליין בעוד ${-d} ימים`); }
+      }
+      const daysInStage = _cbDaysBetween(c.stageEnteredAt);
+      if (daysInStage > 14) { score += 20; reason.push(`${daysInStage} ימים בשלב`); }
+      rows.push({ clientId: c.id, clientName: c.name || '—', stage: c.stage, taskId: t.id, title: t.title, score, reason: reason.join(' · ') || 'שלב דחוף' });
+    });
+  });
+  rows.sort((a, b) => b.score - a.score);
+  return rows.slice(0, 5);
+}
+
+// ---- Section 2: למה תקוע — stuck-reason diagnosis per client ----
+function _cbStuckReasons() {
+  const out = [];
+  _cbActiveClients().forEach(c => {
+    const reasons = [];
+    if (!c.bankerId) reasons.push('לא שובץ בנקאי');
+    if (!c.purposes || !c.purposes.length) reasons.push('לא הוגדרה מטרת הלוואה');
+    if (!c.loanAmount || c.loanAmount <= 0) reasons.push('לא נקוב סכום מבוקש');
+    const waitDays = _cbIsClientWaiting(c);
+    if (waitDays >= 2) reasons.push(`לקוח לא מגיב — ${waitDays} ימים`);
+    const openTasks = (c.tasks || []).filter(t => t.status !== 'done');
+    const overdueTasks = openTasks.filter(t => t.dueDate && new Date(t.dueDate + 'T23:59:59') < new Date());
+    if (overdueTasks.length) reasons.push(`${overdueTasks.length} משימות באיחור`);
+    const daysInStage = _cbDaysBetween(c.stageEnteredAt);
+    const avg = (typeof avgTimeInStage === 'function') ? avgTimeInStage(c.stage) : 0;
+    if (avg > 0 && daysInStage > avg * 2) reasons.push(`${daysInStage} ימים בשלב (ממוצע: ${avg})`);
+    if (c.stage === 'appraisal' && c.requiresAppraisal !== false && !(c.tasks || []).some(t => t.title === 'הפניה לשמאי' && t.status === 'done')) reasons.push('הפניה לשמאי טרם נשלחה');
+    if (c.stage === 'approval' && !c.approvedAmount) reasons.push('טרם נרשם סכום אישור עקרוני');
+    if (reasons.length) out.push({ clientId: c.id, clientName: c.name || '—', stage: c.stage, reasons });
+  });
+  return out;
+}
+
+// ---- Section 3: ניקוד בריאות תיק (0-100) ----
+function _cbHealthScores() {
+  const out = [];
+  _cbActiveClients().forEach(c => {
+    const reqs = c.requirements || [];
+    const total = reqs.length || 1;
+    const done = reqs.filter(r => r.status === 'provided' || r.status === 'not-required').length;
+    const docsPct = (done / total) * 40;
+    const openTasks = (c.tasks || []).filter(t => t.status !== 'done');
+    const overdue = openTasks.filter(t => t.dueDate && new Date(t.dueDate + 'T23:59:59') < new Date()).length;
+    const overduePenalty = Math.min(overdue * 5, 30);
+    const daysInStage = _cbDaysBetween(c.stageEnteredAt);
+    const avg = (typeof avgTimeInStage === 'function') ? avgTimeInStage(c.stage) : 0;
+    const stageOverPenalty = (avg > 0 && daysInStage > avg) ? Math.min((daysInStage - avg), 20) : 0;
+    const bankerBonus = c.bankerId ? 10 : 0;
+    const waitDays = _cbIsClientWaiting(c);
+    const waitPenalty = waitDays >= 2 ? Math.min(waitDays * 2, 20) : 0;
+    const activityBonus = (c.commLog && c.commLog.length && _cbDaysBetween(c.commLog[c.commLog.length-1].at) <= 7) ? 10 : 0;
+    const score = Math.max(0, Math.min(100, Math.round(40 + docsPct + bankerBonus + activityBonus - overduePenalty - stageOverPenalty - waitPenalty)));
+    out.push({ clientId: c.id, clientName: c.name || '—', stage: c.stage, score, docsDone: done, docsTotal: total, overdue, daysInStage });
+  });
+  out.sort((a, b) => a.score - b.score);
+  return out;
+}
+
+// ---- Section 4: תדריך בוקר — one-paragraph summary ----
+function _cbMorningBriefing() {
+  const urgent = _cbUrgentTasks();
+  const stuck = _cbStuckReasons();
+  const health = _cbHealthScores();
+  const critical = health.filter(h => h.score < 40).length;
+  const top = urgent[0];
+  const parts = [];
+  if (top) parts.push(`המוקד היום: <strong>${escapeHtml(top.clientName)}</strong> — ${escapeHtml(top.title)}`);
+  if (stuck.length) parts.push(`<strong>${stuck.length}</strong> תיקים תקועים`);
+  if (critical) parts.push(`<strong>${critical}</strong> בציון בריאות נמוך (&lt;40)`);
+  const waiters = _cbActiveClients().filter(c => _cbIsClientWaiting(c) >= 2).length;
+  if (waiters) parts.push(`<strong>${waiters}</strong> לקוחות לא מגיבים`);
+  if (!parts.length) parts.push('הכל זורם. נדיר, אבל קורה.');
+  return parts.join(' · ');
+}
+
+// ---- Section 5: מי מחכה למי ----
+function _cbWaitingLists() {
+  const waitingForMe = [];
+  const waitingForThem = [];
+  _cbActiveClients().forEach(c => {
+    const waitDays = _cbIsClientWaiting(c);
+    if (waitDays >= 2) waitingForThem.push({ clientId: c.id, clientName: c.name || '—', days: waitDays, channel: c.missingDocsRequestChannel || 'email' });
+    const openOverdue = (c.tasks || []).filter(t => t.status !== 'done' && t.dueDate && new Date(t.dueDate + 'T23:59:59') < new Date());
+    openOverdue.forEach(t => waitingForMe.push({ clientId: c.id, clientName: c.name || '—', taskId: t.id, title: t.title, days: _cbDaysBetween(t.dueDate) }));
+  });
+  waitingForMe.sort((a, b) => b.days - a.days);
+  waitingForThem.sort((a, b) => b.days - a.days);
+  return { waitingForMe: waitingForMe.slice(0, 10), waitingForThem: waitingForThem.slice(0, 10) };
+}
+
+// ---- Section 6: ניצחונות מהירים — one-click closes ----
+function _cbQuickWins() {
+  const out = [];
+  _cbActiveClients().forEach(c => {
+    const pendingReqs = (c.requirements || []).filter(r => r.status === 'pending');
+    if (pendingReqs.length === 1) out.push({ clientId: c.id, clientName: c.name || '—', title: 'דרישה אחרונה: ' + pendingReqs[0].name, kind: 'single-req', reqId: pendingReqs[0].id });
+    const openTasks = (c.tasks || []).filter(t => t.status !== 'done');
+    if (openTasks.length === 1 && !openTasks[0].dueDate) out.push({ clientId: c.id, clientName: c.name || '—', title: 'משימה אחרונה: ' + openTasks[0].title, kind: 'single-task', taskId: openTasks[0].id });
+    if (!c.bankerId && c.stage !== 'lead' && c.stage !== 'client') out.push({ clientId: c.id, clientName: c.name || '—', title: 'שבץ בנקאי לתיק', kind: 'missing-banker' });
+    (c.borrowers || []).forEach((b, i) => {
+      if (!b.phone && !c.phone) out.push({ clientId: c.id, clientName: c.name || '—', title: 'הוסף טלפון ל-' + (b.name || 'לווה ' + (i+1)), kind: 'missing-phone' });
+    });
+  });
+  return out.slice(0, 8);
+}
+
+// ---- Section 7: דחיפויות קריטיות — real-time pressure ----
+function _cbCriticalNow() {
+  const out = [];
+  const nowMs = Date.now();
+  _cbActiveClients().forEach(c => {
+    (c.tasks || []).forEach(t => {
+      if (!t || t.status === 'done' || !t.dueDate) return;
+      const hoursTo = (new Date(t.dueDate + 'T23:59:59').getTime() - nowMs) / 3600000;
+      if (hoursTo < 0) out.push({ clientId: c.id, clientName: c.name || '—', taskId: t.id, title: t.title, level: 'overdue', meta: `באיחור ${Math.floor(-hoursTo/24)} ימים` });
+      else if (hoursTo <= 24) out.push({ clientId: c.id, clientName: c.name || '—', taskId: t.id, title: t.title, level: 'today', meta: `דדליין בעוד ${Math.ceil(hoursTo)} שעות` });
+    });
+    const wait = _cbIsClientWaiting(c);
+    if (wait >= 2) out.push({ clientId: c.id, clientName: c.name || '—', title: 'לקוח לא מגיב', level: wait >= 7 ? 'overdue' : 'today', meta: `${wait} ימים ללא מענה` });
+  });
+  const rank = { overdue: 2, today: 1 };
+  out.sort((a, b) => (rank[b.level] || 0) - (rank[a.level] || 0));
+  return out.slice(0, 10);
+}
+
+function renderControlBoard() {
+  const el = document.getElementById('tabControl');
+  if (!el) return;
+  const urgent = _cbUrgentTasks();
+  const stuck = _cbStuckReasons();
+  const health = _cbHealthScores();
+  const briefing = _cbMorningBriefing();
+  const { waitingForMe, waitingForThem } = _cbWaitingLists();
+  const quickWins = _cbQuickWins();
+  const critical = _cbCriticalNow();
+  const stageColor = (id) => (STAGES.find(s => s.id === id) || {}).color || '#64748b';
+  const stageLabel = (id) => (STAGES.find(s => s.id === id) || {}).label || id;
+  const healthColor = (s) => s >= 70 ? '#16a34a' : s >= 40 ? '#f59e0b' : '#dc2626';
+  const clientLink = (id, name) => `<a onclick="openClient('${id}')" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:none">${escapeHtml(name)}</a>`;
+
+  el.innerHTML = `
+    <div style="max-width:1200px;margin:0 auto;padding:4px">
+
+      <!-- 4. תדריך בוקר -->
+      <div class="panel" style="background:linear-gradient(135deg,#1e293b,#334155);color:#fff;border:none;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+          <span style="font-size:24px">🎯</span>
+          <h2 class="panel-title" style="color:#fff;margin:0">תדריך הבוקר</h2>
+        </div>
+        <div style="font-size:15px;line-height:1.6;color:#e2e8f0">${briefing}</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+        <!-- 1. עשה עכשיו -->
+        <div class="panel" style="border:2px solid #dc2626">
+          <h2 class="panel-title" style="color:#991b1b">🔥 עשה עכשיו — 5 הדחופות ביותר</h2>
+          ${urgent.length === 0 ? '<div class="empty" style="padding:16px">אין משימות דחופות. תהנה מהשקט.</div>' : `
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${urgent.map((u, i) => `
+              <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+                  <div style="flex:1;min-width:200px">
+                    <div style="font-weight:700;color:#7f1d1d">${i+1}. ${escapeHtml(u.title)}</div>
+                    <div style="font-size:12px;color:#64748b;margin-top:2px">${clientLink(u.clientId, u.clientName)} · <span style="background:${stageColor(u.stage)};color:#fff;padding:1px 6px;border-radius:4px;font-size:10px">${stageLabel(u.stage)}</span></div>
+                    <div style="font-size:11px;color:#dc2626;margin-top:2px">⚠️ ${escapeHtml(u.reason)}</div>
+                  </div>
+                  <button class="btn small" onclick="openClient('${u.clientId}')" style="background:#dc2626;color:#fff">פתח תיק</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>`}
+        </div>
+
+        <!-- 7. דחיפויות קריטיות -->
+        <div class="panel" style="border:2px solid #f59e0b">
+          <h2 class="panel-title" style="color:#92400e">⏰ דחיפויות קריטיות (${critical.length})</h2>
+          ${critical.length === 0 ? '<div class="empty" style="padding:16px">אין דחיפויות כרגע.</div>' : `
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${critical.map(c => `
+              <div style="background:${c.level==='overdue'?'#fef2f2':'#fef3c7'};border:1px solid ${c.level==='overdue'?'#fecaca':'#fcd34d'};border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:600;font-size:13px">${escapeHtml(c.title)}</div>
+                  <div style="font-size:11px;color:#64748b">${clientLink(c.clientId, c.clientName)} · <span style="color:${c.level==='overdue'?'#dc2626':'#92400e'}">${escapeHtml(c.meta)}</span></div>
+                </div>
+                <button class="btn small secondary" onclick="openClient('${c.clientId}')" style="padding:3px 10px;font-size:11px">פתח</button>
+              </div>
+            `).join('')}
+          </div>`}
+        </div>
+      </div>
+
+      <!-- 2. למה תקוע -->
+      <div class="panel" style="margin-bottom:16px">
+        <h2 class="panel-title">🚧 למה תקוע? — אבחון לפי תיק (${stuck.length})</h2>
+        ${stuck.length === 0 ? '<div class="empty" style="padding:16px">אין תיקים תקועים. איך זה קרה?</div>' : `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">
+          ${stuck.slice(0, 12).map(s => `
+            <div style="background:#f8fafc;border:1px solid var(--border);border-right:3px solid ${stageColor(s.stage)};border-radius:8px;padding:10px 12px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <div style="font-weight:700">${clientLink(s.clientId, s.clientName)}</div>
+                <span style="background:${stageColor(s.stage)};color:#fff;padding:1px 7px;border-radius:4px;font-size:10px">${stageLabel(s.stage)}</span>
+              </div>
+              <ul style="margin:0;padding-inline-start:16px;font-size:12px;color:#475569;line-height:1.5">
+                ${s.reasons.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+              </ul>
+            </div>
+          `).join('')}
+        </div>
+        ${stuck.length > 12 ? `<div style="margin-top:8px;color:var(--muted);font-size:12px">+${stuck.length-12} תיקים נוספים</div>` : ''}`}
+      </div>
+
+      <!-- 3. ניקוד בריאות תיק -->
+      <div class="panel" style="margin-bottom:16px">
+        <h2 class="panel-title">🏥 בריאות תיקים — הנמוכים ביותר דורשים תשומת לב</h2>
+        ${health.length === 0 ? '<div class="empty" style="padding:16px">אין תיקים פעילים.</div>' : `
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:#f1f5f9">
+            <th style="padding:6px 10px;text-align:right">ציון</th>
+            <th style="padding:6px 10px;text-align:right">לקוח</th>
+            <th style="padding:6px 10px;text-align:right">שלב</th>
+            <th style="padding:6px 10px;text-align:right">מסמכים</th>
+            <th style="padding:6px 10px;text-align:right">באיחור</th>
+            <th style="padding:6px 10px;text-align:right">ימים בשלב</th>
+            <th style="padding:6px 10px;text-align:right"></th>
+          </tr></thead>
+          <tbody>
+            ${health.slice(0, 15).map(h => `
+              <tr style="border-top:1px solid var(--border)">
+                <td style="padding:6px 10px"><span style="background:${healthColor(h.score)};color:#fff;font-weight:800;padding:3px 10px;border-radius:999px;display:inline-block;min-width:40px;text-align:center">${h.score}</span></td>
+                <td style="padding:6px 10px">${clientLink(h.clientId, h.clientName)}</td>
+                <td style="padding:6px 10px"><span style="background:${stageColor(h.stage)};color:#fff;padding:1px 7px;border-radius:4px;font-size:11px">${stageLabel(h.stage)}</span></td>
+                <td style="padding:6px 10px">${h.docsDone}/${h.docsTotal}</td>
+                <td style="padding:6px 10px;color:${h.overdue>0?'#dc2626':'inherit'}">${h.overdue}</td>
+                <td style="padding:6px 10px">${h.daysInStage}</td>
+                <td style="padding:6px 10px"><button class="btn secondary small" onclick="openClient('${h.clientId}')" style="padding:2px 10px;font-size:11px">פתח</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`}
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+        <!-- 5a. מחכה לי -->
+        <div class="panel">
+          <h2 class="panel-title">📥 מחכה לך (${waitingForMe.length})</h2>
+          ${waitingForMe.length === 0 ? '<div class="empty" style="padding:12px">אין משימות שאתה מעכב.</div>' : `
+          <div style="display:flex;flex-direction:column;gap:5px">
+            ${waitingForMe.map(w => `
+              <div style="background:#eff6ff;border-right:3px solid #3b82f6;padding:6px 10px;border-radius:4px">
+                <div style="font-weight:600;font-size:13px">${escapeHtml(w.title)}</div>
+                <div style="font-size:11px;color:#64748b">${clientLink(w.clientId, w.clientName)} · <span style="color:#dc2626">באיחור ${w.days} ימים</span></div>
+              </div>
+            `).join('')}
+          </div>`}
+        </div>
+
+        <!-- 5b. מחכה ללקוח -->
+        <div class="panel">
+          <h2 class="panel-title">📤 מחכה ללקוח (${waitingForThem.length})</h2>
+          ${waitingForThem.length === 0 ? '<div class="empty" style="padding:12px">אין פולואפים פתוחים.</div>' : `
+          <div style="display:flex;flex-direction:column;gap:5px">
+            ${waitingForThem.map(w => `
+              <div style="background:#fef3c7;border-right:3px solid #f59e0b;padding:6px 10px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:600;font-size:13px">${clientLink(w.clientId, w.clientName)}</div>
+                  <div style="font-size:11px;color:#92400e">נשלח ${w.channel==='whatsapp'?'ב-WhatsApp':'במייל'} · ${w.days} ימים ללא תגובה</div>
+                </div>
+                <button class="btn small" style="background:#f59e0b;color:#fff;padding:2px 10px;font-size:11px" onclick="openClient('${w.clientId}')">פתח</button>
+              </div>
+            `).join('')}
+          </div>`}
+        </div>
+      </div>
+
+      <!-- 6. ניצחונות מהירים -->
+      <div class="panel" style="border:2px solid #16a34a">
+        <h2 class="panel-title" style="color:#166534">⚡ ניצחונות מהירים — 10 דקות וזה סגור (${quickWins.length})</h2>
+        ${quickWins.length === 0 ? '<div class="empty" style="padding:12px">אין כרגע. כל התיקים יציבים.</div>' : `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
+          ${quickWins.map(q => `
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 10px">
+              <div style="font-weight:600;font-size:13px">${escapeHtml(q.title)}</div>
+              <div style="font-size:11px;color:#166534;margin-top:2px">${clientLink(q.clientId, q.clientName)}</div>
+              <button class="btn small" style="margin-top:6px;background:#16a34a;color:#fff;padding:3px 10px;font-size:11px" onclick="openClient('${q.clientId}')">סגור עכשיו</button>
+            </div>
+          `).join('')}
+        </div>`}
+      </div>
+
+      <div style="text-align:center;color:var(--muted);font-size:11px;margin-top:16px;padding:8px">
+        הלוח מתעדכן כל פעם שאתה פותח אותו · <button class="btn small secondary" onclick="renderControlBoard()" style="padding:2px 10px;font-size:11px">🔄 רענן עכשיו</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderDashboard() {
