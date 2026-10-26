@@ -11007,9 +11007,13 @@ function openNewClientModal(editClient, warningMessage) {
     </div>
   `);
   // Widen the modal for 3 columns and prevent accidental backdrop-close (only ✕ / שמור / ביטול close it).
-  // Cap width to the viewport so narrow windows (split screen, laptop at 1024px) don't clip the left edge.
+  // Set BOTH width and max-width so the modal always fits the viewport (no horizontal scroll in RTL
+  // where the clipped side would be the left edge).
   const _mcCl = document.getElementById('modalContent');
-  _mcCl.style.maxWidth = 'min(1000px, calc(100vw - 40px))';
+  _mcCl.style.width = 'calc(100vw - 40px)';
+  _mcCl.style.maxWidth = '1000px';
+  _mcCl.style.overflowX = 'hidden';
+  _mcCl.style.boxSizing = 'border-box';
   _mcCl.style.position = 'relative';
   _mcCl.dataset.noBackdropClose = '1';
   if (isEdit) {
