@@ -9006,10 +9006,10 @@ function sendMissingDocsRequest(clientId, isFollowUp) {
   let subject, body;
   if (isFollowUp) {
     subject = 'תזכורת — מסמכים חסרים לתיק המשכנתא';
-    body = `${greeting} ${nameForBody},\n\nזוהי תזכורת ידידותית — טרם התקבלו המסמכים הבאים לתיק המשכנתא:\n\n${missingText}\n\nאשמח לקבל בהקדם כדי שנוכל להמשיך בטיפול.\n\n⚠️ נא להצטייד בת"ז + ספח מקוריים כשמעבירים את המסמכים.\n\nתודה,\nיצחק`;
+    body = `${greeting} ${nameForBody},\n\nזוהי תזכורת ידידותית — טרם התקבלו המסמכים הבאים לתיק המשכנתא:\n\n${missingText}\n\nאשמח לקבל בהקדם כדי שנוכל להמשיך בטיפול.\n\nתודה,\nיצחק`;
   } else {
     subject = 'מסמכים חסרים לתיק המשכנתא';
-    body = `${greeting} ${nameForBody},\n\nלהלן רשימת המסמכים החסרים לתיק המשכנתא:\n\n${missingText}\n\n⚠️ נא להצטייד בת"ז + ספח מקוריים.\n\nאשמח לקבל בהקדם.\n\nתודה,\nיצחק`;
+    body = `${greeting} ${nameForBody},\n\nלהלן רשימת המסמכים החסרים לתיק המשכנתא:\n\n${missingText}\n\nאשמח לקבל בהקדם.\n\nתודה,\nיצחק`;
   }
   const emails = [];
   (c.borrowers||[]).forEach(b => { if (b.email) emails.push(b.email); });
@@ -9064,9 +9064,9 @@ function sendMissingDocsWhatsApp(clientId, isFollowUp) {
   const nameForBody = ((c.borrowers||[])[0]?.name) || c.name || '';
   let body;
   if (isFollowUp) {
-    body = `${greeting} ${nameForBody},\n\nזוהי תזכורת ידידותית — טרם התקבלו המסמכים הבאים לתיק המשכנתא:\n\n${missingText}\n\nאשמח לקבל בהקדם כדי שנוכל להמשיך בטיפול.\n\n⚠️ נא להצטייד בת"ז + ספח מקוריים כשמעבירים את המסמכים.\n\nתודה,\nיצחק`;
+    body = `${greeting} ${nameForBody},\n\nזוהי תזכורת ידידותית — טרם התקבלו המסמכים הבאים לתיק המשכנתא:\n\n${missingText}\n\nאשמח לקבל בהקדם כדי שנוכל להמשיך בטיפול.\n\nתודה,\nיצחק`;
   } else {
-    body = `${greeting} ${nameForBody},\n\nלהלן רשימת המסמכים החסרים לתיק המשכנתא:\n\n${missingText}\n\n⚠️ נא להצטייד בת"ז + ספח מקוריים.\n\nאשמח לקבל בהקדם.\n\nתודה,\nיצחק`;
+    body = `${greeting} ${nameForBody},\n\nלהלן רשימת המסמכים החסרים לתיק המשכנתא:\n\n${missingText}\n\nאשמח לקבל בהקדם.\n\nתודה,\nיצחק`;
   }
   // Determine phone — first borrower's, then client's
   let phone = '';
