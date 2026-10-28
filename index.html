@@ -5431,15 +5431,17 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
   const fullAddress = addrParts.join(', ');
   const shortAddress = [c.propertyAddress, bldg ? 'בניין ' + bldg : '', apt ? 'דירה ' + apt : ''].filter(Boolean).join(' · ');
   const subject = `הערכת נכס ${appraisalKind}${b.bank?' עבור בנק '+b.bank:''} — ${_emailSubjectClient(c)}${shortAddress?' · '+shortAddress:''}`;
-  // Attached documents — list the ACTUAL deal/registration/appraisal documents the user has
-  // collected. Pulls from c.requirements (status=provided/received) + any appraisal-stage task
-  // that is clearly a document (not a process checkpoint). Explicitly excludes:
+  // Attached documents — list the ACTUAL deal/registration/appraisal documents being sent.
+  // Pulls from c.requirements (status=provided/received) + any appraisal-stage task that is
+  // clearly a document (not a process checkpoint). "הפניה לשמאי" is a FORM and IS included —
+  // it rides along with the email. Explicitly excludes:
   //   • post-send follow-up tasks (תואם ביקור? / הועבר תשלום? / שמאות מוכנה?)
-  //   • "הפניה לשמאי" itself — that's the current action, not a document
   //   • floating/value-check tasks (e.g. "כמה אושר שווי")
   //   • "איש קשר לתיאום ביקור" line
   const _POST_SEND_TITLES = new Set(['תואם ביקור?', 'הועבר תשלום?', 'שמאות מוכנה?']);
   const _attachedNames = [];
+  // Always include the referral form itself — it's the attached form that goes with every email.
+  _attachedNames.push('טופס הפניה לשמאי');
   // 1. Documents the user explicitly marked as collected (requirements)
   (c.requirements || []).forEach(r => {
     if (!r || !r.name) return;
@@ -5455,7 +5457,7 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
     if (t.status !== 'done') return;
     if (t.source === 'appraisal-post-send' || t.source === 'appraisal-value-check') return;
     if (t.floating) return;
-    if (t.title === 'הפניה לשמאי') return;
+    if (t.title === 'הפניה לשמאי') return; // Added above as "טופס הפניה לשמאי" — don't duplicate
     if (_POST_SEND_TITLES.has(t.title)) return;
     if (t.title.indexOf('איש קשר לתיאום ביקור') === 0) return;
     _attachedNames.push(t.title.replace(/\s*\([^)]*\)\s*$/, '').trim());
