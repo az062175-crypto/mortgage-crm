@@ -2235,7 +2235,8 @@ function moveStage(client, newStage, options) {
   }
   // If the newly-entered stage ended up empty (no tasks + no pending reqs) — advance again.
   // Chains forward through any string of empty stages until we land on one with real work.
-  if (newStage !== 'archive' && newStage !== 'execution') {
+  // Skipped on explicit backward moves — the user actively returned, don't push them forward again.
+  if (newStage !== 'archive' && newStage !== 'execution' && !opts.skipAutoAdvance) {
     try { autoAdvanceIfStageComplete(client); } catch (e) {}
   }
 }
@@ -9601,8 +9602,19 @@ function quickMove(clientId, stageId, adminOverride) {
         return;
       }
     }
-    moveStage(c, stageId);
-    save(); renderClientDetail(); renderKanban();
+    // Backward moves (e.g. לקוח → ליד) must NOT auto-advance back: the lead stage may be
+    // empty of open tasks (closed automatically when leaving ליד last time), and autoAdvance
+    // would immediately push the client back forward. logBackward also preserves history.
+    const isBackward = targetIdx >= 0 && currentIdx >= 0 && targetIdx < currentIdx;
+    moveStage(c, stageId, isBackward ? { skipAutoAdvance: true, logBackward: true } : undefined);
+    save();
+    // A client sitting in 'lead' belongs on the leads tab (the detail view is for active files).
+    // After moving backward into lead, bounce the user to the leads tab so the UI matches.
+    if (c.stage === 'lead' && currentTab === 'detail') {
+      switchTab('leads');
+      return;
+    }
+    renderClientDetail(); renderKanban();
   } catch (err) {
     console.error('quickMove failed:', err);
     try { _showToast('שגיאה בשינוי שלב: ' + (err && err.message ? err.message : err), 'err'); } catch(e) {}
