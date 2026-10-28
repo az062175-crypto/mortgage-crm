@@ -5445,10 +5445,28 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
   //   • "איש קשר לתיאום ביקור" line
   const _POST_SEND_TITLES = new Set(['תואם ביקור?', 'הועבר תשלום?', 'שמאות מוכנה?']);
   const _attachedNames = [];
+  // Normalize names for dedup: strip trailing (…), trim, lowercase (helps collapse variants).
+  const _norm = s => (s || '').replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
+  // Treat "הפניה לשמאי" and "טופס הפניה לשמאי" (and similar variants) as the same thing —
+  // once the referral form is in alwaysAttached, no document named "הפניה לשמאי" should repeat it.
+  const _isReferralForm = s => {
+    const n = _norm(s);
+    return n === 'הפניה לשמאי' || n === 'טופס הפניה לשמאי';
+  };
+  const _seen = new Set();
+  const _push = (name) => {
+    const clean = _norm(name);
+    if (!clean) return;
+    const key = clean;
+    if (_seen.has(key)) return;
+    _seen.add(key);
+    _attachedNames.push(clean);
+  };
   // Always-attached items from the editable template in Settings
+  let _referralAlreadyAdded = false;
   (_apprTpl.alwaysAttached || []).forEach(n => {
-    const name = (n || '').trim();
-    if (name) _attachedNames.push(name);
+    _push(n);
+    if (_isReferralForm(n)) _referralAlreadyAdded = true;
   });
   // 1. Documents the user explicitly marked as collected (requirements)
   (c.requirements || []).forEach(r => {
@@ -5457,7 +5475,8 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
     if (!isDealDoc) return;
     const st = r.status || 'pending';
     if (st !== 'provided' && st !== 'received' && st !== 'done') return;
-    _attachedNames.push(r.name.replace(/\s*\([^)]*\)\s*$/, '').trim());
+    if (_referralAlreadyAdded && _isReferralForm(r.name)) return; // covered by alwaysAttached
+    _push(r.name);
   });
   // 2. Appraisal-stage DOCUMENT tasks the user marked done (e.g. per-registration docs seeded by appraisalTasksByReg)
   (c.tasks || []).forEach(t => {
@@ -5465,12 +5484,12 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
     if (t.status !== 'done') return;
     if (t.source === 'appraisal-post-send' || t.source === 'appraisal-value-check') return;
     if (t.floating) return;
-    if (t.title === 'הפניה לשמאי') return; // "טופס הפניה לשמאי" comes from alwaysAttached — don't duplicate
+    if (_referralAlreadyAdded && _isReferralForm(t.title)) return; // covered by alwaysAttached
     if (_POST_SEND_TITLES.has(t.title)) return;
     if (t.title.indexOf('איש קשר לתיאום ביקור') === 0) return;
-    _attachedNames.push(t.title.replace(/\s*\([^)]*\)\s*$/, '').trim());
+    _push(t.title);
   });
-  const attachedUniq = [...new Set(_attachedNames)];
+  const attachedUniq = _attachedNames;
   const attachedLines = attachedUniq.length ? attachedUniq.map(n => '* ' + n).join('\n') : '(אין מסמכים מסומנים)';
   // Template-based subject + body — placeholders replaced from client data.
   const _bankSuffix = b.bank ? ' עבור בנק ' + b.bank : '';
