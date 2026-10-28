@@ -10560,7 +10560,7 @@ function renderLeadCard(c, isClosed) {
           <div style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto">
             ${notes.map(n => `
               <div style="padding:6px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:13px;display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
-                <span style="flex:1">${escapeHtml(n.text)}</span>
+                <span style="flex:1;white-space:pre-wrap">${escapeHtml(n.text)}</span>
                 <span style="font-size:11px;color:var(--muted);white-space:nowrap">${fmtDateTime(n.createdAt)}</span>
                 ${!isClosed ? `<button class="icon-btn" onclick="openContactEmailDialog('${c.id}','הערה: ${escapeAttr((n.text||'').slice(0,60))}')" title="שלח מייל" style="padding:0 4px;color:var(--accent)">📧</button><button class="icon-btn" onclick="editLeadNote('${c.id}','${n.id}')" title="ערוך" style="padding:0 4px;color:var(--accent)">✎</button><button class="icon-btn" onclick="deleteLeadNote('${c.id}','${n.id}')" title="מחק הערה" style="padding:0 4px">✕</button>` : ''}
               </div>
@@ -10869,10 +10869,9 @@ function submitNewLead() {
   client.sourceNotes = sourceNotes;
   client.leadNotes = [];
   if (notesRaw) {
-    const lines = notesRaw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    lines.forEach(line => {
-      client.leadNotes.push({ id: uid(), text: line, createdAt: now() });
-    });
+    // Keep as a SINGLE note, preserving the user's own line breaks. Splitting per-line turned
+    // one coherent paragraph into 4 timestamp-stamped notes with the same minute, which is noise.
+    client.leadNotes.push({ id: uid(), text: notesRaw.trim(), createdAt: now() });
   }
   // Seed doc requirements from the info entered
   if (purposes.length > 0 || emp1.length > 0 || emp2.length > 0) {
