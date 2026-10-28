@@ -2944,15 +2944,27 @@ function _cbIsClientWaiting(c) {
 }
 
 // ---- Section 1: עשה עכשיו — top 5 urgent actions ----
+// Tasks that are passive helpers (not actionable items the user should DO today) are excluded here —
+// the executions tracker, the client-summary email, the "approval rejected" escape task, and any task
+// flagged as floating (always-visible reminders, not deadlines).
+function _cbIsPassiveTask(t) {
+  if (!t) return true;
+  if (t.hasAmount) return true;                 // "בוצע סך" — handled in client card
+  if (t.hasClientSummaryEmail) return true;     // "שליחת מייל סיכום ללקוח" — handled in client card
+  if (t.floating) return true;                  // persistent reminders, no deadline
+  if ((t.title || '').indexOf('האישור לא מקובל') === 0) return true; // passive escape task
+  return false;
+}
 function _cbUrgentTasks() {
   const nowMs = Date.now();
   const rows = [];
   _cbActiveClients().forEach(c => {
     if (_cbIsFinished(c)) return;
-    const stageWeight = (c.stage === 'approval' || c.stage === 'execution' || c.stage === 'signature') ? 50 : 10;
+    const stageWeight = (c.stage === 'approval' || c.stage === 'signature') ? 50 : 10;
     const bigDealBonus = (Number(c.loanAmount) || 0) > 1000000 ? 25 : 0;
     (c.tasks || []).forEach(t => {
       if (!t || t.status === 'done') return;
+      if (_cbIsPassiveTask(t)) return;
       let score = stageWeight + bigDealBonus;
       let reason = [];
       if (t.dueDate) {
@@ -2961,8 +2973,11 @@ function _cbUrgentTasks() {
         else if (d === 0) { score += 30; reason.push('דדליין היום'); }
         else if (d >= -2) { score += 15; reason.push(`דדליין בעוד ${-d} ימים`); }
       }
-      const daysInStage = _cbDaysBetween(c.stageEnteredAt);
-      if (daysInStage > 14) { score += 20; reason.push(`${daysInStage} ימים בשלב`); }
+      // "Days in stage" bonus doesn't apply to execution — partial payments span weeks by design.
+      if (c.stage !== 'execution') {
+        const daysInStage = _cbDaysBetween(c.stageEnteredAt);
+        if (daysInStage > 14) { score += 20; reason.push(`${daysInStage} ימים בשלב`); }
+      }
       rows.push({ clientId: c.id, clientName: c.name || '—', stage: c.stage, taskId: t.id, title: t.title, score, reason: reason.join(' · ') || 'שלב דחוף' });
     });
   });
@@ -3085,6 +3100,7 @@ function _cbCriticalNow() {
     if (_cbIsFinished(c)) return;
     (c.tasks || []).forEach(t => {
       if (!t || t.status === 'done' || !t.dueDate) return;
+      if (_cbIsPassiveTask(t)) return;
       const hoursTo = (new Date(t.dueDate + 'T23:59:59').getTime() - nowMs) / 3600000;
       if (hoursTo < 0) out.push({ clientId: c.id, clientName: c.name || '—', taskId: t.id, title: t.title, level: 'overdue', meta: `באיחור ${Math.floor(-hoursTo/24)} ימים` });
       else if (hoursTo <= 24) out.push({ clientId: c.id, clientName: c.name || '—', taskId: t.id, title: t.title, level: 'today', meta: `דדליין בעוד ${Math.ceil(hoursTo)} שעות` });
