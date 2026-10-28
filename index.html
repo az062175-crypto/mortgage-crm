@@ -5431,10 +5431,36 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
   const fullAddress = addrParts.join(', ');
   const shortAddress = [c.propertyAddress, bldg ? 'בניין ' + bldg : '', apt ? 'דירה ' + apt : ''].filter(Boolean).join(' · ');
   const subject = `הערכת נכס ${appraisalKind}${b.bank?' עבור בנק '+b.bank:''} — ${_emailSubjectClient(c)}${shortAddress?' · '+shortAddress:''}`;
-  // Attached documents — only appraisal-stage tasks that were marked done, strip trailing (parens)
-  const attached = c.tasks
-    .filter(t => t.stage === 'appraisal' && t.status === 'done' && t.title.indexOf('איש קשר לתיאום ביקור') !== 0)
-    .map(t => t.title.replace(/\s*\([^)]*\)\s*$/, '').trim());
+  // Attached documents — list the ACTUAL deal/registration/appraisal documents the user has
+  // collected. Pulls from c.requirements (status=provided/received) + any appraisal-stage task
+  // that is clearly a document (not a process checkpoint). Explicitly excludes:
+  //   • post-send follow-up tasks (תואם ביקור? / הועבר תשלום? / שמאות מוכנה?)
+  //   • "הפניה לשמאי" itself — that's the current action, not a document
+  //   • floating/value-check tasks (e.g. "כמה אושר שווי")
+  //   • "איש קשר לתיאום ביקור" line
+  const _POST_SEND_TITLES = new Set(['תואם ביקור?', 'הועבר תשלום?', 'שמאות מוכנה?']);
+  const _attachedNames = [];
+  // 1. Documents the user explicitly marked as collected (requirements)
+  (c.requirements || []).forEach(r => {
+    if (!r || !r.name) return;
+    const isDealDoc = r.section === 'deal' || (r.dealType && r.dealType.indexOf('רישום נכס') === 0);
+    if (!isDealDoc) return;
+    const st = r.status || 'pending';
+    if (st !== 'provided' && st !== 'received' && st !== 'done') return;
+    _attachedNames.push(r.name.replace(/\s*\([^)]*\)\s*$/, '').trim());
+  });
+  // 2. Appraisal-stage DOCUMENT tasks the user marked done (e.g. per-registration docs seeded by appraisalTasksByReg)
+  (c.tasks || []).forEach(t => {
+    if (!t || t.stage !== 'appraisal') return;
+    if (t.status !== 'done') return;
+    if (t.source === 'appraisal-post-send' || t.source === 'appraisal-value-check') return;
+    if (t.floating) return;
+    if (t.title === 'הפניה לשמאי') return;
+    if (_POST_SEND_TITLES.has(t.title)) return;
+    if (t.title.indexOf('איש קשר לתיאום ביקור') === 0) return;
+    _attachedNames.push(t.title.replace(/\s*\([^)]*\)\s*$/, '').trim());
+  });
+  const attached = _attachedNames;
   // Deduplicate
   const attachedUniq = [...new Set(attached)];
   const attachedLines = attachedUniq.length ? attachedUniq.map(n => '* ' + n).join('\n') : '(אין מסמכים מסומנים)';
