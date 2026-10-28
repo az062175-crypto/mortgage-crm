@@ -2918,14 +2918,16 @@ function markNoteRead(clientId, noteId) {
 function _cbActiveClients() {
   return (state.clients || []).filter(c => c.stage !== 'lead' && c.stage !== 'archive');
 }
-// A client is "effectively finished" when sitting in execution with the executions sum covering the
-// approved loan amount — the mortgage is fully paid out and there's nothing left to chase, even if
-// the stage was never manually moved to archive. Exclude these from stuck / health / critical lists.
+// A client in execution is "flowing on its own" and should NOT be surfaced in the control board:
+// - fully paid out (sum covers approved) → finished
+// - partially executed (any amount already paid) → mid-flow, next payment will come naturally;
+//   nothing to chase. Only brand-new execution clients with zero executed stay on the board.
 function _cbIsFinished(c) {
   if (!c || c.stage !== 'execution') return false;
   const execTask = (c.tasks || []).find(t => t && t.hasAmount && t.stage === 'execution');
   if (execTask && (execTask.status === 'done' || execTask.done)) return true;
   const totalExec = Number(c.executedAmount) || 0;
+  if (totalExec > 0) return true; // any partial execution → don't surface
   const acc = (c.approvals || []).find(a => a && a.accepted && Number(a.amount) > 0);
   const approved = acc ? Number(acc.amount) : (Number(c.loanAmount) || 0);
   if (approved > 0 && totalExec >= approved) return true;
@@ -2951,10 +2953,16 @@ function _cbIsPassiveTask(t, c) {
   if (!t) return true;
   if (t.hasAmount) return true;                 // "בוצע סך" — handled in client card
   if (t.hasClientSummaryEmail) return true;     // "שליחת מייל סיכום ללקוח" — handled in client card
-  // Floating reminders stay actionable ONLY while the client is still in the task's own stage
-  // (e.g. "שמאות מוכנה?" shows while in שמאות — hides after the client has moved on).
+  // Floating reminders are actionable from the task's own stage onwards (as long as not done):
+  // - At the task's stage → actionable ("השלב הבא")
+  // - Past the task's stage and still not done → actionable (overdue, something was skipped)
+  // - Before the task's stage → still a future reminder, hide it
   if (t.floating) {
-    if (c && t.stage && c.stage && t.stage === c.stage) return false;
+    if (c && t.stage && c.stage) {
+      const taskIdx = STAGES.findIndex(s => s.id === t.stage);
+      const clientIdx = STAGES.findIndex(s => s.id === c.stage);
+      if (taskIdx >= 0 && clientIdx >= 0 && clientIdx >= taskIdx) return false;
+    }
     return true;
   }
   if ((t.title || '').indexOf('האישור לא מקובל') === 0) return true; // passive escape task
