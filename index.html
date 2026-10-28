@@ -2287,6 +2287,11 @@ function autoAdvanceIfStageComplete(client) {
   if (idx < 0 || idx >= STAGES.length - 1) return;
   // Never auto-advance from execution to archive — user must actively archive via the "העברה לארכיון" task
   if (stage === 'execution') return false;
+  // Never auto-advance from lead → client. Promoting a lead to a client is an explicit decision
+  // ("סגרנו עסקה") that requires filling the full client form; an empty lead stage is NOT a signal
+  // to graduate. Without this guard, a user who moved a client back to 'lead' sees it bounce
+  // back to 'client' on next page load (migrateClient runs autoAdvance on every load).
+  if (stage === 'lead') return false;
   const stageTasks = client.tasks.filter(t => t.stage === stage && !t.floating);
   const stageReqs = client.requirements.filter(r => r.stage === stage && r.status !== 'not-required');
   // Treat an empty stage (no tasks, no pending reqs) as complete — nothing to wait on, advance.
