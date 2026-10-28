@@ -2187,6 +2187,10 @@ function moveStage(client, newStage, options) {
   const shouldLog = !isBackward || opts.logBackward === true;
   const wasLead = client.stage === 'lead';
   client.stage = newStage;
+  // Stamp a dedicated timestamp for the stage change itself. The merge layer uses this to pick
+  // the authoritative stage even when another device/tab pushed an unrelated edit later: the stage
+  // field has its OWN clock, independent of the client's container-level _updatedAt.
+  client.stageUpdatedAt = now();
   // Leaving the "lead" stage — auto-close any remaining lead follow-up tasks (שיחת פולואפ etc.)
   if (wasLead && newStage !== 'lead') {
     (client.tasks || []).forEach(t => {
@@ -19499,6 +19503,18 @@ function _mergeTwoClientVersions(a, b) {
   const newer = _ts(a) >= _ts(b) ? a : b;
   const older = newer === a ? b : a;
   const merged = Object.assign({}, newer);
+  // STAGE has its OWN timestamp: the user's explicit stage change (moveStage → stageUpdatedAt)
+  // must win over an unrelated edit from another device, even when that other edit touched the
+  // container _updatedAt later. Prevents "I moved him to ליד, refreshed, and he's back to לקוח"
+  // when a stale device/tab recently pushed any trivial change to the same client.
+  const _stageTs = c => new Date((c && c.stageUpdatedAt) || 0).getTime();
+  const sa = _stageTs(a), sb = _stageTs(b);
+  if (sa !== sb) {
+    const stageWinner = sa > sb ? a : b;
+    merged.stage = stageWinner.stage;
+    merged.stageUpdatedAt = stageWinner.stageUpdatedAt;
+    if (stageWinner.stageEnteredAt) merged.stageEnteredAt = stageWinner.stageEnteredAt;
+  }
   // Protect top-level identity/contact scalars from being blanked by a stale device.
   _CLIENT_PROTECT_IF_EMPTY.forEach(k => {
     if (_isEmptyVal(merged[k]) && !_isEmptyVal(older[k])) merged[k] = older[k];
