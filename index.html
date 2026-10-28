@@ -9582,25 +9582,31 @@ function updateNotes(clientId, val) {
 }
 
 function quickMove(clientId, stageId, adminOverride) {
-  const c = state.clients.find(x => x.id === clientId);
-  if (!c || c.stage === stageId) return;
-  const currentIdx = stageIndex(c.stage);
-  const targetIdx = stageIndex(stageId);
-  const isForward = targetIdx > currentIdx;
-  const isArchive = stageId === 'archive';
-  // Skip admin dialog if target stage was already visited (returning to a stage we've been to)
-  const alreadyVisited = (c.stageHistory||[]).some(h => h.stage === stageId);
-  if (isForward && !isArchive && !adminOverride && !alreadyVisited) {
-    const stageTasks = c.tasks.filter(t => t.stage === c.stage);
-    const allDone = stageTasks.length > 0 && stageTasks.every(t => (t.status||'active') === 'done');
-    if (!allDone) {
-      const undone = stageTasks.filter(t => (t.status||'active') !== 'done').map(t => t.title);
-      openStageOverrideDialog(clientId, stageId, undone);
-      return;
+  try {
+    const c = state.clients.find(x => x.id === clientId);
+    if (!c) { try { _showToast('לקוח לא נמצא', 'err'); } catch(e){} return; }
+    if (c.stage === stageId) { try { _showToast('הלקוח כבר בשלב "' + stageInfo(stageId).label + '"', 'err'); } catch(e){} return; }
+    const currentIdx = stageIndex(c.stage);
+    const targetIdx = stageIndex(stageId);
+    const isForward = targetIdx > currentIdx;
+    const isArchive = stageId === 'archive';
+    // Skip admin dialog if target stage was already visited (returning to a stage we've been to)
+    const alreadyVisited = (c.stageHistory||[]).some(h => h.stage === stageId);
+    if (isForward && !isArchive && !adminOverride && !alreadyVisited) {
+      const stageTasks = (c.tasks || []).filter(t => t.stage === c.stage);
+      const allDone = stageTasks.length === 0 || stageTasks.every(t => (t.status||'active') === 'done');
+      if (!allDone) {
+        const undone = stageTasks.filter(t => (t.status||'active') !== 'done').map(t => t.title);
+        openStageOverrideDialog(clientId, stageId, undone);
+        return;
+      }
     }
+    moveStage(c, stageId);
+    save(); renderClientDetail(); renderKanban();
+  } catch (err) {
+    console.error('quickMove failed:', err);
+    try { _showToast('שגיאה בשינוי שלב: ' + (err && err.message ? err.message : err), 'err'); } catch(e) {}
   }
-  moveStage(c, stageId);
-  save(); renderClientDetail(); renderKanban();
 }
 
 function openStageOverrideDialog(clientId, targetStage, undoneTitles) {
