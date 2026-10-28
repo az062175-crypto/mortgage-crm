@@ -2947,11 +2947,16 @@ function _cbIsClientWaiting(c) {
 // Tasks that are passive helpers (not actionable items the user should DO today) are excluded here —
 // the executions tracker, the client-summary email, the "approval rejected" escape task, and any task
 // flagged as floating (always-visible reminders, not deadlines).
-function _cbIsPassiveTask(t) {
+function _cbIsPassiveTask(t, c) {
   if (!t) return true;
   if (t.hasAmount) return true;                 // "בוצע סך" — handled in client card
   if (t.hasClientSummaryEmail) return true;     // "שליחת מייל סיכום ללקוח" — handled in client card
-  if (t.floating) return true;                  // persistent reminders, no deadline
+  // Floating reminders stay actionable ONLY while the client is still in the task's own stage
+  // (e.g. "שמאות מוכנה?" shows while in שמאות — hides after the client has moved on).
+  if (t.floating) {
+    if (c && t.stage && c.stage && t.stage === c.stage) return false;
+    return true;
+  }
   if ((t.title || '').indexOf('האישור לא מקובל') === 0) return true; // passive escape task
   return false;
 }
@@ -2964,7 +2969,7 @@ function _cbUrgentTasks() {
     const bigDealBonus = (Number(c.loanAmount) || 0) > 1000000 ? 25 : 0;
     (c.tasks || []).forEach(t => {
       if (!t || t.status === 'done') return;
-      if (_cbIsPassiveTask(t)) return;
+      if (_cbIsPassiveTask(t, c)) return;
       let score = stageWeight + bigDealBonus;
       let reason = [];
       if (t.dueDate) {
@@ -3100,7 +3105,7 @@ function _cbCriticalNow() {
     if (_cbIsFinished(c)) return;
     (c.tasks || []).forEach(t => {
       if (!t || t.status === 'done' || !t.dueDate) return;
-      if (_cbIsPassiveTask(t)) return;
+      if (_cbIsPassiveTask(t, c)) return;
       const hoursTo = (new Date(t.dueDate + 'T23:59:59').getTime() - nowMs) / 3600000;
       if (hoursTo < 0) out.push({ clientId: c.id, clientName: c.name || '—', taskId: t.id, title: t.title, level: 'overdue', meta: `באיחור ${Math.floor(-hoursTo/24)} ימים` });
       else if (hoursTo <= 24) out.push({ clientId: c.id, clientName: c.name || '—', taskId: t.id, title: t.title, level: 'today', meta: `דדליין בעוד ${Math.ceil(hoursTo)} שעות` });
