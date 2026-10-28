@@ -5429,19 +5429,27 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
   if (apt) addrParts.push('דירה ' + apt);
   if (c.propertyCity) addrParts.push(c.propertyCity);
   const fullAddress = addrParts.join(', ');
-  const shortAddress = [c.propertyAddress, bldg ? 'בניין ' + bldg : '', apt ? 'דירה ' + apt : ''].filter(Boolean).join(' · ');
-  const subject = `הערכת נכס ${appraisalKind}${b.bank?' עבור בנק '+b.bank:''} — ${_emailSubjectClient(c)}${shortAddress?' · '+shortAddress:''}`;
-  // Attached documents — list the ACTUAL deal/registration/appraisal documents being sent.
-  // Pulls from c.requirements (status=provided/received) + any appraisal-stage task that is
-  // clearly a document (not a process checkpoint). "הפניה לשמאי" is a FORM and IS included —
-  // it rides along with the email. Explicitly excludes:
+  // Subject-line address: "רחוב: הלל · בניין 50 · ... · עיר" — street first (labeled), city last.
+  const _subjParts = [];
+  if (c.propertyAddress) _subjParts.push('רחוב: ' + c.propertyAddress);
+  if (bldg) _subjParts.push('בניין ' + bldg);
+  if (apt) _subjParts.push('דירה ' + apt);
+  if (c.propertyCity) _subjParts.push(c.propertyCity);
+  const shortAddress = _subjParts.join(' · ');
+  // Load user-editable template from Settings (or defaults).
+  const _apprTpl = _getAppraiserTemplate();
+  // Attached documents — ALWAYS-ATTACHED items from Settings + ACTUAL deal/registration docs
+  // the user has collected. Explicitly excludes:
   //   • post-send follow-up tasks (תואם ביקור? / הועבר תשלום? / שמאות מוכנה?)
   //   • floating/value-check tasks (e.g. "כמה אושר שווי")
   //   • "איש קשר לתיאום ביקור" line
   const _POST_SEND_TITLES = new Set(['תואם ביקור?', 'הועבר תשלום?', 'שמאות מוכנה?']);
   const _attachedNames = [];
-  // Always include the referral form itself — it's the attached form that goes with every email.
-  _attachedNames.push('טופס הפניה לשמאי');
+  // Always-attached items from the editable template in Settings
+  (_apprTpl.alwaysAttached || []).forEach(n => {
+    const name = (n || '').trim();
+    if (name) _attachedNames.push(name);
+  });
   // 1. Documents the user explicitly marked as collected (requirements)
   (c.requirements || []).forEach(r => {
     if (!r || !r.name) return;
@@ -5457,34 +5465,35 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
     if (t.status !== 'done') return;
     if (t.source === 'appraisal-post-send' || t.source === 'appraisal-value-check') return;
     if (t.floating) return;
-    if (t.title === 'הפניה לשמאי') return; // Added above as "טופס הפניה לשמאי" — don't duplicate
+    if (t.title === 'הפניה לשמאי') return; // "טופס הפניה לשמאי" comes from alwaysAttached — don't duplicate
     if (_POST_SEND_TITLES.has(t.title)) return;
     if (t.title.indexOf('איש קשר לתיאום ביקור') === 0) return;
     _attachedNames.push(t.title.replace(/\s*\([^)]*\)\s*$/, '').trim());
   });
-  const attached = _attachedNames;
-  // Deduplicate
-  const attachedUniq = [...new Set(attached)];
+  const attachedUniq = [...new Set(_attachedNames)];
   const attachedLines = attachedUniq.length ? attachedUniq.map(n => '* ' + n).join('\n') : '(אין מסמכים מסומנים)';
-  const body = [
-    greeting + ',',
-    '',
-    'אודה אם תוכל לערוך שמאות בנכס הנ"ל.',
-    '',
-    '━━━━━━━━━━━━━━━━━━━━━━',
-    `👤 שם לקוח:      ${c.name}`,
-    `🏠 כתובת הנכס:   ${fullAddress || '—'}`,
-    `🎯 מטרת ההלוואה: ${purposes || '—'}`,
-    `🏦 בנקאי מטפל:   ${bankerLine}`,
-    `📞 איש קשר לתיאום ביקור${contactRole?' ('+contactRole+')':''}: ${contactName || '—'}${contactPhone?' · '+contactPhone:''}`,
-    '━━━━━━━━━━━━━━━━━━━━━━',
-    '',
-    'מצ"ב:',
-    attachedLines,
-    '',
-    'בתודה מראש,',
-    'יצחק',
-  ].join('\n');
+  // Template-based subject + body — placeholders replaced from client data.
+  const _bankSuffix = b.bank ? ' עבור בנק ' + b.bank : '';
+  const _addressSuffix = shortAddress ? ' · ' + shortAddress : '';
+  const _contactRoleSuffix = contactRole ? ' (' + contactRole + ')' : '';
+  const _contactPhoneSuffix = contactPhone ? ' · ' + contactPhone : '';
+  const _tplVars = {
+    '{greeting}': greeting,
+    '{kind}': appraisalKind,
+    '{bankSuffix}': _bankSuffix,
+    '{clientName}': c.name,
+    '{addressSuffix}': _addressSuffix,
+    '{address}': fullAddress || '—',
+    '{purpose}': purposes || '—',
+    '{banker}': bankerLine,
+    '{contactRoleSuffix}': _contactRoleSuffix,
+    '{contactName}': contactName || '—',
+    '{contactPhoneSuffix}': _contactPhoneSuffix,
+    '{attached}': attachedLines
+  };
+  const _applyTpl = (s) => Object.keys(_tplVars).reduce((acc, k) => acc.split(k).join(_tplVars[k]), s || '');
+  const subject = _applyTpl(_apprTpl.subject);
+  const body = _applyTpl(_apprTpl.body);
   const sentIds = c.sentToAppraiserIds || [];
   showModal(`
     <h2 class="modal-title">📧 שליחת טיוטת מייל לשמאי</h2>
@@ -6033,6 +6042,39 @@ function _getShtarTemplate() {
   return {
     subject: (t.subject && t.subject.trim()) || DEFAULT_SHTAR_EMAIL_TEMPLATE.subject,
     body: (typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_SHTAR_EMAIL_TEMPLATE.body
+  };
+}
+
+// === Appraiser (שמאי) email template — editable in Settings → "📧 תבנית מייל לשמאי" ===
+const DEFAULT_APPRAISER_EMAIL_TEMPLATE = {
+  subject: 'הערכת נכס {kind}{bankSuffix} — {clientName}{addressSuffix}',
+  body: `{greeting},
+
+אודה אם תוכל לערוך שמאות בנכס הנ"ל.
+
+━━━━━━━━━━━━━━━━━━━━━━
+👤 שם לקוח:      {clientName}
+🏠 כתובת הנכס:   {address}
+🎯 מטרת ההלוואה: {purpose}
+🏦 בנקאי מטפל:   {banker}
+📞 איש קשר לתיאום ביקור{contactRoleSuffix}: {contactName}{contactPhoneSuffix}
+━━━━━━━━━━━━━━━━━━━━━━
+
+מצ"ב:
+{attached}
+
+בתודה מראש,
+יצחק`,
+  // Items that ALWAYS appear in the "מצ"ב" list (before the dynamic deal docs)
+  alwaysAttached: ['טופס הפניה לשמאי']
+};
+
+function _getAppraiserTemplate() {
+  const t = (state.settings && state.settings.appraiserEmailTemplate) || {};
+  return {
+    subject: (t.subject && t.subject.trim()) || DEFAULT_APPRAISER_EMAIL_TEMPLATE.subject,
+    body: (typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_APPRAISER_EMAIL_TEMPLATE.body,
+    alwaysAttached: Array.isArray(t.alwaysAttached) ? t.alwaysAttached.slice() : DEFAULT_APPRAISER_EMAIL_TEMPLATE.alwaysAttached.slice()
   };
 }
 function _buildMortgageSignMessage(c) {
@@ -11161,6 +11203,11 @@ function openNewClientModal(editClient, warningMessage) {
   const purposesArr = Array.isArray(c.purposes) ? c.purposes : (c.purpose ? [c.purpose] : []);
   const dealOpts = state.settings.dealTypes.map(d => `<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`).join('');
   showModal(`
+    <style>
+      /* "לקוח חדש" is a 3-column form — override the default 600px modal cap so it isn't clipped. */
+      #modalContent { max-width: 1200px !important; width: 100% !important; }
+      @media (max-width: 900px) { #modalContent { max-width: 100vw !important; } }
+    </style>
     <button type="button" onclick="closeModal()" title="סגור" aria-label="סגור" style="position:absolute;top:10px;inset-inline-start:12px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:8px;width:32px;height:32px;font-size:18px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:5">✕</button>
     <h2 class="modal-title">${isEdit ? 'עריכת לקוח' : 'לקוח חדש'}</h2>
     ${warningHtml}
@@ -17815,6 +17862,91 @@ function saveExecutionSummaryTemplate() {
   alert('✓ נשמר');
 }
 
+function renderAppraiserEmailTemplateSection() {
+  const tpl = _getAppraiserTemplate();
+  const alwaysList = tpl.alwaysAttached || [];
+  return `<div class="panel">
+    <h2 class="panel-title">📧 תבנית מייל לשמאי</h2>
+    <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px 14px;border-radius:8px;font-size:12px;color:#1e3a8a;margin-bottom:14px">
+      💡 תבנית זו נטענת כשלוחצים "📧 שלח טיוטת מייל לשמאי" בשלב שמאות.
+      <br>משתני החלפה בנושא ובגוף:
+      <code>{greeting}</code> ברכה · <code>{clientName}</code> שם לקוח · <code>{address}</code> כתובת מלאה · <code>{kind}</code> נרכש/קיים · <code>{bankSuffix}</code> " עבור בנק X" · <code>{addressSuffix}</code> " · רחוב … · עיר" · <code>{purpose}</code> מטרה · <code>{banker}</code> בנקאי · <code>{contactName}</code> איש קשר · <code>{contactRoleSuffix}</code> " (לקוח)" · <code>{contactPhoneSuffix}</code> " · 05X-…" · <code>{attached}</code> רשימת מצ"ב
+    </div>
+    <div class="form-group">
+      <label>נושא</label>
+      <input id="apprEmailSubj" value="${escapeAttr(tpl.subject)}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px">
+    </div>
+    <div class="form-group">
+      <label>גוף המייל</label>
+      <textarea id="apprEmailBody" style="width:100%;min-height:340px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px;direction:rtl">${escapeHtml(tpl.body)}</textarea>
+    </div>
+    <div class="form-group">
+      <label>רשימת מצ"ב קבועה (תמיד מצורפת, לפני המסמכים הדינמיים)</label>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">שורה אחת לכל פריט. ברירת מחדל: טופס הפניה לשמאי.</div>
+      <div id="apprAlwaysAttachedList">
+        ${alwaysList.map((item, i) => `
+          <div class="settings-item" style="background:#fef3c7">
+            <input value="${escapeAttr(item)}" onchange="updateAppraiserAttached(${i}, this.value)" style="flex:1;background:transparent;border:none;font-size:14px">
+            <button class="icon-btn" onclick="removeAppraiserAttached(${i})">✕</button>
+          </div>
+        `).join('')}
+      </div>
+      <div class="add-row" style="margin-top:8px">
+        <input id="newAppraiserAttached" placeholder="פריט מצורף חדש (למשל: טופס הפניה לשמאי)" style="flex:1">
+        <button class="btn small" onclick="addAppraiserAttached()">+ הוסף</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="saveAppraiserEmailTemplate()" style="background:#22c55e">💾 שמור</button>
+      <button class="btn secondary" onclick="resetAppraiserEmailTemplate()">↺ שחזר ברירת מחדל</button>
+    </div>
+  </div>`;
+}
+
+function saveAppraiserEmailTemplate() {
+  const subj = (document.getElementById('apprEmailSubj').value || '').trim();
+  const body = document.getElementById('apprEmailBody').value || '';
+  const current = state.settings.appraiserEmailTemplate || {};
+  state.settings.appraiserEmailTemplate = {
+    subject: subj,
+    body: body,
+    alwaysAttached: Array.isArray(current.alwaysAttached) ? current.alwaysAttached : (DEFAULT_APPRAISER_EMAIL_TEMPLATE.alwaysAttached.slice())
+  };
+  save();
+  alert('✓ נשמר');
+}
+
+function resetAppraiserEmailTemplate() {
+  if (!confirm('לשחזר את תבנית ברירת המחדל של מייל השמאי (כולל רשימת ה-מצ"ב הקבועה)?')) return;
+  state.settings.appraiserEmailTemplate = JSON.parse(JSON.stringify(DEFAULT_APPRAISER_EMAIL_TEMPLATE));
+  save();
+  renderActiveSettingsSection();
+}
+
+function addAppraiserAttached() {
+  const inp = document.getElementById('newAppraiserAttached');
+  const val = (inp?.value || '').trim();
+  if (!val) return;
+  if (!state.settings.appraiserEmailTemplate) state.settings.appraiserEmailTemplate = JSON.parse(JSON.stringify(DEFAULT_APPRAISER_EMAIL_TEMPLATE));
+  if (!Array.isArray(state.settings.appraiserEmailTemplate.alwaysAttached)) state.settings.appraiserEmailTemplate.alwaysAttached = [];
+  state.settings.appraiserEmailTemplate.alwaysAttached.push(val);
+  save(); renderActiveSettingsSection();
+}
+
+function updateAppraiserAttached(idx, val) {
+  const list = state.settings.appraiserEmailTemplate && state.settings.appraiserEmailTemplate.alwaysAttached;
+  if (!Array.isArray(list) || idx < 0 || idx >= list.length) return;
+  list[idx] = (val || '').trim();
+  save();
+}
+
+function removeAppraiserAttached(idx) {
+  const list = state.settings.appraiserEmailTemplate && state.settings.appraiserEmailTemplate.alwaysAttached;
+  if (!Array.isArray(list) || idx < 0 || idx >= list.length) return;
+  list.splice(idx, 1);
+  save(); renderActiveSettingsSection();
+}
+
 function renderShtarEmailTemplateSection() {
   const tpl = _getShtarTemplate();
   return `<div class="panel">
@@ -17935,6 +18067,7 @@ function renderSettings() {
     { id: 'signatureTasks', label: '✍️ משימות חתימות', icon: '✍️' },
     { id: 'executionSummary', label: '📧 תבנית סיכום ללקוח', icon: '📧' },
     { id: 'shtarEmail', label: '📧 תבנית מייל רישום שטרות', icon: '📧' },
+    { id: 'appraiserEmail', label: '📧 תבנית מייל לשמאי', icon: '📧' },
     { id: 'insuranceEmail', label: '🛡 תבנית מייל ביטוח', icon: '🛡' },
     { id: 'sigCoordEmail', label: '✍️ תבנית תיאום חתימות (לבנקאי)', icon: '✍️' },
     { id: 'zechiaInstructions', label: '📨 אישור זכיה — הוראות ללקוח', icon: '📨' },
@@ -17981,6 +18114,7 @@ function renderSettingsSection(id) {
   if (id === 'signatureTasks') return renderSignatureTasksSection();
   if (id === 'executionSummary') return renderExecutionSummaryTemplateSection();
   if (id === 'shtarEmail') return renderShtarEmailTemplateSection();
+  if (id === 'appraiserEmail') return renderAppraiserEmailTemplateSection();
   if (id === 'insuranceEmail') return renderInsuranceEmailTemplateSection();
   if (id === 'sigCoordEmail') return renderSigCoordEmailTemplateSection();
   if (id === 'zechiaInstructions') return renderZechiaInstructionsSection();
