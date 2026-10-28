@@ -1735,22 +1735,30 @@ function seedDocumentRequirements(client) {
 }
 
 function dedupRequirementsAndTasks(client) {
-  // Dedup requirements by (stage, name) — keep first occurrence
-  const seenReqs = new Set();
-  client.requirements = client.requirements.filter(r => {
-    const key = r.stage + '::' + r.name;
-    if (seenReqs.has(key)) return false;
-    seenReqs.add(key);
-    return true;
+  // Dedup requirements by (stage, name) — prefer a provided/received row over pending.
+  const isReqDone = r => r && (r.status === 'provided' || r.status === 'received' || r.status === 'done');
+  const reqMap = {};
+  (client.requirements || []).forEach(r => {
+    if (!r) return;
+    const key = (r.stage || '') + '::' + (r.name || '');
+    const existing = reqMap[key];
+    if (!existing) { reqMap[key] = r; return; }
+    if (isReqDone(r) && !isReqDone(existing)) { reqMap[key] = r; return; }
+    // Tie — keep the first (existing); no change.
   });
-  // Dedup tasks by (stage, title) — keep first occurrence
-  const seenTasks = new Set();
-  client.tasks = client.tasks.filter(t => {
-    const key = t.stage + '::' + t.title;
-    if (seenTasks.has(key)) return false;
-    seenTasks.add(key);
-    return true;
+  client.requirements = Object.values(reqMap);
+  // Dedup tasks by (stage, title) — prefer a DONE task over active so completed work is never lost.
+  const isTaskDone = t => t && (t.done === true || t.status === 'done');
+  const taskMap = {};
+  (client.tasks || []).forEach(t => {
+    if (!t) return;
+    const key = (t.stage || '') + '::' + (t.title || '');
+    const existing = taskMap[key];
+    if (!existing) { taskMap[key] = t; return; }
+    if (isTaskDone(t) && !isTaskDone(existing)) { taskMap[key] = t; return; }
+    // Tie — keep the first (existing); no change.
   });
+  client.tasks = Object.values(taskMap);
 }
 
 function migrateClient(c) {
@@ -5379,24 +5387,42 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
   const c = state.clients.find(x => x.id === clientId);
   const b = state.settings.bankers.find(x => x.id === bankerId);
   const bankerLine = `${b.name}${b.email?' · '+b.email:''}${b.branch?' · סניף '+b.branch:''}`;
-  let contactName = '', contactPhone = '', contactRole = '';
+  // Build contact candidates — user picks which one(s) appear in the email body.
   const tenant = c.dealDetails && c.dealDetails.tenant;
   const purposesArrEarly = c.purposes && c.purposes.length ? c.purposes : (c.purpose ? [c.purpose] : []);
   const isSecondHand = purposesArrEarly.includes('יד שנייה');
   const secondHand = c.dealDetails && c.dealDetails.secondHand;
-  if (c.isRented && tenant && (tenant.name || tenant.phone)) {
-    contactName = tenant.name || ''; contactPhone = tenant.phone || '';
-    contactRole = 'שוכר';
-  } else if (isSecondHand && secondHand && (secondHand.sellerName || secondHand.sellerPhone)) {
-    contactName = secondHand.sellerName || '';
-    contactPhone = secondHand.sellerPhone || '';
-    contactRole = 'מוכר';
-  } else {
-    const b1 = (c.borrowers && c.borrowers[0]) || {};
-    contactName = b1.name || c.name || '';
-    contactPhone = b1.phone || c.phone || '';
-    contactRole = 'לקוח';
+  const _b1 = (c.borrowers && c.borrowers[0]) || {};
+  const _b2 = (c.borrowers && c.borrowers[1]) || null;
+  const contactCandidates = [];
+  if (_b1 && (_b1.name || c.name || _b1.phone || c.phone)) {
+    contactCandidates.push({
+      key: 'b0',
+      label: _b2 ? 'בעל' : 'לווה',
+      name: _b1.name || c.name || '',
+      phone: _b1.phone || c.phone || '',
+      role: 'לקוח'
+    });
   }
+  if (_b2 && (_b2.name || _b2.phone)) {
+    contactCandidates.push({ key: 'b1', label: 'אשה', name: _b2.name || '', phone: _b2.phone || '', role: 'לקוח' });
+    const bothName = [_b1.name || c.name, _b2.name].filter(Boolean).join(' + ');
+    const bothPhone = [_b1.phone || c.phone, _b2.phone].filter(Boolean).join(' / ');
+    contactCandidates.push({ key: 'both', label: 'שניהם', name: bothName, phone: bothPhone, role: 'לקוחות' });
+  }
+  if (c.isRented && tenant && (tenant.name || tenant.phone)) {
+    contactCandidates.push({ key: 'tenant', label: 'שוכר', name: tenant.name || '', phone: tenant.phone || '', role: 'שוכר' });
+  }
+  if (isSecondHand && secondHand && (secondHand.sellerName || secondHand.sellerPhone)) {
+    contactCandidates.push({ key: 'seller', label: 'מוכר', name: secondHand.sellerName || '', phone: secondHand.sellerPhone || '', role: 'מוכר' });
+  }
+  // Default pick — preserve prior logic: tenant → seller → first borrower
+  let defaultContactKey = 'b0';
+  if (contactCandidates.find(k => k.key === 'tenant')) defaultContactKey = 'tenant';
+  else if (contactCandidates.find(k => k.key === 'seller')) defaultContactKey = 'seller';
+  else defaultContactKey = (contactCandidates[0] && contactCandidates[0].key) || 'b0';
+  const _defC = contactCandidates.find(x => x.key === defaultContactKey) || contactCandidates[0] || { name: '', phone: '', role: '' };
+  let contactName = _defC.name, contactPhone = _defC.phone, contactRole = _defC.role;
   const purposesArr = c.purposes && c.purposes.length ? c.purposes : (c.purpose ? [c.purpose] : []);
   const purposes = purposesArr.join(', ');
   const kinds = purposesArr.map(p => APPRAISAL_KIND_BY_DEAL[p]).filter(Boolean);
@@ -5453,6 +5479,19 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
         `).join('')}
       </div>
     </div>
+    ${contactCandidates.length > 1 ? `
+    <div class="form-group">
+      <label>איש קשר לתיאום ביקור</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${contactCandidates.map(cc => `
+          <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px;background:${cc.key===defaultContactKey?'#eef2ff':'#fff'}" onclick="setTimeout(_updateAppraiserContactLine,0)">
+            <input type="radio" name="apprContact" value="${cc.key}" ${cc.key===defaultContactKey?'checked':''} style="accent-color:var(--accent)">
+            <span><strong>${escapeHtml(cc.label)}</strong>${cc.name?' · '+escapeHtml(cc.name):''}${cc.phone?' · '+escapeHtml(cc.phone):''}</span>
+          </label>
+        `).join('')}
+      </div>
+    </div>
+    ` : ''}
     <div class="form-group">
       <label>נושא (ניתן לערוך)</label>
       <input id="mailSubject" value="${escapeAttr(subject)}" style="width:100%">
@@ -5466,6 +5505,45 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
       <button class="btn secondary" onclick="closeModal()">סגור</button>
     </div>
   `);
+  // Expose contact candidates for the live-update helper
+  window._apprContactCandidates = contactCandidates;
+}
+
+// Live-update the "איש קשר לתיאום ביקור" line in the appraiser email body when the user picks
+// a different contact (בעל / אשה / שניהם / שוכר / מוכר). Reads the selected radio and replaces
+// the line in the textarea, preserving any other edits the user made.
+function _updateAppraiserContactLine() {
+  try {
+    const picked = (document.querySelector('input[name="apprContact"]:checked') || {}).value;
+    if (!picked) return;
+    const cands = window._apprContactCandidates || [];
+    const cc = cands.find(x => x.key === picked);
+    if (!cc) return;
+    const ta = document.getElementById('mailBody');
+    if (!ta) return;
+    const newLine = `📞 איש קשר לתיאום ביקור${cc.role?' ('+cc.role+')':''}: ${cc.name || '—'}${cc.phone?' · '+cc.phone:''}`;
+    const lines = (ta.value || '').split('\n');
+    let replaced = false;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf('איש קשר לתיאום ביקור') !== -1) {
+        lines[i] = newLine;
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) {
+      // Fallback — append before the "מצ"ב:" block
+      const idx = lines.findIndex(l => l.trim().indexOf('מצ"ב') === 0);
+      if (idx > 0) lines.splice(idx - 1, 0, newLine);
+      else lines.push(newLine);
+    }
+    ta.value = lines.join('\n');
+    // Visual feedback — highlight the picked radio
+    document.querySelectorAll('input[name="apprContact"]').forEach(r => {
+      const parent = r.closest('label');
+      if (parent) parent.style.background = r.checked ? '#eef2ff' : '#fff';
+    });
+  } catch (e) { console.warn('contact line update failed', e); }
 }
 
 function openGmailCompose(clientId) {
@@ -19567,7 +19645,33 @@ function _mergeTwoClientVersions(a, b) {
       // Tie: prefer the one coming from the newer container (first in iteration order).
       if (_itemScore(it) > _itemScore(existing)) map[key] = it;
     });
-    merged[k] = Object.values(map);
+    let mergedArr = Object.values(map);
+    // SECOND-PASS DEDUPE for tasks & requirements by (stage, title/name).
+    // Each device may have independently seeded the same auto-task with a different uid
+    // (e.g. "הפניה לשמאי" seeded on both laptops before they synced). Id-level dedupe above
+    // keeps both; collapse those here. Winner preference:
+    //   1. a DONE/completed row (never lose a finished item)
+    //   2. otherwise the one with the latest own-timestamp
+    //   3. tie → the one with the earliest createdAt (stable)
+    if (k === 'tasks' || k === 'requirements') {
+      const byTitle = {};
+      mergedArr.forEach(it => {
+        if (!it) return;
+        const title = (it.title || it.name || '').trim();
+        if (!title) return;
+        const stage = it.stage || '';
+        const key = stage + '::' + title;
+        const existing = byTitle[key];
+        if (!existing) { byTitle[key] = it; return; }
+        const isDone = x => x && (x.done === true || x.status === 'done' || x.status === 'provided' || x.status === 'received');
+        const aDone = isDone(it), bDone = isDone(existing);
+        if (aDone && !bDone) { byTitle[key] = it; return; }
+        if (bDone && !aDone) return;
+        if (_itemScore(it) > _itemScore(existing)) { byTitle[key] = it; return; }
+      });
+      mergedArr = Object.values(byTitle);
+    }
+    merged[k] = mergedArr;
   });
   return merged;
 }
@@ -19622,6 +19726,14 @@ function _buildMergedStateFromRemote(remote) {
       map[lc.id] = _mergeTwoClientVersions(lc, existing);
     });
     merged.clients = Object.values(map);
+    // Post-merge dedup: each device may have independently seeded the same auto-task
+    // ("הפניה לשמאי", "נשלח לבחינה", …) with a different uid, which the id-level merge keeps.
+    // Collapse them by (stage, title/name), preferring DONE over ACTIVE.
+    try {
+      if (typeof dedupRequirementsAndTasks === 'function') {
+        merged.clients.forEach(c => { try { dedupRequirementsAndTasks(c); } catch(_) {} });
+      }
+    } catch(_) {}
     // Trash — only include effectively trashed ids (restorations purge them)
     merged.trash = [];
     const trashSeen = new Set();
