@@ -15175,7 +15175,11 @@ function openBankCollateralEmail(clientId) {
   const clientId1 = firstBorrower.idNumber || c.idNumber || '';
   const subject = 'בקשת בטחונות — ' + clientName + (clientId1 ? ' · ת.ז ' + clientId1 : '');
   // Bank stage tasks (auto + custom, excluding done tasks like "התקבל אישור..." system marks)
-  const bankTasks = (c.tasks || []).filter(t => t.stage === 'bank').map(t => t.title.replace(/\s*\(סבב.*?\)/,''));
+  // Dedupe by title so a repeated task (e.g. one per bank/borrower) shows only once in the email.
+  const bankTasksRaw = (c.tasks || []).filter(t => t.stage === 'bank').map(t => t.title.replace(/\s*\(סבב.*?\)/,'').trim());
+  const bankTasks = [];
+  const seenBankTasks = new Set();
+  bankTasksRaw.forEach(name => { if (name && !seenBankTasks.has(name)) { seenBankTasks.add(name); bankTasks.push(name); } });
   // Deal + registration docs (from requirements), excluding ארנונה
   const dealDocs = (c.requirements || []).filter(r => (r.section === 'deal' || (r.dealType && r.dealType.startsWith('רישום נכס —'))) && !/ארנונה/.test(r.name));
   // Flat list, dedupe by name
