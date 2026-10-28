@@ -1766,14 +1766,12 @@ function migrateClient(c) {
   if (Array.isArray(c.requirements)) {
     c.requirements = c.requirements.filter(r => !(r && r.name === 'הפניה לשמאי'));
   }
-  // Auto-advance past an empty stage on every load — e.g. "בטחונות בנק" that ended up with no
-  // tasks + no pending reqs should move forward automatically, so the user doesn't see a stuck panel.
-  try {
-    if (typeof autoAdvanceIfStageComplete === 'function') {
-      // Advance repeatedly in case several consecutive stages are empty, but cap at 10 steps for safety.
-      for (let _i = 0; _i < 10; _i++) { if (!autoAdvanceIfStageComplete(c)) break; }
-    }
-  } catch (e) {}
+  // DO NOT auto-advance on load. autoAdvance already runs inside moveStage when a brand-new
+  // empty stage is entered, so re-running it on every load only causes trouble:
+  //   • a client the user manually moved backward (e.g. לקוח → ליד) bounces forward again
+  //   • a stage the user explicitly cleared of tasks gets skipped on refresh
+  //   • visible client counts flicker (e.g. "20 לקוח" → "18 לקוח" a second after load)
+  // The user owns stage transitions; migrations should not override that intent.
   // Consolidate "בוצע סך" chain into a SINGLE task with an executions[] list — the new UX is a
   // table of executions (amount+date+notes) with the remaining balance at the bottom. One task,
   // many rows. Runs on every load so legacy chain-style data gets migrated transparently.
