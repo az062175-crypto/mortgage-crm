@@ -2918,6 +2918,19 @@ function markNoteRead(clientId, noteId) {
 function _cbActiveClients() {
   return (state.clients || []).filter(c => c.stage !== 'lead' && c.stage !== 'archive');
 }
+// A client is "effectively finished" when sitting in execution with the executions sum covering the
+// approved loan amount — the mortgage is fully paid out and there's nothing left to chase, even if
+// the stage was never manually moved to archive. Exclude these from stuck / health / critical lists.
+function _cbIsFinished(c) {
+  if (!c || c.stage !== 'execution') return false;
+  const execTask = (c.tasks || []).find(t => t && t.hasAmount && t.stage === 'execution');
+  if (execTask && (execTask.status === 'done' || execTask.done)) return true;
+  const totalExec = Number(c.executedAmount) || 0;
+  const acc = (c.approvals || []).find(a => a && a.accepted && Number(a.amount) > 0);
+  const approved = acc ? Number(acc.amount) : (Number(c.loanAmount) || 0);
+  if (approved > 0 && totalExec >= approved) return true;
+  return false;
+}
 function _cbDaysBetween(a, b) {
   if (!a) return 0;
   return Math.floor(((b || Date.now()) - new Date(a).getTime()) / 86400000);
@@ -2935,6 +2948,7 @@ function _cbUrgentTasks() {
   const nowMs = Date.now();
   const rows = [];
   _cbActiveClients().forEach(c => {
+    if (_cbIsFinished(c)) return;
     const stageWeight = (c.stage === 'approval' || c.stage === 'execution' || c.stage === 'signature') ? 50 : 10;
     const bigDealBonus = (Number(c.loanAmount) || 0) > 1000000 ? 25 : 0;
     (c.tasks || []).forEach(t => {
@@ -2960,6 +2974,7 @@ function _cbUrgentTasks() {
 function _cbStuckReasons() {
   const out = [];
   _cbActiveClients().forEach(c => {
+    if (_cbIsFinished(c)) return; // execution complete — nothing to chase
     const reasons = [];
     if (!c.bankerId) reasons.push('לא שובץ בנקאי');
     if (!c.purposes || !c.purposes.length) reasons.push('לא הוגדרה מטרת הלוואה');
@@ -2969,11 +2984,18 @@ function _cbStuckReasons() {
     const openTasks = (c.tasks || []).filter(t => t.status !== 'done');
     const overdueTasks = openTasks.filter(t => t.dueDate && new Date(t.dueDate + 'T23:59:59') < new Date());
     if (overdueTasks.length) reasons.push(`${overdueTasks.length} משימות באיחור`);
-    const daysInStage = _cbDaysBetween(c.stageEnteredAt);
-    const avg = (typeof avgTimeInStage === 'function') ? avgTimeInStage(c.stage) : 0;
-    if (avg > 0 && daysInStage > avg * 2) reasons.push(`${daysInStage} ימים בשלב (ממוצע: ${avg})`);
+    // "Days in stage" doesn't flag execution (partial payments span weeks by design) or
+    // clients that have no open tasks — if the stage still has unfinished work, that's the real signal.
+    if (c.stage !== 'execution' && openTasks.length > 0) {
+      const daysInStage = _cbDaysBetween(c.stageEnteredAt);
+      const avg = (typeof avgTimeInStage === 'function') ? avgTimeInStage(c.stage) : 0;
+      if (avg > 0 && daysInStage > avg * 2) reasons.push(`${daysInStage} ימים בשלב (ממוצע: ${avg})`);
+    }
     if (c.stage === 'appraisal' && c.requiresAppraisal !== false && !(c.tasks || []).some(t => t.title === 'הפניה לשמאי' && t.status === 'done')) reasons.push('הפניה לשמאי טרם נשלחה');
-    if (c.stage === 'approval' && !c.approvedAmount) reasons.push('טרם נרשם סכום אישור עקרוני');
+    if (c.stage === 'approval') {
+      const acceptedApproval = (c.approvals || []).find(a => a && a.accepted && Number(a.amount) > 0);
+      if (!acceptedApproval) reasons.push('טרם נרשם סכום אישור עקרוני');
+    }
     if (reasons.length) out.push({ clientId: c.id, clientName: c.name || '—', stage: c.stage, reasons });
   });
   return out;
@@ -2983,6 +3005,7 @@ function _cbStuckReasons() {
 function _cbHealthScores() {
   const out = [];
   _cbActiveClients().forEach(c => {
+    if (_cbIsFinished(c)) return;
     const reqs = c.requirements || [];
     const total = reqs.length || 1;
     const done = reqs.filter(r => r.status === 'provided' || r.status === 'not-required').length;
@@ -3026,6 +3049,7 @@ function _cbWaitingLists() {
   const waitingForMe = [];
   const waitingForThem = [];
   _cbActiveClients().forEach(c => {
+    if (_cbIsFinished(c)) return;
     const waitDays = _cbIsClientWaiting(c);
     if (waitDays >= 2) waitingForThem.push({ clientId: c.id, clientName: c.name || '—', days: waitDays, channel: c.missingDocsRequestChannel || 'email' });
     const openOverdue = (c.tasks || []).filter(t => t.status !== 'done' && t.dueDate && new Date(t.dueDate + 'T23:59:59') < new Date());
@@ -3040,6 +3064,7 @@ function _cbWaitingLists() {
 function _cbQuickWins() {
   const out = [];
   _cbActiveClients().forEach(c => {
+    if (_cbIsFinished(c)) return;
     const pendingReqs = (c.requirements || []).filter(r => r.status === 'pending');
     if (pendingReqs.length === 1) out.push({ clientId: c.id, clientName: c.name || '—', title: 'דרישה אחרונה: ' + pendingReqs[0].name, kind: 'single-req', reqId: pendingReqs[0].id });
     const openTasks = (c.tasks || []).filter(t => t.status !== 'done');
@@ -3057,6 +3082,7 @@ function _cbCriticalNow() {
   const out = [];
   const nowMs = Date.now();
   _cbActiveClients().forEach(c => {
+    if (_cbIsFinished(c)) return;
     (c.tasks || []).forEach(t => {
       if (!t || t.status === 'done' || !t.dueDate) return;
       const hoursTo = (new Date(t.dueDate + 'T23:59:59').getTime() - nowMs) / 3600000;
