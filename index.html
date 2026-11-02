@@ -2931,14 +2931,8 @@ function _cbActiveClients() {
 // - partially executed (any amount already paid) → mid-flow, next payment will come naturally;
 //   nothing to chase. Only brand-new execution clients with zero executed stay on the board.
 function _cbIsFinished(c) {
-  if (!c || c.stage !== 'execution') return false;
-  const execTask = (c.tasks || []).find(t => t && t.hasAmount && t.stage === 'execution');
-  if (execTask && (execTask.status === 'done' || execTask.done)) return true;
-  const totalExec = Number(c.executedAmount) || 0;
-  if (totalExec > 0) return true; // any partial execution → don't surface
-  const acc = (c.approvals || []).find(a => a && a.accepted && Number(a.amount) > 0);
-  const approved = acc ? Number(acc.amount) : (Number(c.loanAmount) || 0);
-  if (approved > 0 && totalExec >= approved) return true;
+  if (!c) return false;
+  if (c.stage === 'execution' || c.stage === 'archive') return true;
   return false;
 }
 function _cbDaysBetween(a, b) {
@@ -3102,15 +3096,37 @@ function _cbQuickWins() {
   _cbActiveClients().forEach(c => {
     if (_cbIsFinished(c)) return;
     const pendingReqs = (c.requirements || []).filter(r => r.status === 'pending');
-    if (pendingReqs.length === 1) out.push({ clientId: c.id, clientName: c.name || '—', title: 'דרישה אחרונה: ' + pendingReqs[0].name, kind: 'single-req', reqId: pendingReqs[0].id });
-    const openTasks = (c.tasks || []).filter(t => t.status !== 'done');
-    if (openTasks.length === 1 && !openTasks[0].dueDate) out.push({ clientId: c.id, clientName: c.name || '—', title: 'משימה אחרונה: ' + openTasks[0].title, kind: 'single-task', taskId: openTasks[0].id });
+    if (pendingReqs.length === 1) {
+      out.push({ clientId: c.id, clientName: c.name || '—', title: 'דרישה אחרונה: ' + pendingReqs[0].name, kind: 'single-req', reqId: pendingReqs[0].id });
+    } else if (pendingReqs.length === 2) {
+      out.push({ clientId: c.id, clientName: c.name || '—', title: '2 דרישות בלבד נותרו: ' + pendingReqs.map(r => r.name).join(', '), kind: 'two-reqs' });
+    }
+    const openTasks = (c.tasks || []).filter(t => t.status !== 'done' && !_cbIsPassiveTask(t, c));
+    if (openTasks.length === 1) {
+      out.push({ clientId: c.id, clientName: c.name || '—', title: 'משימה אחרונה: ' + openTasks[0].title, kind: 'single-task', taskId: openTasks[0].id });
+    } else if (openTasks.length === 2) {
+      out.push({ clientId: c.id, clientName: c.name || '—', title: '2 משימות וסיימת: ' + openTasks.map(t => t.title).join(' · '), kind: 'two-tasks' });
+    }
     if (!c.bankerId && c.stage !== 'lead' && c.stage !== 'client') out.push({ clientId: c.id, clientName: c.name || '—', title: 'שבץ בנקאי לתיק', kind: 'missing-banker' });
     (c.borrowers || []).forEach((b, i) => {
-      if (!b.phone && !c.phone) out.push({ clientId: c.id, clientName: c.name || '—', title: 'הוסף טלפון ל-' + (b.name || 'לווה ' + (i+1)), kind: 'missing-phone' });
+      const label = b.name || 'לווה ' + (i+1);
+      if (!b.phone && !c.phone) out.push({ clientId: c.id, clientName: c.name || '—', title: 'הוסף טלפון ל-' + label, kind: 'missing-phone' });
+      if (!b.email && !c.email) out.push({ clientId: c.id, clientName: c.name || '—', title: 'הוסף אימייל ל-' + label, kind: 'missing-email' });
+      if (!b.idNumber && !b.tz) out.push({ clientId: c.id, clientName: c.name || '—', title: 'הוסף תעודת זהות ל-' + label, kind: 'missing-id' });
     });
+    // Signature stage with 1-2 remaining tasks → very close to execution
+    if (c.stage === 'signature') {
+      const sigTasks = (c.tasks || []).filter(t => t.status !== 'done' && t.stage === 'signature' && !_cbIsPassiveTask(t, c));
+      if (sigTasks.length >= 1 && sigTasks.length <= 2) {
+        out.push({ clientId: c.id, clientName: c.name || '—', title: 'שלב חתימות — ' + sigTasks.length + ' משימות וסיימת', kind: 'signature-close' });
+      }
+    }
+    // Missing financing data on client stage → needed to advance
+    if (c.stage === 'client' && !c.loanAmount) {
+      out.push({ clientId: c.id, clientName: c.name || '—', title: 'הזן סכום משכנתא מבוקש', kind: 'missing-loan-amount' });
+    }
   });
-  return out.slice(0, 8);
+  return out.slice(0, 12);
 }
 
 // ---- Section 7: דחיפויות קריטיות — real-time pressure ----
@@ -4337,6 +4353,8 @@ function renderMissingReqsView(customOnly) {
   const scope = tasksFilter.missingDocs; // 'current' | 'all'
   const items = []; // { client, req } OR { client, task }
   state.clients.forEach(c => {
+    // Execution and archive stages are "done" clients — hide from missing-reqs view
+    if (c.stage === 'execution' || c.stage === 'archive') return;
     // Client filter
     if (cIds.length > 0 && !cIds.includes(c.id)) return;
     // Banker filter
@@ -4507,12 +4525,16 @@ function renderTasksTodoSubTab(customOnly) {
   }
   const search = (tasksFilter.search||'').toLowerCase();
   const all = [];
-  state.clients.forEach(c => { (c.tasks||[]).forEach(t => {
-    if (customOnly && !t.custom) return;
-    // "האישור לא מקובל" is a passive escape task — never list it in the tasks tab
-    if (typeof _isPassiveTask === 'function' && _isPassiveTask(t)) return;
-    all.push({ client: c, task: t });
-  }); });
+  state.clients.forEach(c => {
+    // Execution and archive stages are "done" clients — hide from tasks tab
+    if (c.stage === 'execution' || c.stage === 'archive') return;
+    (c.tasks||[]).forEach(t => {
+      if (customOnly && !t.custom) return;
+      // "האישור לא מקובל" is a passive escape task — never list it in the tasks tab
+      if (typeof _isPassiveTask === 'function' && _isPassiveTask(t)) return;
+      all.push({ client: c, task: t });
+    });
+  });
   // Effective statuses on a task — the main status plus any open sub-check statuses (בחינה תקין / בדיקת הל"מ / אישור השינויים).
   // If the task has an open sub-check, treat it as 'active' too so it appears in the "פעילות" filter (there's still work to do).
   const taskEffectiveStatuses = t => {
@@ -5028,6 +5050,7 @@ function renderClientDetail() {
               ${c.stage === 'bank' ? `<button class="btn small" onclick="openBankCollateralEmail('${c.id}')" title="שלח מייל לבנקאי לבקשת בטחונות" style="background:#16a34a">📧 שלח בקשת בטחונות לבנקאי</button>
                 <button class="btn secondary small" onclick="refreshBankTasks('${c.id}')" title="ייצר מחדש משימות לפי סוג עסקה + רישום נכס">🔄 רענן משימות</button>` : ''}
               ${c.stage === 'seller' ? `<button class="btn small" onclick="sendMortgageSignMessage('${c.id}','email')" title="שלח ללקוח מייל: קישור לחתימה דיגיטלית + הוראות תשלום" style="background:#f97316">📧 שלח משימות ללקוח</button>
+                <button class="btn small" onclick="openSellerCollateralEmail('${c.id}')" title="שלח מייל למוכר / עו״ד המוכר / עו״ד הקונה עם רשימת המסמכים לחתימה" style="background:#dc2626">📧 שלח למוכר / עו״ד</button>
                 <button class="btn secondary small" onclick="refreshSellerTasks('${c.id}')" title="ייצר מחדש משימות בטחונות מוכר לפי סוג עסקה">🔄 רענן משימות</button>` : ''}
             </div>
           </div>
