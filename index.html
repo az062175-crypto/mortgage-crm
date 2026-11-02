@@ -19796,6 +19796,54 @@ function _mergeTwoClientVersions(a, b) {
   _CLIENT_PROTECT_IF_EMPTY.forEach(k => {
     if (_isEmptyVal(merged[k]) && !_isEmptyVal(older[k])) merged[k] = older[k];
   });
+  // Deep-protect dealDetails sub-objects (secondHand, firstHand, mchirLm, tenant) — these hold
+  // lawyer/contractor contact info that must NOT be blanked by a stale push from another tab.
+  // Also deep-merge the `sellers` array by index so a lawyer edit on one device doesn't wipe a
+  // seller edit from the other.
+  {
+    const nDD = (newer && newer.dealDetails) || {};
+    const oDD = (older && older.dealDetails) || {};
+    const mDD = Object.assign({}, nDD);
+    const _protectScalars = (nObj, oObj) => {
+      if (!oObj) return nObj || {};
+      if (!nObj) return oObj;
+      const out = Object.assign({}, nObj);
+      Object.keys(oObj).forEach(k => {
+        const v = oObj[k];
+        if (v && typeof v === 'object' && !Array.isArray(v)) return; // handled separately
+        if (Array.isArray(v)) return; // handled separately
+        if (_isEmptyVal(out[k]) && !_isEmptyVal(v)) out[k] = v;
+      });
+      return out;
+    };
+    // secondHand — scalars + sellers array (merge by index: non-empty wins)
+    if (nDD.secondHand || oDD.secondHand) {
+      const nSH = nDD.secondHand || {};
+      const oSH = oDD.secondHand || {};
+      const mSH = _protectScalars(nSH, oSH);
+      const nSellers = Array.isArray(nSH.sellers) ? nSH.sellers : [];
+      const oSellers = Array.isArray(oSH.sellers) ? oSH.sellers : [];
+      const sLen = Math.max(nSellers.length, oSellers.length);
+      if (sLen > 0) {
+        const mSellers = [];
+        for (let i = 0; i < sLen; i++) {
+          const ns = nSellers[i] || {}; const os = oSellers[i] || {};
+          const row = Object.assign({}, ns);
+          ['name','phone','email'].forEach(k => {
+            if (_isEmptyVal(row[k]) && !_isEmptyVal(os[k])) row[k] = os[k];
+          });
+          if (row.name || row.phone || row.email) mSellers.push(row);
+        }
+        if (mSellers.length) mSH.sellers = mSellers;
+      }
+      mDD.secondHand = mSH;
+    }
+    // firstHand + mchirLm — just scalar protection
+    if (nDD.firstHand || oDD.firstHand) mDD.firstHand = _protectScalars(nDD.firstHand || {}, oDD.firstHand || {});
+    if (nDD.mchirLm || oDD.mchirLm) mDD.mchirLm = _protectScalars(nDD.mchirLm || {}, oDD.mchirLm || {});
+    if (nDD.tenant || oDD.tenant) mDD.tenant = _protectScalars(nDD.tenant || {}, oDD.tenant || {});
+    merged.dealDetails = mDD;
+  }
   // Same rule inside each borrower (match by index — the only stable key the forms use).
   if (Array.isArray(newer.borrowers) || Array.isArray(older.borrowers)) {
     const nb = Array.isArray(newer.borrowers) ? newer.borrowers : [];
