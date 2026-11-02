@@ -8486,6 +8486,15 @@ async function sendSignatureMessage(clientId, recipient, channel) {
     toEmail = banker ? (banker.email||'') : '';
   }
   const html = buildStyledEmailHtml(body, recipient === 'client' ? 'seller' : 'banker');
+  // Guard: Gmail API rejects empty To — fall back to compose URL if no email
+  if (!toEmail) {
+    let url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    window.open(url, '_blank');
+    markBankerFollowUp();
+    closeModal();
+    setTimeout(() => alert('⚠️ אין מייל שמור לנמען. פתחתי מייל רגיל — הוסף נמען ידנית.'), 300);
+    return;
+  }
   try {
     const draftResp = await gmailCreateDraft({ to: toEmail, subject, htmlBody: html });
     markBankerFollowUp();
@@ -14993,8 +15002,10 @@ async function gmailCreateDraft({ to, cc, subject, htmlBody }) {
   headerLines.push('Content-Type: text/html; charset=UTF-8');
   headerLines.push('Content-Transfer-Encoding: base64');
   const headers = headerLines.join('\r\n');
-  const bodyEncoded = _utf8ToBase64(htmlBody || '');
-  const mime = headers + '\r\n\r\n' + bodyEncoded;
+  // base64-encode the body, then wrap at 76 chars (RFC 2045 requires lines ≤76 chars for base64)
+  const bodyB64 = _utf8ToBase64(htmlBody || '');
+  const bodyWrapped = bodyB64.match(/.{1,76}/g)?.join('\r\n') || bodyB64;
+  const mime = headers + '\r\n\r\n' + bodyWrapped;
   const raw = _base64Url(mime);
   const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
     method: 'POST',
@@ -15491,6 +15502,17 @@ async function sendBankCollateralEmail(clientId) {
   c.bankCollateralSentCount = (c.bankCollateralSentCount || 0) + 1;
   logCommunication(clientId, 'email', { to: emails.join(','), subject, body, bankCollateralRequest: true, followUp: isFollowUp });
   save();
+  // Guard: Gmail API rejects empty To — if no banker email, go straight to the fallback
+  if (!emails.length) {
+    let url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    window.open(url, '_blank');
+    closeModal();
+    setTimeout(() => alert('⚠️ לא נבחר בנקאי עם מייל. פתחתי מייל רגיל — הוסף נמען ידנית.'), 300);
+    if (currentTab === 'detail') renderClientDetail();
+    if (currentTab === 'dashboard') renderDashboard();
+    refreshTaskAlertsFloat();
+    return;
+  }
   try {
     const draftResp = await gmailCreateDraft({ to: emails.join(','), subject, htmlBody: html });
     closeModal();
@@ -19937,7 +19959,20 @@ function _mergeTwoClientVersions(a, b) {
     [...na, ...oa].forEach(it => {
       if (!it) return;
       let key;
-      if (it.id) key = 'id:' + it.id;
+      // ROOT FIX for duplicate auto-seeded tasks across devices:
+      // Two devices that each ran a seed function (seedSellerStageTasks, seedBankStageTasks, etc.)
+      // produce DIFFERENT ids for the SAME logical task. Keying by id alone preserves both as
+      // separate entries → user sees every seller/bank/signature task duplicated after sync.
+      // Fix: for AUTO-seeded tasks, the identity is (stage + title + source), not the random id.
+      // User-created tasks (no source, or 'manual') keep id-based keying so renames still work.
+      if (k === 'tasks' && it.source && AUTO_SEED_SOURCES.has(it.source) && it.stage && it.title) {
+        key = 'seed:' + it.stage + ':' + it.title + ':' + it.source;
+      }
+      // Requirements seeded by name+section+dealType — same issue, same fix.
+      else if (k === 'requirements' && it.name && (it.section || it.dealType || it.stage)) {
+        key = 'req:' + (it.section || '') + ':' + (it.dealType || '') + ':' + (it.stage || '') + ':' + it.name;
+      }
+      else if (it.id) key = 'id:' + it.id;
       else if (it.at) key = 'at:' + it.at + '::' + (it.kind || it.type || it.title || '');
       else { try { key = 'j:' + JSON.stringify(it); } catch(e) { return; } }
       const existing = map[key];
