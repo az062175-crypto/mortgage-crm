@@ -13170,6 +13170,44 @@ function renderDealSections(purposes) {
   if (document.getElementById('shSellersList') && !document.querySelector('#shSellersList .sh-seller-row') && !editingLeadId && !editingClientId) {
     addSellerRow();
   }
+  // Edit-mode safety net — repopulate lawyer/contractor/seller inputs from the client state
+  // directly after we built the fields. Prevents a stale load path from leaving them empty.
+  if (editingClientId) {
+    const _editC = state.clients.find(x => x.id === editingClientId);
+    const _editDD = _editC && _editC.dealDetails;
+    if (_editDD) {
+      if (_editDD.secondHand) {
+        const s = _editDD.secondHand;
+        ['buyerLawyer','buyerLawyerPhone','buyerLawyerEmail','sellerLawyer','sellerLawyerPhone','sellerLawyerEmail'].forEach(k => {
+          const el = document.getElementById('sh_'+k);
+          if (el && !el.value && s[k]) el.value = s[k];
+        });
+        // Seller rows — if the list is empty but state has sellers, backfill
+        const list = document.getElementById('shSellersList');
+        if (list && !list.querySelector('.sh-seller-row')) {
+          const sellers = Array.isArray(s.sellers) && s.sellers.length
+            ? s.sellers
+            : ((s.sellerName || s.sellerPhone || s.sellerEmail) ? [{ name: s.sellerName || '', phone: s.sellerPhone || '', email: s.sellerEmail || '' }] : []);
+          if (sellers.length) sellers.forEach(x => addSellerRow(x));
+          else addSellerRow();
+        }
+      }
+      if (_editDD.firstHand) {
+        const f = _editDD.firstHand;
+        ['contractor','contractorPhone','contractorEmail','buyerLawyer','buyerLawyerPhone','buyerLawyerEmail','contractorLawyer','contractorLawyerPhone','contractorLawyerEmail'].forEach(k => {
+          const el = document.getElementById('fh_'+k);
+          if (el && !el.value && f[k]) el.value = f[k];
+        });
+      }
+      if (_editDD.mchirLm) {
+        const m = _editDD.mchirLm;
+        ['contractor','contractorPhone','contractorEmail','buyerLawyer','buyerLawyerPhone','buyerLawyerEmail','contractorLawyer','contractorLawyerPhone','contractorLawyerEmail'].forEach(k => {
+          const el = document.getElementById('ml_'+k);
+          if (el && !el.value && m[k]) el.value = m[k];
+        });
+      }
+    }
+  }
 }
 
 function dealSectionHtml(id, title, fields) {
@@ -14833,6 +14871,25 @@ async function sendSellerCollateralEmail(clientId) {
   const html = buildStyledEmailHtml(body, 'seller');
   // Log to activity history so it appears in "היסטוריית פעילות"
   logCommunication(clientId, 'email', { to: emails.join(','), subject, body, recipient: 'seller' });
+  // No valid "To" — skip Gmail API (which rejects empty To), go straight to clipboard + compose fallback
+  if (!emails.length) {
+    try {
+      if (window.ClipboardItem) {
+        const item = new ClipboardItem({
+          'text/plain': new Blob([body], { type: 'text/plain' }),
+          'text/html': new Blob([html], { type: 'text/html' })
+        });
+        await navigator.clipboard.write([item]);
+      } else {
+        await navigator.clipboard.writeText(body);
+      }
+    } catch (_) {}
+    const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&su=' + encodeURIComponent(subject);
+    window.open(url, '_blank');
+    closeModal();
+    setTimeout(() => alert('⚠️ לא נבחר נמען עם מייל.\nהתוכן המעוצב הועתק ל־clipboard.\nב־Gmail: הוסף נמען ידנית → Ctrl+V בגוף המייל.'), 300);
+    return;
+  }
   // Try Gmail API first (creates real draft with HTML formatting)
   try {
     const btn = event && event.target ? event.target.closest('button') : null;
