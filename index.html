@@ -21295,9 +21295,19 @@ function portalSnapshot(c) {
     valueRow: (function () { try { var dn = ltvDenom(c), ct = Number(c.propertyValue) || 0, ap = Number(c.appraiserValue) || 0; if (!(dn > 0)) return null; return { label: (ap > 0 && c.requiresAppraisal !== false && dn === ap && dn !== ct) ? 'שווי לפי שמאי' : propertyValueLabel(c), amount: dn }; } catch (e) { return null; } })(),
     approvals: (c.approvals || []).map(function (a) { return { bank: a.bankName || a.bank || '', amount: Number(a.amount) || 0 }; })
   };
+  var appr = (function () {
+    var tk = c.tasks || [];
+    function st(title) { var t = tk.find(function (x) { return x.stage === 'appraisal' && x.title === title; }); return t ? ((t.status === 'done' || t.done) ? 'done' : 'open') : null; }
+    var dd = c.dealDetails || {}, ps = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []), b1 = (c.borrowers || [])[0] || {}, vc = c.visitContact, ct = null;
+    if (vc && vc.phone) ct = { name: vc.name || '', phone: vc.phone };
+    else if (c.isRented && dd.tenant && dd.tenant.phone) ct = { name: dd.tenant.name || '', phone: dd.tenant.phone };
+    else if (ps.indexOf('יד שנייה') >= 0 && dd.secondHand && dd.secondHand.sellerPhone) ct = { name: dd.secondHand.sellerName || '', phone: dd.secondHand.sellerPhone };
+    else if (b1.phone || c.phone) ct = { name: b1.name || c.name || '', phone: b1.phone || c.phone };
+    return { contact: ct, contactKey: 'phone:visit', visit: st('תואם ביקור?'), pay: st('הועבר תשלום?'), ready: st('שמאות מוכנה?') };
+  })();
   var phones = [];
   if (!String(c.phone || '').trim()) (c.borrowers || []).forEach(function (b, i) { if (!String(b.phone || '').trim()) phones.push({ id: 'phone:' + i, name: String(b.name || '').trim().split(/\s+/)[0] }); });
-  return { v: 1, phones: phones, summary: summary, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
+  return { v: 1, phones: phones, appr: appr, summary: summary, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
 }
 
 async function portalFetch(path, opts) {
@@ -21348,6 +21358,7 @@ function portalApplyPhones(sentByToken) {
       if (k.indexOf('phone:') !== 0) return;
       var v = String(s[k] || '').replace(/[\s\-]/g, '');
       if (!/^(0\d{8,9}|\+972\d{8,9})$/.test(v)) return;
+      if (k === 'phone:visit') { if (!(c.visitContact && c.visitContact.phone)) { c.visitContact = { name: '', phone: v }; touched = true; } return; }
       var idx = Number(k.slice(6));
       var b = (c.borrowers || [])[idx];
       if (b && !String(b.phone || '').trim()) { b.phone = v; touched = true; }

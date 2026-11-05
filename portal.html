@@ -114,6 +114,18 @@ function render(){
   if(sel.id==='appraisal'&&d.summary&&d.summary.appraised)h+='<div class="appr">✅ ב"ה אושר השמאות בסך '+money(d.summary.appraised)+'</div>';
   h+='</div>';
 
+  if(sel.id==='appraisal'&&d.appr){
+    var ap=d.appr,rw=function(l,v){return '<div class="sr"><span>'+esc(l)+'</span><b>'+v+'</b></div>';};
+    var stx=function(x){return x==='done'?'✓ בוצע':'⏳ ממתין';};
+    h+='<div class="card sum"><h2><span class="tag me">🏠 פרטי השמאות</span></h2>';
+    if(ap.contact)h+=rw('איש קשר לתיאום ביקור',esc((ap.contact.name?ap.contact.name+' · ':'')+ap.contact.phone));
+    else if(S.sent[ap.contactKey])h+=rw('איש קשר לתיאום ביקור','📤 נשלח ליועץ: '+esc(S.sent[ap.contactKey]));
+    else h+='<div class="item"><div class="nm">חסר איש קשר לתיאום ביקור השמאי. אפשר להזין כאן מספר טלפון:</div><div class="act" style="display:flex;gap:6px"><input id="ph_'+esc(ap.contactKey)+'" type="tel" inputmode="tel" dir="ltr" placeholder="05X-XXXXXXX" style="flex:1;min-width:0;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:16px;font-family:inherit"><button class="send" onclick="sendPhone(''+esc(ap.contactKey)+'')">שלח</button></div></div>';
+    if(ap.visit)h+=rw('תואם ביקור?',stx(ap.visit));
+    if(ap.pay)h+=rw('הועבר תשלום?',stx(ap.pay));
+    if(ap.ready)h+=rw('שמאות מוכנה?',stx(ap.ready));
+    h+='</div>';
+  }
   if(sel.id==='submission'&&d.phones&&d.phones.length){
     h+='<div class="card"><h2><span class="tag me">📱 מספרי נייד</span></h2><div class="sub" style="margin:0 0 8px">חסר לנו מספר נייד. אפשר להזין כאן, וזה יישמר בתיק אצל היועץ.</div>'+d.phones.map(function(p){
       if(S.sent[p.id])return '<div class="item sent"><div class="nm">'+esc(p.name||'לווה')+' — '+esc(S.sent[p.id])+'</div><div class="note">📤 נשלח ליועץ</div></div>';
