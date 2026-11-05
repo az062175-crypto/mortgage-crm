@@ -21395,8 +21395,6 @@ function portalFieldSpecs(c) {
   (c.borrowers || []).forEach(function (b, i) {
     var g = 'b' + i, t = 'פרטי הלווה' + (String(b.name || '').trim() ? ' — ' + String(b.name).trim().split(/\s+/)[0] : '');
     P('f:b' + i + ':idNumber', g, t, 'submission', 'תעודת זהות', 'id', 'borrowers.' + i + '.idNumber', i === 0 ? 'idNumber' : null);
-    P('f:b' + i + ':dob', g, t, 'submission', 'תאריך לידה', 'date', 'borrowers.' + i + '.dob');
-    P('f:b' + i + ':idIssueDate', g, t, 'submission', 'תאריך הנפקת ת"ז', 'date', 'borrowers.' + i + '.idIssueDate');
     P('f:b' + i + ':email', g, t, 'submission', 'אימייל', 'email', 'borrowers.' + i + '.email', i === 0 ? 'email' : null);
   });
   if (c.isRented) {
