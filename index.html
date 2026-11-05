@@ -593,7 +593,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות</div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-05 #AG</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -627,6 +627,501 @@
 <script>
 function toggleTopbarMenu(e){e&&e.stopPropagation();const m=document.getElementById('topbarMenu');if(!m)return;const o=m.style.display!=='none';m.style.display=o?'none':'block';if(!o){const tb=document.getElementById('topbarTrashBtn');if(tb&&window.state&&Array.isArray(state.trash))tb.textContent='🗑️ פח מיחזור'+(state.trash.length?' ('+state.trash.length+')':'');setTimeout(()=>document.addEventListener('click',function cl(ev){if(!ev.target.closest('#topbarMenu')&&!ev.target.closest('.topbar-more')){m.style.display='none';document.removeEventListener('click',cl);}}),0);}}
 function closeTopbarMenu(){const m=document.getElementById('topbarMenu');if(m)m.style.display='none';}
+</script>
+
+<!-- ==== Voice Command Assistant ==== -->
+<style>
+  #vcBtn { position: fixed; bottom: 20px; right: 20px; z-index: 300;
+    width: 54px; height: 54px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;
+    font-size: 22px; cursor: pointer; box-shadow: 0 6px 20px rgba(16,185,129,0.4);
+    display: flex; align-items: center; justify-content: center; transition: transform 0.15s; }
+  #vcBtn:hover { transform: scale(1.08); }
+  #vcBtn.listening { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); animation: vcPulse 1.2s ease-in-out infinite; }
+  @keyframes vcPulse { 0%,100% { box-shadow: 0 6px 20px rgba(239,68,68,0.4); } 50% { box-shadow: 0 6px 30px rgba(239,68,68,0.8); } }
+  #vcPopup { position: fixed; bottom: 86px; right: 20px; z-index: 301;
+    width: 320px; max-width: 90vw; background: white; border-radius: 14px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2); padding: 16px; display: none;
+    border: 1px solid #e5e7eb; }
+  #vcPopup.open { display: block; }
+  #vcPopupTitle { font-weight: 700; margin: 0 0 8px; color: #0f172a; font-size: 15px; display:flex;align-items:center;gap:8px; }
+  #vcTranscript { min-height: 40px; padding: 10px; background: #f8fafc; border-radius: 8px;
+    font-size: 14px; color: #0f172a; margin-bottom: 10px; border: 1px solid #e5e7eb; line-height: 1.5; }
+  #vcTranscript.empty { color: #94a3b8; font-style: italic; }
+  #vcActions { display: flex; gap: 8px; margin-top: 8px; }
+  .vc-btn { flex: 1; padding: 10px; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 600; font-family: inherit; }
+  .vc-btn-ok { background: #10b981; color: white; }
+  .vc-btn-cancel { background: #e5e7eb; color: #0f172a; }
+  #vcHelp { font-size: 11px; color: #64748b; margin-top: 10px; line-height: 1.5; }
+  #vcHelp b { color: #059669; }
+  @media (max-width: 640px) {
+    #vcBtn { width: 48px; height: 48px; font-size: 20px; bottom: 16px; right: 16px; }
+    #vcPopup { bottom: 78px; right: 16px; }
+  }
+</style>
+
+
+<script>
+let _vcRec = null;
+let _vcCurrentClientId = null;
+
+function vcToggle() {
+  const popup = document.getElementById('vcPopup');
+  if (popup.classList.contains('open') && _vcRec) { vcStop(); return; }
+  if (!popup.classList.contains('open')) popup.classList.add('open');
+  vcStart();
+}
+function vcClose() { vcStop(); document.getElementById('vcPopup').classList.remove('open'); }
+function vcStop() {
+  if (_vcRec) { try { _vcRec.stop(); } catch(e){} _vcRec = null; }
+  const btn = document.getElementById('vcBtn');
+  if (btn) { btn.classList.remove('listening'); btn.textContent = '🎙️'; }
+}
+
+function vcStart() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const trans = document.getElementById('vcTranscript');
+  const actions = document.getElementById('vcActions');
+  if (actions) { actions.style.display = 'none'; actions.innerHTML = ''; }
+  if (!SR) { if (trans) { trans.classList.remove('empty'); trans.textContent = 'הדפדפן לא תומך בחיפוש קולי. השתמשי ב-Chrome או Edge.'; } return; }
+  vcStop();
+  const r = new SR();
+  r.lang = 'he-IL'; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
+  const btn = document.getElementById('vcBtn');
+  r.onstart = () => { if (btn) { btn.classList.add('listening'); btn.textContent = '⏹'; }
+    if (trans) { trans.classList.remove('empty'); trans.textContent = '🎙 מקשיבה...'; } };
+  r.onresult = (ev) => {
+    let t = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) t += ev.results[i][0].transcript;
+    t = t.replace(/[.,!?\s]+$/, '').trim();
+    if (trans) { trans.classList.remove('empty'); trans.textContent = t; }
+    const last = ev.results[ev.results.length-1];
+    if (last && last.isFinal) vcHandleCommand(t);
+  };
+  r.onerror = (ev) => {
+    if (trans) { trans.classList.remove('empty'); trans.textContent = ev.error === 'no-speech' ? 'לא שמעתי כלום. נסי שוב.' : ev.error === 'not-allowed' ? 'צריך לאשר גישה למיקרופון.' : 'שגיאה: ' + ev.error; }
+    if (btn) { btn.classList.remove('listening'); btn.textContent = '🎙️'; }
+    _vcRec = null;
+  };
+  r.onend = () => { if (btn) { btn.classList.remove('listening'); btn.textContent = '🎙️'; } _vcRec = null; };
+  try { r.start(); _vcRec = r; } catch(e) { if (trans) trans.textContent = 'לא הצלחתי להתחיל: ' + e.message; }
+}
+
+function vcNormalize(s) {
+  return String(s||'').replace(/["'״׳]/g,'').replace(/\s+/g,' ').trim();
+}
+
+function vcFindClient(nameQuery) {
+  if (typeof state === 'undefined' || !state.clients) return null;
+  const q = vcNormalize(nameQuery).toLowerCase();
+  if (!q) return null;
+  const qWords = q.split(' ').filter(Boolean);
+  const candidates = state.clients.map(c => {
+    const names = [c.name, c.firstName, c.fullName, (c.borrowers||[]).map(b => b.name).join(' ')].filter(Boolean).join(' ');
+    const haystack = vcNormalize(names).toLowerCase();
+    let score = 0;
+    qWords.forEach(w => { if (haystack.includes(w)) score += w.length; });
+    return { c, score, haystack };
+  }).filter(x => x.score > 0);
+  candidates.sort((a,b) => b.score - a.score);
+  return candidates.length ? candidates[0].c : null;
+}
+
+function vcShowConfirm(message, onYes) {
+  const actions = document.getElementById('vcActions');
+  const trans = document.getElementById('vcTranscript');
+  if (trans) { trans.classList.remove('empty'); trans.textContent = message; }
+  if (!actions) return;
+  actions.style.display = 'flex';
+  actions.innerHTML = '<button class="vc-btn vc-btn-ok" onclick="vcDoAction()">✓ אישור</button>' +
+                      '<button class="vc-btn vc-btn-cancel" onclick="vcClose()">✕ ביטול</button>';
+  window._vcPendingAction = onYes;
+}
+
+function vcDoAction() {
+  const fn = window._vcPendingAction;
+  window._vcPendingAction = null;
+  try { if (typeof fn === 'function') fn(); } catch(e){ alert('שגיאה: '+e.message); }
+  setTimeout(vcClose, 300);
+}
+
+function vcMessage(msg, autoClose) {
+  const trans = document.getElementById('vcTranscript');
+  const actions = document.getElementById('vcActions');
+  if (trans) { trans.classList.remove('empty'); trans.textContent = msg; }
+  if (actions) { actions.style.display = 'none'; actions.innerHTML = ''; }
+  if (autoClose) setTimeout(vcClose, 1800);
+}
+
+function vcGetCurrentClient() {
+  // From detail tab
+  try {
+    if (typeof currentClientId !== 'undefined' && currentClientId) {
+      return state.clients.find(x => x.id === currentClientId);
+    }
+  } catch(e){}
+  // From modal context
+  if (_vcCurrentClientId) return state.clients.find(x => x.id === _vcCurrentClientId);
+  return null;
+}
+
+function vcHandleCommand(text) {
+  if (!text) { vcMessage('לא הבנתי. נסי שוב.'); return; }
+  const t = vcNormalize(text).toLowerCase();
+
+  // Close
+  if (/^(סגור|תסגור|תסגרי|סגרי|ביטול)$/.test(t)) {
+    try { if (typeof closeModal === 'function') closeModal(); } catch(e){}
+    vcMessage('סגרתי.', true); return;
+  }
+
+  // Open client: "פתח/תפתח/תפתחי [את] [ה]לקוח X" — direct, no confirm
+  let m = t.match(/^(?:תפתחי?|פתחי?|לפתוח|אני רוצה (?:לפתוח|לראות)|הצג|תציגי?|הראי)\s+(?:את\s+)?(?:ה?לקוח(?:ה)?\s+|ה?תיק\s+(?:של\s+)?)?(.+)$/);
+  if (m) {
+    const nameQ = m[1].trim();
+    const c = vcFindClient(nameQ);
+    if (!c) { vcMessage('לא מצאתי לקוח בשם "' + nameQ + '"'); return; }
+    const displayName = c.name || (c.borrowers && c.borrowers[0] && c.borrowers[0].name) || 'לקוח';
+    try { if (typeof openClient === 'function') openClient(c.id); } catch(e){}
+    vcMessage('✓ פתחתי: ' + displayName, true);
+    return;
+  }
+
+  // Add task: "הוסף/תוסיף/תוסיפי משימה X" — direct, no confirm
+  m = t.match(/^(?:תוסיפי?|הוסיפי?|הוסף|לפתוח משימה|משימה חדשה)\s+(?:ה?משימה\s+)?(.+)$/);
+  if (m) {
+    const title = vcNormalize(m[1]);
+    if (!title) { vcMessage('לא הבנתי את שם המשימה.'); return; }
+    const client = vcGetCurrentClient();
+    if (!client) { vcMessage('צריך לפתוח קודם כרטיס לקוח.'); return; }
+    try {
+      client.tasks = client.tasks || [];
+      client.tasks.push({ id: (typeof uid==='function'?uid():String(Date.now())), stage: client.stage, title, status: 'active', done: false, doneAt: null, createdAt: (typeof now==='function'?now():new Date().toISOString()), history: [{ status: 'active', at: (typeof now==='function'?now():new Date().toISOString()) }], custom: true });
+      if (typeof save === 'function') save();
+      if (typeof renderClientDetail === 'function') renderClientDetail();
+    } catch(e){ vcMessage('לא הצלחתי להוסיף: ' + e.message); return; }
+    vcMessage('✓ הוספתי משימה: ' + title, true);
+    return;
+  }
+
+  // Mark task done: "סמן/תסמן [את] [ה]משימה X [ב]בוצע/הושלמה"
+  m = t.match(/^(?:תסמני?|סמני?)\s+(?:את\s+)?(?:ה?משימה\s+)?(.+?)\s*(?:ב?בוצע(?:ה)?|הושלמה|עשיתי|גמרתי|סיימתי)?$/);
+  if (m) {
+    const taskQ = vcNormalize(m[1]).toLowerCase().replace(/^(ה)?משימה\s+/, '');
+    const client = vcGetCurrentClient();
+    if (!client) { vcMessage('צריך לפתוח קודם כרטיס לקוח כדי לסמן משימה.'); return; }
+    const tasks = (client.tasks || []).filter(x => x.status !== 'done');
+    if (!tasks.length) { vcMessage('אין משימות פתוחות ללקוח הזה.'); return; }
+    const matches = tasks.map(x => {
+      const title = vcNormalize(x.title || '').toLowerCase();
+      let score = 0;
+      taskQ.split(' ').filter(Boolean).forEach(w => { if (title.includes(w)) score += w.length; });
+      if (title === taskQ) score += 100;
+      return { x, score };
+    }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
+    if (!matches.length) { vcMessage('לא מצאתי משימה פתוחה שתואמת ל-"' + taskQ + '"'); return; }
+    const task = matches[0].x;
+    const cid = client.id;
+    vcShowConfirm('לסמן את המשימה "' + task.title + '" כבוצע?', () => {
+      if (typeof setTaskStatus === 'function') setTaskStatus(cid, task.id, 'done');
+    });
+    return;
+  }
+
+  // Search: "חפש X"
+  m = t.match(/^(?:תחפשי?|חפשי?|חיפוש)\s+(.+)$/);
+  if (m) {
+    const q = m[1].trim();
+    vcClose();
+    setTimeout(() => {
+      try { if (typeof openGlobalSearch === 'function') openGlobalSearch(); } catch(e){}
+      setTimeout(() => {
+        const el = document.getElementById('globalSearchInput');
+        if (el) { el.value = q; if (typeof renderGlobalSearchResults === 'function') renderGlobalSearchResults(); }
+      }, 100);
+    }, 200);
+    return;
+  }
+
+  // Fallback: unrecognized
+  vcMessage('לא הבנתי את הפקודה. נסי: "תפתח לקוח פרידמן" או "חפש הירש".');
+}
+</script>
+
+<!-- ==== Activity Feed Panel ==== -->
+<style>
+  #actToggle { position: fixed; bottom: 20px; left: 20px; z-index: 300;
+    width: 54px; height: 54px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white;
+    font-size: 22px; cursor: pointer; box-shadow: 0 6px 20px rgba(79,70,229,0.4);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s; }
+  #actToggle:hover { transform: scale(1.08); }
+  #actToggle .act-badge { position: absolute; top: -4px; inset-inline-end: -4px;
+    background: #ef4444; color: white; font-size: 10px;
+    min-width: 20px; height: 20px; border-radius: 10px; padding: 0 6px;
+    display: none; align-items: center; justify-content: center; font-weight: 700;
+    border: 2px solid white; box-sizing: border-box; }
+  #actPanel { position: fixed; top: 0; left: 0; height: 100vh;
+    width: 340px; max-width: 90vw; background: white; z-index: 301;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.15);
+    transform: translateX(-110%); transition: transform 0.25s ease;
+    display: flex; flex-direction: column; }
+  #actPanel.open { transform: translateX(0) !important; }
+  #actOverlay { position: fixed; inset: 0; background: rgba(15,23,42,0.35); z-index: 300;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  #actOverlay.open { opacity: 1; pointer-events: auto; }
+  #actHeader { padding: 16px 18px; border-bottom: 1px solid #e5e7eb;
+    display: flex; align-items: center; justify-content: space-between;
+    background: #f8fafc; }
+  #actHeader h3 { margin: 0; font-size: 16px; color: #0f172a; font-weight: 700; }
+  #actClose { background: transparent; border: none; cursor: pointer;
+    font-size: 22px; color: #64748b; padding: 4px 10px; line-height: 1; border-radius: 6px; }
+  #actClose:hover { background: #e5e7eb; }
+  #actBody { flex: 1; overflow-y: auto; padding: 0 0 20px; }
+  .act-day { padding: 14px 18px 6px; font-weight: 700; color: #64748b;
+    font-size: 13px; background: #f8fafc; position: sticky; top: 0; z-index: 2;
+    border-bottom: 1px solid #e5e7eb; }
+  .act-item { display: flex; gap: 10px; padding: 10px 18px;
+    border-bottom: 1px solid #f1f5f9; align-items: flex-start;
+    cursor: pointer; transition: background 0.1s; }
+  .act-item:hover { background: #f8fafc; }
+  .act-ico { width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0; font-weight: 700; }
+  .act-body-txt { flex: 1; min-width: 0; }
+  .act-txt { font-size: 13px; color: #0f172a; line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis; }
+  .act-txt b { color: #4f46e5; font-weight: 600; }
+  .act-time { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+  .act-empty { padding: 60px 20px; text-align: center; color: #94a3b8; font-size: 13px; }
+  @media (max-width: 640px) {
+    #actToggle { width: 48px; height: 48px; font-size: 20px; bottom: 16px; }
+  }
+</style>
+
+<button id="actToggle" title="פעילות אחרונה" onclick="toggleActivityPanel()">
+  📋<span class="act-badge" id="actCount">0</span>
+</button>
+<div id="actOverlay" onclick="toggleActivityPanel(false)"></div>
+<div id="actPanel">
+  <div id="actHeader">
+    <h3>📋 פעילות אחרונה</h3>
+    <button id="actClose" onclick="toggleActivityPanel(false)" title="סגור">✕</button>
+  </div>
+  <div id="actBody"><div class="act-empty">טוען...</div></div>
+</div>
+
+<script>
+function toggleActivityPanel(open) {
+  const p = document.getElementById('actPanel');
+  const o = document.getElementById('actOverlay');
+  if (!p) return;
+  const want = typeof open === 'boolean' ? open : !p.classList.contains('open');
+  if (want) { renderActivityPanel(); p.classList.add('open'); if(o) o.classList.add('open'); }
+  else { p.classList.remove('open'); if(o) o.classList.remove('open'); }
+}
+
+function _actTimeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'עכשיו';
+  if (min < 60) return 'לפני ' + min + ' דק\'';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return 'לפני ' + hr + ' שעות';
+  try { return new Date(iso).toLocaleString('he-IL', { hour: '2-digit', minute: '2-digit' }); } catch(e) { return ''; }
+}
+
+function _actEscape(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function _actStageLabel(id) {
+  try { if (typeof stageInfo === 'function') { const s = stageInfo(id); if (s && s.label) return s.label; } } catch(e){}
+  try { if (typeof STAGES !== 'undefined') { const s = STAGES.find(x=>x.id===id); if (s && s.label) return s.label; } } catch(e){}
+  return id || '';
+}
+
+function _actCollect() {
+  const items = [];
+  const nowD = new Date();
+  const yStart = new Date(nowD.getTime()); yStart.setDate(yStart.getDate() - 1); yStart.setHours(0,0,0,0);
+  const startMs = yStart.getTime();
+  try { if (typeof state === 'undefined' || !state || !Array.isArray(state.clients)) return items; } catch(e) { return items; }
+
+  state.clients.forEach(c => {
+    try {
+      if (!c || typeof c !== 'object') return;
+      const borrowerName = (c.borrowers && c.borrowers[0] && (c.borrowers[0].name || c.borrowers[0].firstName)) || '';
+      const name = c.name || c.firstName || c.fullName || borrowerName || 'לקוח';
+      const safeName = _actEscape(name);
+      const cid = c.id;
+
+      // Tasks — the one that matters most
+      if (Array.isArray(c.tasks)) {
+        c.tasks.forEach(t => {
+          try {
+            if (!t) return;
+            const title = _actEscape(t.title || '');
+            const hist = Array.isArray(t.history) ? t.history : [];
+            let pushedDone = false, pushedFollow = false;
+            hist.forEach(h => {
+              try {
+                if (!h) return;
+                const atIso = h.at || t.doneAt;
+                if (!atIso) return;
+                const tm = new Date(atIso).getTime();
+                if (isNaN(tm) || tm < startMs) return;
+                if (h.status === 'done') {
+                  items.push({ at: atIso, ico: '✓', bg: '#dcfce7', color: '#15803d',
+                    txt: '<b>משימה הושלמה</b> · ' + title + ' · ' + safeName, clientId: cid });
+                  pushedDone = true;
+                } else if (h.status === 'follow-up') {
+                  items.push({ at: atIso, ico: '🔔', bg: '#fef3c7', color: '#b45309',
+                    txt: '<b>סומן למעקב</b> · ' + title + ' · ' + safeName, clientId: cid });
+                  pushedFollow = true;
+                }
+              } catch(e){}
+            });
+            if (!pushedDone && t.status === 'done' && t.doneAt) {
+              const tm = new Date(t.doneAt).getTime();
+              if (!isNaN(tm) && tm >= startMs) {
+                items.push({ at: t.doneAt, ico: '✓', bg: '#dcfce7', color: '#15803d',
+                  txt: '<b>משימה הושלמה</b> · ' + title + ' · ' + safeName, clientId: cid });
+              }
+            }
+          } catch(e){}
+        });
+      }
+
+      // Comm log
+      if (Array.isArray(c.commLog)) {
+        c.commLog.forEach(e => {
+          try {
+            if (!e || !e.at) return;
+            const tm = new Date(e.at).getTime(); if (isNaN(tm) || tm < startMs) return;
+            if (e.type === 'email') {
+              const r = e.meta && e.meta.recipient;
+              const who = r === 'seller' ? ' למוכר' : r === 'appraiser' ? ' לשמאי' : r === 'banker' ? ' לבנקאי' : '';
+              items.push({ at: e.at, ico: '✉', bg: '#dbeafe', color: '#1d4ed8',
+                txt: '<b>מייל נשלח'+who+'</b> · ' + safeName, clientId: cid });
+            } else if (e.type === 'whatsapp') {
+              items.push({ at: e.at, ico: '💬', bg: '#dcfce7', color: '#15803d',
+                txt: '<b>וואטסאפ נשלח</b> · ' + safeName, clientId: cid });
+            }
+          } catch(e){}
+        });
+      }
+
+      // Stage history
+      if (Array.isArray(c.stageHistory)) {
+        c.stageHistory.forEach(h => {
+          try {
+            if (!h || !h.enteredAt) return;
+            const tm = new Date(h.enteredAt).getTime(); if (isNaN(tm) || tm < startMs) return;
+            items.push({ at: h.enteredAt, ico: '🚀', bg: '#ede9fe', color: '#6d28d9',
+              txt: '<b>מעבר שלב:</b> ' + _actEscape(_actStageLabel(h.stage)) + ' · ' + safeName, clientId: cid });
+          } catch(e){}
+        });
+      }
+
+      // Created
+      const createdIso = c.createdAt || c.leadAt;
+      if (createdIso) {
+        try {
+          const tm = new Date(createdIso).getTime();
+          if (!isNaN(tm) && tm >= startMs) {
+            items.push({ at: createdIso, ico: '+', bg: '#e0f2fe', color: '#0369a1',
+              txt: '<b>' + (c.stage === 'lead' ? 'ליד חדש' : 'לקוח חדש') + '</b> · ' + safeName, clientId: cid });
+          }
+        } catch(e){}
+      }
+
+      // Notes
+      if (Array.isArray(c.notes)) {
+        c.notes.forEach(n => {
+          try {
+            if (!n) return;
+            const nAt = n.createdAt || n.at; if (!nAt) return;
+            const tm = new Date(nAt).getTime(); if (isNaN(tm) || tm < startMs) return;
+            const snippet = n.text ? ' · ' + _actEscape(String(n.text).slice(0,50)) : '';
+            items.push({ at: nAt, ico: '📝', bg: '#fef3c7', color: '#b45309',
+              txt: '<b>הערה</b> · ' + safeName + snippet, clientId: cid });
+          } catch(e){}
+        });
+      }
+    } catch(e) { console.warn('[act] client failed', c && c.id, e); }
+  });
+
+  items.sort((a,b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  return items;
+}
+
+function renderActivityPanel() {
+  const body = document.getElementById('actBody');
+  if (!body) return;
+  let items = [];
+  try { items = _actCollect(); } catch(e) { console.warn('actCollect failed', e); }
+  _actUpdateBadge(items.length);
+  if (!items.length) {
+    body.innerHTML = '<div class="act-empty">אין פעילות ביומיים האחרונים</div>';
+    return;
+  }
+  const today = new Date(); today.setHours(0,0,0,0); const todayMs = today.getTime();
+  let html = ''; let lastDay = '';
+  items.forEach(it => {
+    const t = new Date(it.at).getTime();
+    const day = t >= todayMs ? 'היום' : 'אתמול';
+    if (day !== lastDay) { html += '<div class="act-day">' + day + '</div>'; lastDay = day; }
+    html += '<div class="act-item" onclick="_actOpenClient(\'' + it.clientId + '\')">' +
+      '<div class="act-ico" style="background:' + it.bg + ';color:' + it.color + '">' + it.ico + '</div>' +
+      '<div class="act-body-txt"><div class="act-txt">' + it.txt + '</div>' +
+      '<div class="act-time">' + _actTimeAgo(it.at) + '</div></div></div>';
+  });
+  body.innerHTML = html;
+}
+
+function _actUpdateBadge(n) {
+  const b = document.getElementById('actCount'); if (!b) return;
+  if (n > 0) { b.textContent = n > 99 ? '99+' : String(n); b.style.display = 'flex'; }
+  else { b.style.display = 'none'; }
+}
+
+function _actOpenClient(id) {
+  try { if (typeof openClient === 'function') { openClient(id); toggleActivityPanel(false); } } catch(e){}
+}
+
+function _actAutoRefresh() {
+  try {
+    const p = document.getElementById('actPanel');
+    const isOpen = p && p.classList.contains('open');
+    const items = _actCollect();
+    _actUpdateBadge(items.length);
+    if (isOpen) renderActivityPanel();
+  } catch(e){}
+}
+setInterval(_actAutoRefresh, 3000);
+window.addEventListener('load', () => { setTimeout(_actAutoRefresh, 1500); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { const p=document.getElementById('actPanel'); if(p&&p.classList.contains('open')) toggleActivityPanel(false); } });
+
+// Hook into save() so panel refreshes immediately on any change
+(function hookSaveForActivityPanel(){
+  const tryHook = () => {
+    if (typeof window.save !== 'function') return false;
+    if (window._actSaveHooked) return true;
+    const origSave = window.save;
+    window.save = function() {
+      const r = origSave.apply(this, arguments);
+      try { _actAutoRefresh(); } catch(e){}
+      return r;
+    };
+    window._actSaveHooked = true;
+    return true;
+  };
+  if (!tryHook()) {
+    const iv = setInterval(() => { if (tryHook()) clearInterval(iv); }, 500);
+    setTimeout(() => clearInterval(iv), 15000);
+  }
+})();
 </script>
 
 <div id="kanbanBar"></div>
@@ -1080,11 +1575,27 @@ function updateFileStatus(text, isError) {
   }
 }
 
-// Rolling snapshot of each client's content from the previous save — used to detect which
-// clients actually changed between save() calls so we can stamp their _updatedAt. The merge-on-push
-// logic (sbMergeFromServer) uses this stamp to pick the newer version per client when devices
-// push divergent state, which is what prevents one device's state from silently overwriting the other.
+// Rolling snapshot of each client's content — used to detect which clients ACTUALLY changed
+// between save() calls so only those get a fresh _updatedAt stamp. The merge-on-push logic
+// (sbMergeFromServer) uses this stamp to decide which version wins per client.
+//
+// CRITICAL: the snapshot is seeded on page LOAD too, not only after the first save. Otherwise
+// the first save would stamp every client as "updated now" — including clients that weren't
+// touched locally — which would make local state win over fresher cloud state for untouched
+// clients, silently losing updates from another device.
 let _clientSaveSnapshot = {};
+function _seedClientSnapshot() {
+  try {
+    if (!Array.isArray(state.clients)) return;
+    const snap = {};
+    state.clients.forEach(c => {
+      if (!c || !c.id) return;
+      const copy = Object.assign({}, c); delete copy._updatedAt;
+      try { snap[c.id] = JSON.stringify(copy); } catch (e) { snap[c.id] = ''; }
+    });
+    _clientSaveSnapshot = snap;
+  } catch (e) {}
+}
 function _touchChangedClients() {
   try {
     if (!Array.isArray(state.clients)) return;
@@ -1096,7 +1607,12 @@ function _touchChangedClients() {
       let serial = '';
       try { serial = JSON.stringify(copy); } catch (e) {}
       const prev = _clientSaveSnapshot[c.id];
-      if (prev === undefined || prev !== serial) {
+      // Only stamp if we have a baseline AND it differs. If prev is undefined (brand-new client
+      // we haven't snapshotted yet), stamp once — new clients need a timestamp. For existing
+      // clients with an unchanged serial, keep whatever _updatedAt they already have.
+      if (prev === undefined) {
+        if (!c._updatedAt) c._updatedAt = nowStr;
+      } else if (prev !== serial) {
         c._updatedAt = nowStr;
       }
       newSnap[c.id] = serial;
@@ -1121,6 +1637,9 @@ function save() {
   if (typeof refreshTaskAlertsFloat === 'function') {
     try { refreshTaskAlertsFloat(); } catch (e) {}
   }
+  // CRITICAL FIX: every local save must also enqueue a cloud push, otherwise edits that only call
+  // save() (not saveNow()) sit in localStorage and get wiped on the next sbPullState refresh.
+  try { if (typeof sbQueueSave === 'function' && typeof SB !== 'undefined' && SB.mode === 'on') sbQueueSave(); } catch (e) {}
   scheduleDonnaExport();
 }
 
@@ -1754,6 +2273,42 @@ function dedupRequirementsAndTasks(client) {
 }
 
 function migrateClient(c) {
+  // NUCLEAR CLEANUP (runs once per client via _sellersScrubbed_v1 flag):
+  // Removes garbage seller rows accumulated from older merge-bug cycles. Rules:
+  //   1. Drop rows with empty name AND empty phone AND empty email
+  //   2. Drop rows whose name is nothing but one character repeated 2+ times (||||, '''', aaaa)
+  //   3. Collapse near-duplicates (same normalized name — strip whitespace & repeated chars)
+  //   4. Prefer the longest raw name among duplicates (preserves user's full text)
+  if (c && c.dealDetails && c.dealDetails.secondHand && Array.isArray(c.dealDetails.secondHand.sellers)) {
+    const _normalize = v => String(v||'')
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/(.)\1+/g, '$1');
+    const _isGarbage = v => {
+      const str = String(v||'').replace(/\s+/g,'').trim();
+      if (!str) return true;
+      // Name is just one character repeated (|||, '''', aaa, etc)
+      if (str.length >= 2 && /^(.)\1+$/.test(str)) return true;
+      return false;
+    };
+    // Group by normalized key, pick the one with longest name within each group
+    const groups = {};
+    c.dealDetails.secondHand.sellers.forEach(s => {
+      if (!s) return;
+      if (_isGarbage(s.name) && _isGarbage(s.phone) && _isGarbage(s.email)) return;
+      const key = _normalize(s.name) + '|' + _normalize(s.phone) + '|' + _normalize(s.email);
+      if (key === '||') return;
+      if (!groups[key]) {
+        groups[key] = s;
+      } else {
+        // Keep the one with the longer non-empty name (more complete data)
+        const existingLen = (groups[key].name||'').length + (groups[key].phone||'').length + (groups[key].email||'').length;
+        const candidateLen = (s.name||'').length + (s.phone||'').length + (s.email||'').length;
+        if (candidateLen > existingLen) groups[key] = s;
+      }
+    });
+    c.dealDetails.secondHand.sellers = Object.values(groups);
+  }
   // Backfill: mark existing "שמאות מוכנה?" tasks as floating (so they carry over to later stages)
   if (Array.isArray(c.tasks)) {
     c.tasks.forEach(t => {
@@ -3129,6 +3684,85 @@ function _cbQuickWins() {
   return out.slice(0, 12);
 }
 
+// ---- Section 6a: השלמות פרטים — missing contact/identity data ----
+function _cbMissingDetails() {
+  const out = [];
+  _cbActiveClients().forEach(c => {
+    if (_cbIsFinished(c)) return;
+    if (!c.bankerId && c.stage !== 'lead' && c.stage !== 'client') {
+      out.push({ clientId: c.id, clientName: c.name || '—', title: 'שבץ בנקאי לתיק', kind: 'banker' });
+    }
+    if (c.stage === 'client' && !c.loanAmount) {
+      out.push({ clientId: c.id, clientName: c.name || '—', title: 'הזן סכום משכנתא מבוקש', kind: 'loan' });
+    }
+    if (!c.purposes || !c.purposes.length) {
+      if (!c.purpose) out.push({ clientId: c.id, clientName: c.name || '—', title: 'הגדר מטרת הלוואה', kind: 'purpose' });
+    }
+    (c.borrowers || []).forEach((b, i) => {
+      const label = b.name || 'לווה ' + (i+1);
+      if (!b.phone && !c.phone) out.push({ clientId: c.id, clientName: c.name || '—', title: 'הוסף טלפון ל-' + label, kind: 'phone' });
+      if (!b.email && !c.email) out.push({ clientId: c.id, clientName: c.name || '—', title: 'הוסף אימייל ל-' + label, kind: 'email' });
+      if (!b.idNumber && !b.tz) out.push({ clientId: c.id, clientName: c.name || '—', title: 'הוסף תעודת זהות ל-' + label, kind: 'id' });
+    });
+    if (!c.propertyAddress && c.stage !== 'lead') {
+      out.push({ clientId: c.id, clientName: c.name || '—', title: 'הוסף כתובת נכס', kind: 'address' });
+    }
+  });
+  return out.slice(0, 12);
+}
+
+// ---- Section 6b: משימות לפי קדימות — sorted by wait + file urgency ----
+function _cbPriorityTasks() {
+  const out = [];
+  const nowMs = Date.now();
+  const healthMap = {};
+  _cbHealthScores().forEach(h => { healthMap[h.clientId] = h.score; });
+  _cbActiveClients().forEach(c => {
+    if (_cbIsFinished(c)) return;
+    const healthScore = healthMap[c.id] !== undefined ? healthMap[c.id] : 50;
+    const healthBoost = healthScore < 40 ? 40 : healthScore < 70 ? 15 : 0;
+    let targetBoost = 0;
+    let targetLabel = '';
+    if (c.targetDate) {
+      const daysToTarget = Math.floor((new Date(c.targetDate + 'T00:00:00').getTime() - nowMs) / 86400000);
+      if (daysToTarget < 0) { targetBoost = 60; targetLabel = `יעד תשלום באיחור ${-daysToTarget} ימים`; }
+      else if (daysToTarget <= 3) { targetBoost = 50; targetLabel = `יעד תשלום בעוד ${daysToTarget} ימים`; }
+      else if (daysToTarget <= 7) { targetBoost = 30; targetLabel = `יעד תשלום בעוד ${daysToTarget} ימים`; }
+      else if (daysToTarget <= 14) { targetBoost = 15; targetLabel = `יעד תשלום בעוד ${daysToTarget} ימים`; }
+    }
+    (c.tasks || []).forEach(t => {
+      if (!t || t.status === 'done') return;
+      if (_cbIsPassiveTask(t, c)) return;
+      let waitDays = 0;
+      let waitLabel = '';
+      if (t.dueDate) {
+        const d = Math.floor((nowMs - new Date(t.dueDate + 'T23:59:59').getTime()) / 86400000);
+        if (d > 0) { waitDays = d; waitLabel = `באיחור ${d} ימים`; }
+        else if (d === 0) { waitDays = 0; waitLabel = 'דדליין היום'; }
+        else { waitDays = 0; waitLabel = `דדליין בעוד ${-d} ימים`; }
+      } else {
+        const created = t.createdAt ? new Date(t.createdAt).getTime() : (c.stageEnteredAt ? new Date(c.stageEnteredAt).getTime() : nowMs);
+        waitDays = Math.max(0, Math.floor((nowMs - created) / 86400000));
+        if (waitDays > 0) waitLabel = `ממתינה ${waitDays} ימים`;
+      }
+      const score = waitDays * 3 + healthBoost + targetBoost;
+      out.push({
+        clientId: c.id,
+        clientName: c.name || '—',
+        taskId: t.id,
+        title: t.title,
+        score,
+        waitDays,
+        waitLabel,
+        healthScore,
+        targetLabel,
+      });
+    });
+  });
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, 12);
+}
+
 // ---- Section 7: דחיפויות קריטיות — real-time pressure ----
 function _cbCriticalNow() {
   const out = [];
@@ -3159,6 +3793,8 @@ function renderControlBoard() {
   const briefing = _cbMorningBriefing();
   const { waitingForMe, waitingForThem } = _cbWaitingLists();
   const quickWins = _cbQuickWins();
+  const missingDetails = _cbMissingDetails();
+  const priorityTasks = _cbPriorityTasks();
   const critical = _cbCriticalNow();
   const stageColor = (id) => (STAGES.find(s => s.id === id) || {}).color || '#64748b';
   const stageLabel = (id) => (STAGES.find(s => s.id === id) || {}).label || id;
@@ -3313,6 +3949,43 @@ function renderControlBoard() {
               <button class="btn small" style="margin-top:6px;background:#16a34a;color:#fff;padding:3px 10px;font-size:11px" onclick="openClient('${q.clientId}')">סגור עכשיו</button>
             </div>
           `).join('')}
+        </div>`}
+      </div>
+
+      <!-- 6a. השלמות פרטים -->
+      <div class="panel" style="border:2px solid #0ea5e9;margin-top:16px">
+        <h2 class="panel-title" style="color:#075985">📝 השלמות פרטים — תיקים חסרי מידע (${missingDetails.length})</h2>
+        ${missingDetails.length === 0 ? '<div class="empty" style="padding:12px">כל הפרטים מלאים. יפה.</div>' : `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
+          ${missingDetails.map(m => `
+            <div style="background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px;padding:8px 10px">
+              <div style="font-weight:600;font-size:13px">${escapeHtml(m.title)}</div>
+              <div style="font-size:11px;color:#075985;margin-top:2px">${clientLink(m.clientId, m.clientName)}</div>
+              <button class="btn small" style="margin-top:6px;background:#0ea5e9;color:#fff;padding:3px 10px;font-size:11px" onclick="openClient('${m.clientId}')">השלם עכשיו</button>
+            </div>
+          `).join('')}
+        </div>`}
+      </div>
+
+      <!-- 6b. משימות לפי קדימות -->
+      <div class="panel" style="border:2px solid #7c3aed;margin-top:16px">
+        <h2 class="panel-title" style="color:#5b21b6">🎯 משימות לפי קדימות — המתנה ארוכה + תיק דחוף (${priorityTasks.length})</h2>
+        ${priorityTasks.length === 0 ? '<div class="empty" style="padding:12px">אין משימות בהמתנה. הכל זורם.</div>' : `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">
+          ${priorityTasks.map((p, i) => {
+            const healthColorLocal = p.healthScore >= 70 ? '#16a34a' : p.healthScore >= 40 ? '#f59e0b' : '#dc2626';
+            return `
+            <div style="background:#faf5ff;border:1px solid #c4b5fd;border-radius:6px;padding:8px 10px">
+              <div style="display:flex;justify-content:space-between;align-items:start;gap:6px">
+                <div style="font-weight:700;font-size:13px;color:#5b21b6">${i+1}. ${escapeHtml(p.title)}</div>
+                <span style="background:${healthColorLocal};color:#fff;font-weight:700;padding:1px 7px;border-radius:999px;font-size:10px;flex-shrink:0">${p.healthScore}</span>
+              </div>
+              <div style="font-size:11px;color:#6b21a8;margin-top:3px">${clientLink(p.clientId, p.clientName)}</div>
+              ${p.waitLabel ? `<div style="font-size:11px;color:#7c2d12;margin-top:2px">⏳ ${escapeHtml(p.waitLabel)}</div>` : ''}
+              ${p.targetLabel ? `<div style="font-size:11px;color:#b91c1c;margin-top:2px">💰 ${escapeHtml(p.targetLabel)}</div>` : ''}
+              <button class="btn small" style="margin-top:6px;background:#7c3aed;color:#fff;padding:3px 10px;font-size:11px" onclick="openClient('${p.clientId}')">פתח תיק</button>
+            </div>`;
+          }).join('')}
         </div>`}
       </div>
 
@@ -4813,6 +5486,7 @@ function renderClientDetail() {
               const title = hasPath ? 'העתק נתיב התיקיה · לחיצה ימנית לעריכה' : 'הגדר תיקיית הלקוח';
               return `<button onclick="openClientFolder('${c.id}')" oncontextmenu="event.preventDefault();editClientFolder('${c.id}')" title="${title}" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:${hasPath?'#fbbf24':'#f1f5f9'};color:${hasPath?'#78350f':'var(--muted)'};font-size:16px;border:1px solid ${hasPath?'#fbbf24':'var(--border)'};cursor:pointer;line-height:1">📁</button>`;
             })()}
+            ${typeof portalHeaderButton === 'function' ? portalHeaderButton(c) : ''}
           </h1>
           <div class="client-sub">${(c.borrowers||[]).map(b => `<span style="margin-inline-end:12px"><strong>${escapeHtml(b.role||'לווה')}:</strong> ${escapeHtml(b.name||'—')} · ת.ז ${escapeHtml(b.idNumber||'—')} · ${escapeHtml(b.employmentType||'—')}</span>`).join('')} · 📞 ${escapeHtml(c.phone||'—')}</div>
           <div class="badges">
@@ -7211,8 +7885,8 @@ function saveGoals(clientId) {
 }
 
 const LOAN_TRACKS = [
-  { id: 'prime', label: 'פריים', color: '#0ea5e9' },
   { id: 'kalatz', label: 'קל"צ (קבועה צמודה)', color: '#8b5cf6' },
+  { id: 'prime', label: 'פריים', color: '#0ea5e9' },
   { id: 'malatz', label: 'מל"צ (משתנה צמודה)', color: '#f59e0b' },
   { id: 'katz', label: 'ק"צ (קבועה לא צמודה)', color: '#22c55e' },
   { id: 'matz', label: 'מ"צ (משתנה לא צמודה)', color: '#ec4899' },
@@ -7236,6 +7910,7 @@ function openLoanCompositionDialog(clientId, taskId) {
     <h2 class="modal-title">🧮 הרכב הלוואה — ${escapeHtml(c.name)}</h2>
     <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px">
       סכום משכנתא מבוקש: <strong>${fmtMoney(c.loanAmount)}</strong>
+      <span style="margin-inline-start:14px;color:#64748b">· שליש: <strong style="color:#0f172a">${fmtMoney(Math.round((Number(c.loanAmount)||0)/3))}</strong></span>
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead>
@@ -7252,7 +7927,7 @@ function openLoanCompositionDialog(clientId, taskId) {
           const d = comp.tracks[tr.id] || {};
           return `<tr data-track="${tr.id}" style="border-top:1px solid var(--border)">
             <td style="padding:8px;font-weight:700;color:${tr.color}">${tr.label}</td>
-            <td><input type="number" class="lc-amt" data-t="${tr.id}" value="${d.amount||''}" style="width:120px;padding:6px;border:1px solid var(--border);border-radius:6px" oninput="recalcLoan()"></td>
+            <td><input type="text" inputmode="numeric" class="lc-amt" data-t="${tr.id}" value="${d.amount ? Number(d.amount).toLocaleString('en-US') : ''}" style="width:120px;padding:6px;border:1px solid var(--border);border-radius:6px;text-align:left;direction:ltr" oninput="lcFormatAmt(this);recalcLoan()" onkeydown="lcHandleAmtKey(event, '${tr.id}')"></td>
             <td><input type="number" class="lc-yrs" data-t="${tr.id}" value="${d.years||''}" style="width:60px;padding:6px;border:1px solid var(--border);border-radius:6px" oninput="recalcLoan()"></td>
             <td><input type="number" step="0.01" class="lc-rate" data-t="${tr.id}" value="${d.rate||''}" style="width:70px;padding:6px;border:1px solid var(--border);border-radius:6px" oninput="recalcLoan()"></td>
             <td style="text-align:center;font-weight:700" class="lc-monthly" data-t="${tr.id}">—</td>
@@ -7286,10 +7961,51 @@ function openLoanCompositionDialog(clientId, taskId) {
   }, 50);
 }
 
+function _lcParseAmt(v){ return Number(String(v||'').replace(/[^\d.]/g,'')) || 0; }
+function lcFormatAmt(el){
+  if (!el) return;
+  const raw = String(el.value||'').replace(/[^\d]/g,'');
+  if (!raw) { el.value = ''; return; }
+  // Count digits before cursor for restoration
+  const pos = el.selectionStart || 0;
+  const before = String(el.value||'').slice(0,pos).replace(/[^\d]/g,'').length;
+  const formatted = Number(raw).toLocaleString('en-US');
+  el.value = formatted;
+  // Restore cursor near equivalent digit
+  let count = 0, newPos = formatted.length;
+  for (let i = 0; i < formatted.length; i++) {
+    if (/\d/.test(formatted[i])) { count++; if (count === before) { newPos = i + 1; break; } }
+  }
+  try { el.setSelectionRange(newPos, newPos); } catch(e){}
+}
+function lcHandleAmtKey(ev, trackId) {
+  if (ev.key !== 'Enter') return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const c = state.clients.find(x => x.id === currentClientId);
+  const target = c ? Number(c.loanAmount)||0 : 0;
+  let sumAmt = 0;
+  LOAN_TRACKS.forEach(tr => {
+    sumAmt += _lcParseAmt((document.querySelector(`.lc-amt[data-t="${tr.id}"]`)||{}).value);
+  });
+  const remaining = target > 0 ? Math.max(0, Math.round(target - sumAmt)) : 0;
+  const idx = LOAN_TRACKS.findIndex(x => x.id === trackId);
+  for (let i = idx + 1; i < LOAN_TRACKS.length; i++) {
+    const next = document.querySelector(`.lc-amt[data-t="${LOAN_TRACKS[i].id}"]`);
+    if (next && !next.value) {
+      if (remaining > 0) { next.value = Number(remaining).toLocaleString('en-US'); recalcLoan(); }
+      next.focus(); try { next.select(); } catch(e){}
+      return;
+    }
+  }
+  const yrs = document.querySelector(`.lc-yrs[data-t="${trackId}"]`);
+  if (yrs) yrs.focus();
+}
+
 function recalcLoan() {
   let sumAmt = 0, sumMonthly = 0;
   LOAN_TRACKS.forEach(tr => {
-    const amt = Number(document.querySelector(`.lc-amt[data-t="${tr.id}"]`).value) || 0;
+    const amt = _lcParseAmt(document.querySelector(`.lc-amt[data-t="${tr.id}"]`).value);
     const yrs = Number(document.querySelector(`.lc-yrs[data-t="${tr.id}"]`).value) || 0;
     const rate = Number(document.querySelector(`.lc-rate[data-t="${tr.id}"]`).value) || 0;
     const monthly = calcMonthlyPayment(amt, rate, yrs);
@@ -7354,7 +8070,7 @@ function saveLoanComposition(clientId) {
   const c = state.clients.find(x => x.id === clientId);
   const tracks = {};
   LOAN_TRACKS.forEach(tr => {
-    const amt = Number(document.querySelector(`.lc-amt[data-t="${tr.id}"]`).value) || 0;
+    const amt = _lcParseAmt(document.querySelector(`.lc-amt[data-t="${tr.id}"]`).value);
     const yrs = Number(document.querySelector(`.lc-yrs[data-t="${tr.id}"]`).value) || 0;
     const rate = Number(document.querySelector(`.lc-rate[data-t="${tr.id}"]`).value) || 0;
     if (amt || yrs || rate) tracks[tr.id] = { amount: amt, years: yrs, rate: rate };
@@ -7492,6 +8208,7 @@ function renderReqsHtml(c, filter) {
          ondragend="reqDragEnd(event)">
       <span title="גרור לשינוי סדר" style="cursor:grab;color:var(--muted);padding:0 4px;user-select:none">⋮⋮</span>
       <span class="req-name" title="לחץ פעמיים לעריכה" ondblclick="startRenameReq('${c.id}','${r.id}',this)">${escapeHtml(r.name)}</span>
+      ${typeof portalReqBadge === 'function' ? portalReqBadge(c, r) : ''}
       <div class="req-status-group">
         <span class="status-btn ${r.status==='not-required'?'active':''}" data-status="not-required" onclick="setReqStatus('${c.id}','${r.id}','not-required')">לא נדרש</span>
         <span class="status-btn ${r.status==='pending'?'active':''}" data-status="pending" onclick="setReqStatus('${c.id}','${r.id}','pending')">ממתין</span>
@@ -9073,12 +9790,35 @@ function markBankerFollowedUp(clientId) {
   refreshTaskAlertsFloat();
 }
 
+// Signature of current alert set — used to decide if the user's dismissal should still apply.
+// If a new overdue task appears after dismissal, the panel reopens.
+function _taskAlertsSignature(alerts) {
+  return alerts.map(a => a.client.id + '::' + a.task.id + '::' + a.daysLeft).sort().join('|');
+}
+function _getDismissedAlertsSig() {
+  try { return localStorage.getItem('mortgage-crm-dismissed-alerts-sig') || ''; } catch (e) { return ''; }
+}
+function _setDismissedAlertsSig(sig) {
+  try { localStorage.setItem('mortgage-crm-dismissed-alerts-sig', sig || ''); } catch (e) {}
+}
+function dismissTaskAlertsFloat() {
+  const alerts = getUpcomingTaskAlerts(5).filter(a => a.dueSoon || a.overdue);
+  _setDismissedAlertsSig(_taskAlertsSignature(alerts));
+  const el = document.getElementById('floatTaskAlerts');
+  if (el) el.remove();
+}
 function refreshTaskAlertsFloat() {
   // Floating popup shows ONLY task alerts — overdue tasks and tasks due within the next few days.
   // ALL overdue tasks are included (no upper age cap), each in its own red row.
   const alerts = getUpcomingTaskAlerts(5).filter(a => a.dueSoon || a.overdue);
   const existing = document.getElementById('floatTaskAlerts');
-  if (alerts.length === 0) { if (existing) existing.remove(); return; }
+  if (alerts.length === 0) { if (existing) existing.remove(); _setDismissedAlertsSig(''); return; }
+  // If the user dismissed this exact alert set (same tasks, same days), stay hidden until it changes.
+  const sig = _taskAlertsSignature(alerts);
+  if (_getDismissedAlertsSig() === sig) {
+    if (existing) existing.remove();
+    return;
+  }
   if (existing) existing.remove();
   const div = document.createElement('div');
   div.id = 'floatTaskAlerts';
@@ -9086,7 +9826,7 @@ function refreshTaskAlertsFloat() {
   div.innerHTML = `
     <div id="floatAlertsHeader" style="background:#ef4444;color:white;padding:8px 12px;cursor:move;display:flex;justify-content:space-between;align-items:center;user-select:none">
       <span style="font-weight:700;font-size:13px">🔔 התראות (${alerts.length})</span>
-      <button onclick="document.getElementById('floatTaskAlerts').remove()" style="background:transparent;border:none;color:white;cursor:pointer;font-size:18px;font-weight:700">×</button>
+      <button onclick="dismissTaskAlertsFloat()" title="סגור עד שתופיע התראה חדשה" style="background:transparent;border:none;color:white;cursor:pointer;font-size:18px;font-weight:700">×</button>
     </div>
     <div style="padding:10px 12px;max-height:420px;overflow-y:auto">
       ${alerts.map(a => {
@@ -9784,7 +10524,7 @@ function quickMove(clientId, stageId, adminOverride) {
   try {
     const c = state.clients.find(x => x.id === clientId);
     if (!c) { try { _showToast('לקוח לא נמצא', 'err'); } catch(e){} return; }
-    if (c.stage === stageId) { try { _showToast('הלקוח כבר בשלב "' + stageInfo(stageId).label + '"', 'err'); } catch(e){} return; }
+    if (c.stage === stageId) { renderClientDetail(); renderKanban(); return; }
     const currentIdx = stageIndex(c.stage);
     const targetIdx = stageIndex(stageId);
     const isForward = targetIdx > currentIdx;
@@ -11217,7 +11957,11 @@ function _flushPendingRemoteState() {
   if (!_pendingRemoteState) return;
   const s = _pendingRemoteState;
   _pendingRemoteState = null;
-  try { sbApplyRemoteState(s); } catch (e) {}
+  // CRITICAL FIX: if the user saved WHILE the modal was open, the pending remote state is from
+  // BEFORE their save — applying it would revert the save. We ALREADY pushed our fresh state to
+  // the cloud via sbQueueSave, so the next scheduled pull will bring the authoritative merged state.
+  // Just drop the stale pending snapshot here. For the mid-modal "oh another device edited this"
+  // scenario, the normal 30s periodic pull (sbPullState) will fetch cloud again and merge correctly.
   try { if (typeof renderAll === 'function') renderAll(); } catch (e) {}
 }
 document.getElementById('modalBackdrop').addEventListener('click', (e) => {
@@ -11812,11 +12556,23 @@ function openNewClientModal(editClient, warningMessage) {
         const el = document.getElementById('sh_'+k);
         if (el) el.value = s[k] || '';
       });
-      // Sellers list — array preferred; falls back to legacy single seller
-      if (document.getElementById('shSellersList')) {
-        const sellers = Array.isArray(s.sellers) && s.sellers.length
+      // Sellers list — array preferred; falls back to legacy single seller. Aggressive dedup.
+      // CRITICAL: clear any existing rows first so a re-render doesn't double them up.
+      const _slList = document.getElementById('shSellersList');
+      if (_slList) {
+        _slList.querySelectorAll('.sh-seller-row').forEach(el => el.remove());
+        const rawList = Array.isArray(s.sellers) && s.sellers.length
           ? s.sellers
           : ((s.sellerName || s.sellerPhone || s.sellerEmail) ? [{ name: s.sellerName || '', phone: s.sellerPhone || '', email: s.sellerEmail || '' }] : []);
+        const _normS = v => String(v||'').toLowerCase().replace(/\s+/g,'').replace(/(.)\1+/g,'$1');
+        const _seen = new Set();
+        const sellers = rawList.filter(x => {
+          if (!x) return false;
+          const key = _normS(x.name) + '|' + _normS(x.phone) + '|' + _normS(x.email);
+          if (_seen.has(key)) return false;
+          _seen.add(key);
+          return true;
+        });
         if (sellers.length === 0) {
           addSellerRow();
         } else {
@@ -11841,6 +12597,8 @@ function openNewClientModal(editClient, warningMessage) {
       });
     }
     if (dd.mortgageGuarantors && document.getElementById('mgList')) {
+      // Clear existing rows first — if this populator runs twice (via re-render), rows would double otherwise.
+      document.querySelectorAll('.mgRow').forEach(el => el.remove());
       dd.mortgageGuarantors.forEach(g => {
         addMortgageGuarantorRow();
         const rows = document.querySelectorAll('.mgRow');
@@ -13191,12 +13949,21 @@ function renderDealSections(purposes) {
           const el = document.getElementById('sh_'+k);
           if (el && !el.value && s[k]) el.value = s[k];
         });
-        // Seller rows — if the list is empty but state has sellers, backfill
+        // Seller rows — if the list is empty but state has sellers, backfill. Aggressive dedup.
         const list = document.getElementById('shSellersList');
         if (list && !list.querySelector('.sh-seller-row')) {
-          const sellers = Array.isArray(s.sellers) && s.sellers.length
+          const rawList = Array.isArray(s.sellers) && s.sellers.length
             ? s.sellers
             : ((s.sellerName || s.sellerPhone || s.sellerEmail) ? [{ name: s.sellerName || '', phone: s.sellerPhone || '', email: s.sellerEmail || '' }] : []);
+          const _normS = v => String(v||'').toLowerCase().replace(/\s+/g,'').replace(/(.)\1+/g,'$1');
+          const _seen = new Set();
+          const sellers = rawList.filter(x => {
+            if (!x) return false;
+            const key = _normS(x.name) + '|' + _normS(x.phone) + '|' + _normS(x.email);
+            if (_seen.has(key)) return false;
+            _seen.add(key);
+            return true;
+          });
           if (sellers.length) sellers.forEach(x => addSellerRow(x));
           else addSellerRow();
         }
@@ -13258,17 +14025,26 @@ function addSellerRow(data) {
     });
     document.body.appendChild(dl);
   }
-  // Auto-fill phone/email when a matching contact is picked
+  // When the name changes: if it matches a contact, autofill phone/email with THAT contact's
+  // details. Otherwise clear phone/email so stale values from a previous name don't stick.
   const nameInput = row.querySelector('.sh_sellerName');
   nameInput.addEventListener('change', () => {
     const name = (nameInput.value || '').trim();
-    if (!name) return;
-    const match = ((state.settings && state.settings.contacts) || []).find(x => (x.name || '').trim() === name);
-    if (!match) return;
     const phoneEl = row.querySelector('.sh_sellerPhone');
     const emailEl = row.querySelector('.sh_sellerEmail');
-    if (phoneEl && !phoneEl.value) phoneEl.value = match.phone || '';
-    if (emailEl && !emailEl.value) emailEl.value = match.email || '';
+    if (!name) {
+      if (phoneEl) phoneEl.value = '';
+      if (emailEl) emailEl.value = '';
+      return;
+    }
+    const match = ((state.settings && state.settings.contacts) || []).find(x => (x.name || '').trim() === name);
+    if (match) {
+      if (phoneEl) phoneEl.value = match.phone || '';
+      if (emailEl) emailEl.value = match.email || '';
+    } else {
+      if (phoneEl) phoneEl.value = '';
+      if (emailEl) emailEl.value = '';
+    }
   });
 }
 
@@ -13285,15 +14061,27 @@ function onContactPicked(nameId, phoneId, emailId, category) {
   const nameEl = document.getElementById(nameId);
   if (!nameEl) return;
   const name = (nameEl.value || '').trim();
-  if (!name) return;
+  const phoneEl = document.getElementById(phoneId);
+  const emailEl = document.getElementById(emailId);
+  if (!name) {
+    // Name cleared — also clear phone/email
+    if (phoneEl) phoneEl.value = '';
+    if (emailEl) emailEl.value = '';
+    return;
+  }
   const contacts = (state.settings && state.settings.contacts) || [];
   const match = contacts.find(x => (x.name || '').trim() === name && (!category || x.category === category))
     || contacts.find(x => (x.name || '').trim() === name);
-  if (!match) return;
-  const phoneEl = document.getElementById(phoneId);
-  const emailEl = document.getElementById(emailId);
-  if (phoneEl && !phoneEl.value) phoneEl.value = match.phone || '';
-  if (emailEl && !emailEl.value) emailEl.value = match.email || '';
+  if (match) {
+    // Replace phone/email with the matched contact's values — stale data from a previous name is wrong.
+    if (phoneEl) phoneEl.value = match.phone || '';
+    if (emailEl) emailEl.value = match.email || '';
+    return;
+  }
+  // Name was changed to one that doesn't match any contact — clear phone/email so stale values
+  // from the previous name don't stick around.
+  if (phoneEl) phoneEl.value = '';
+  if (emailEl) emailEl.value = '';
 }
 
 function addMortgageGuarantorRow() {
@@ -13332,7 +14120,7 @@ function collectDealDetails() {
   }
   // Second hand
   if (document.getElementById('shSellersList') || document.getElementById('sh_buyerLawyer')) {
-    const sellers = [];
+    const rawSellers = [];
     document.querySelectorAll('#shSellersList .sh-seller-row').forEach(row => {
       const nameEl = row.querySelector('.sh_sellerName');
       const phoneEl = row.querySelector('.sh_sellerPhone');
@@ -13340,7 +14128,17 @@ function collectDealDetails() {
       const name = nameEl ? nameEl.value.trim() : '';
       const phone = phoneEl ? phoneEl.value.trim() : '';
       const email = emailEl ? emailEl.value.trim() : '';
-      if (name || phone || email) sellers.push({ name, phone, email });
+      if (name || phone || email) rawSellers.push({ name, phone, email });
+    });
+    // Aggressive dedupe — strip whitespace, collapse repeated chars, lowercase.
+    // Kills exact duplicates and near-duplicates like "123'''" vs "123''" from old merge bugs.
+    const _normSeller = v => String(v||'').toLowerCase().replace(/\s+/g,'').replace(/(.)\1+/g,'$1');
+    const _seenSellers = new Set();
+    const sellers = rawSellers.filter(s => {
+      const key = _normSeller(s.name) + '|' + _normSeller(s.phone) + '|' + _normSeller(s.email);
+      if (_seenSellers.has(key)) return false;
+      _seenSellers.add(key);
+      return true;
     });
     const primary = sellers[0] || { name: '', phone: '', email: '' };
     dd.secondHand = {
@@ -14992,21 +15790,66 @@ function _base64Url(str) {
   return _utf8ToBase64(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+// Sanitize an email address list — strip whitespace, control chars, de-duplicate, filter empty.
+function _sanitizeEmailList(s) {
+  if (!s) return '';
+  const seen = new Set();
+  const out = [];
+  String(s)
+    .split(/[,;\n]+/)
+    .forEach(raw => {
+      const clean = raw.trim().replace(/[\u0000-\u001F\u007F‎‏‪-‮]/g, '').toLowerCase();
+      if (!clean) return;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return;
+      if (seen.has(clean)) return;
+      seen.add(clean);
+      out.push(clean);
+    });
+  return out.join(', ');
+}
+// Reliable UTF-8 → base64url using TextEncoder (avoids btoa pitfalls)
+function _bytesToBase64Url(bytes) {
+  let bin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function _strToBase64Url(str) {
+  return _bytesToBase64Url(new TextEncoder().encode(str));
+}
 async function gmailCreateDraft({ to, cc, subject, htmlBody }) {
   const token = await gmailGetOrRequestToken();
+  const cleanTo = _sanitizeEmailList(to);
+  const cleanCc = _sanitizeEmailList(cc);
+  const cleanSubject = String(subject || '').replace(/[\r\n]+/g, ' ').trim();
+  if (!cleanTo && !cleanCc) {
+    throw new Error('אין נמען תקין. ערכים גולמיים: to="' + String(to||'') + '" cc="' + String(cc||'') + '"');
+  }
+  console.log('[gmailCreateDraft v2] cleanTo=', JSON.stringify(cleanTo), 'cleanCc=', JSON.stringify(cleanCc), 'subject=', JSON.stringify(cleanSubject));
+  // Encode subject as RFC 2047 (Hebrew needs this)
+  const subjectBytes = new TextEncoder().encode(cleanSubject);
+  const subjectB64 = _bytesToBase64Url(subjectBytes).replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - subjectBytes.length % 3) % 3);
   const headerLines = [];
-  if (to) headerLines.push('To: ' + to);
-  if (cc) headerLines.push('Cc: ' + cc);
-  headerLines.push('Subject: =?UTF-8?B?' + _utf8ToBase64(subject || '') + '?=');
+  if (cleanTo) headerLines.push('To: ' + cleanTo);
+  if (cleanCc) headerLines.push('Cc: ' + cleanCc);
+  headerLines.push('Subject: =?UTF-8?B?' + subjectB64 + '?=');
   headerLines.push('MIME-Version: 1.0');
   headerLines.push('Content-Type: text/html; charset=UTF-8');
   headerLines.push('Content-Transfer-Encoding: base64');
   const headers = headerLines.join('\r\n');
-  // base64-encode the body, then wrap at 76 chars (RFC 2045 requires lines ≤76 chars for base64)
-  const bodyB64 = _utf8ToBase64(htmlBody || '');
-  const bodyWrapped = bodyB64.match(/.{1,76}/g)?.join('\r\n') || bodyB64;
-  const mime = headers + '\r\n\r\n' + bodyWrapped;
-  const raw = _base64Url(mime);
+  // Encode HTML body as base64, NO line wrapping (Gmail API accepts unwrapped)
+  const bodyBytes = new TextEncoder().encode(htmlBody || '');
+  let bodyBin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bodyBytes.length; i += CHUNK) {
+    bodyBin += String.fromCharCode.apply(null, bodyBytes.subarray(i, i + CHUNK));
+  }
+  const bodyB64 = btoa(bodyBin);
+  const mime = headers + '\r\n\r\n' + bodyB64;
+  console.log('[gmailCreateDraft v2] MIME preview (first 500 chars):\n' + mime.slice(0, 500));
+  const raw = _strToBase64Url(mime);
   const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
     method: 'POST',
     headers: {
@@ -16980,11 +17823,64 @@ function sendWhatsApp(clientId) {
 function openGlobalSearch() {
   showModal(`
     <h2 class="modal-title">🔍 חיפוש גלובלי</h2>
-    <input id="globalSearchInput" placeholder="חפש: שם, ת.ז, טלפון, כתובת, עו״ד, בנקאי..." style="width:100%;padding:12px;font-size:15px;border:2px solid var(--accent);border-radius:8px" oninput="renderGlobalSearchResults()">
+    <div style="display:flex;gap:8px;align-items:stretch">
+      <input id="globalSearchInput" placeholder="חפש: שם, ת.ז, טלפון, כתובת, עו״ד, בנקאי..." style="flex:1;padding:12px;font-size:15px;border:2px solid var(--accent);border-radius:8px" oninput="renderGlobalSearchResults()">
+      <button id="voiceSearchBtn" onclick="toggleVoiceSearch()" title="חיפוש קולי" style="width:48px;background:white;border:2px solid var(--accent);border-radius:8px;font-size:20px;cursor:pointer;flex-shrink:0">🎤</button>
+    </div>
+    <div id="voiceSearchStatus" style="margin-top:6px;font-size:13px;color:#64748b;min-height:18px"></div>
     <div id="globalSearchResults" style="max-height:400px;overflow-y:auto;margin-top:10px"></div>
   `);
   document.getElementById('modalContent').style.maxWidth = '700px';
   setTimeout(() => { const el = document.getElementById('globalSearchInput'); if (el) el.focus(); renderGlobalSearchResults(); }, 50);
+}
+
+let _voiceRecognition = null;
+function toggleVoiceSearch() {
+  const btn = document.getElementById('voiceSearchBtn');
+  const status = document.getElementById('voiceSearchStatus');
+  const input = document.getElementById('globalSearchInput');
+  if (!btn || !input) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert('חיפוש קולי לא נתמך בדפדפן הזה. נסי Chrome או Edge.'); return; }
+  if (_voiceRecognition) {
+    try { _voiceRecognition.stop(); } catch(e){}
+    _voiceRecognition = null;
+    btn.style.background = 'white'; btn.textContent = '🎤';
+    if (status) status.textContent = '';
+    return;
+  }
+  const r = new SR();
+  r.lang = 'he-IL';
+  r.interimResults = true;
+  r.continuous = false;
+  r.maxAlternatives = 1;
+  r.onstart = () => {
+    btn.style.background = '#fee2e2'; btn.textContent = '⏹';
+    if (status) status.textContent = '🎙 מקשיבה... דברי עכשיו';
+  };
+  r.onresult = (ev) => {
+    let transcript = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      transcript += ev.results[i][0].transcript;
+    }
+    transcript = transcript.replace(/[.,!?\s]+$/, '').trim();
+    input.value = transcript;
+    renderGlobalSearchResults();
+    if (status) status.textContent = ev.results[ev.results.length-1].isFinal ? '✓ ' + transcript : '… ' + transcript;
+  };
+  r.onerror = (ev) => {
+    if (status) status.textContent = ev.error === 'no-speech' ? 'לא שמעתי כלום' : ev.error === 'not-allowed' ? 'צריך לאשר גישה למיקרופון' : 'שגיאה: ' + ev.error;
+    btn.style.background = 'white'; btn.textContent = '🎤';
+    _voiceRecognition = null;
+  };
+  r.onend = () => {
+    btn.style.background = 'white'; btn.textContent = '🎤';
+    _voiceRecognition = null;
+    setTimeout(() => { if (status && status.textContent.startsWith('🎙')) status.textContent = ''; }, 1500);
+  };
+  try { r.start(); _voiceRecognition = r; } catch(e) {
+    if (status) status.textContent = 'לא הצלחתי להתחיל: ' + e.message;
+  }
 }
 function renderGlobalSearchResults() {
   const q = document.getElementById('globalSearchInput').value.trim().toLowerCase();
@@ -18182,6 +19078,7 @@ function renderSettings() {
     { id: 'emailTemplates', label: '📧 תבניות מייל', icon: '📧' },
     { id: 'reminders', label: '📌 תזכורות ללקוח חדש', icon: '📌' },
     { id: 'dealDocs', label: '📄 מסמכים לפי סוג עסקה', icon: '📄' },
+    { id: 'portal', label: '🔗 פורטל לקוח — מה קשור אליו', icon: '🔗' },
     { id: 'stageTasks', label: '✅ משימות ברירת מחדל', icon: '✅' },
     { id: 'bankTasks', label: '🏦 משימות בטחונות בנק', icon: '🏦' },
     { id: 'sellerTasks', label: '🤝 משימות בטחונות מוכר', icon: '🤝' },
@@ -18226,6 +19123,7 @@ function renderActiveSettingsSection() {
 }
 
 function renderSettingsSection(id) {
+  if (id === 'portal') return renderPortalSettingsSection();
   if (id === 'accompanimentBanks') return renderAccompanimentBanksSection();
   if (id === 'snapshots') return renderSnapshotsSection();
   if (id === 'clientsFolder') return renderClientsFolderSection();
@@ -19592,6 +20490,10 @@ if (!storageAvailable) showStorageBanner();
   }, true);
 })();
 
+// Seed the per-client content snapshot NOW, so the first save after load only stamps clients
+// that the user actually edited — not every client (which would make local win vs. cloud for
+// untouched clients, losing cross-device updates).
+try { _seedClientSnapshot(); } catch (e) {}
 // Try to reconnect to a previously-linked save file
 tryReconnectSavedFile();
 reconnectDonnaExport();
@@ -19788,11 +20690,9 @@ function sbQueueSave(immediate){
   if(SB.mode!=='on')return;
   SB.pending=true;sbBadge('pending');
   clearTimeout(SB.saveTimer);
-  // Instant-save model: push immediately on every change. The mutex in sbPushState (SB._pushing +
-  // SB.pending) coalesces bursts automatically — rapid clicks collapse into one trailing push, so
-  // we never spam the server, but a single edit flushes right away.
-  // A very short safety debounce (80ms) only groups synchronous same-tick writes.
-  SB.saveTimer=setTimeout(sbPushState, immediate ? 0 : 80);
+  // Instant-save: push immediately on every change. The mutex in sbPushState (SB._pushing +
+  // SB.pending) coalesces bursts automatically — rapid clicks collapse into one trailing push.
+  SB.saveTimer=setTimeout(sbPushState, 0);
 }
 
 // Explicit "save and push to cloud immediately" — call after critical mutations (create/delete client, etc.)
@@ -19846,144 +20746,25 @@ function _isEmptyVal(v) {
   return false;
 }
 function _mergeBorrowerLike(newer, older) {
-  if (!newer) return older; if (!older) return newer;
-  const out = Object.assign({}, newer);
-  ['email','phone','idNumber','name','familyName','firstName','dob','idIssueDate'].forEach(k => {
-    if (_isEmptyVal(out[k]) && !_isEmptyVal(older[k])) out[k] = older[k];
-  });
-  return out;
+  // Newer always wins — respect the user's intentional field clears (email deletion, etc).
+  // Only fall back to older if newer is entirely missing.
+  if (!newer) return older;
+  return Object.assign({}, newer);
 }
 function _mergeTwoClientVersions(a, b) {
+  // _buildMergedStateFromRemote calls this as (local, cloud).
+  // Rule: LOCAL always wins unless cloud is CLEARLY newer (>30 seconds ahead) — i.e. another
+  // device actually edited this client after our last local save. This eliminates the "I just
+  // typed/deleted something and refresh wiped it" class of bugs, while still letting a legitimately
+  // fresher edit from another device come through. For a single-user single-device setup this is
+  // effectively "local always wins", which is what the user actually wants.
   if (!a) return b; if (!b) return a;
   const _ts = c => new Date((c && (c._updatedAt || c.leadAt)) || 0).getTime();
-  const newer = _ts(a) >= _ts(b) ? a : b;
-  const older = newer === a ? b : a;
-  const merged = Object.assign({}, newer);
-  // STAGE has its OWN timestamp: the user's explicit stage change (moveStage → stageUpdatedAt)
-  // must win over an unrelated edit from another device, even when that other edit touched the
-  // container _updatedAt later. Prevents "I moved him to ליד, refreshed, and he's back to לקוח"
-  // when a stale device/tab recently pushed any trivial change to the same client.
-  const _stageTs = c => new Date((c && c.stageUpdatedAt) || 0).getTime();
-  const sa = _stageTs(a), sb = _stageTs(b);
-  if (sa !== sb) {
-    const stageWinner = sa > sb ? a : b;
-    merged.stage = stageWinner.stage;
-    merged.stageUpdatedAt = stageWinner.stageUpdatedAt;
-    if (stageWinner.stageEnteredAt) merged.stageEnteredAt = stageWinner.stageEnteredAt;
-  }
-  // Protect top-level identity/contact scalars from being blanked by a stale device.
-  _CLIENT_PROTECT_IF_EMPTY.forEach(k => {
-    if (_isEmptyVal(merged[k]) && !_isEmptyVal(older[k])) merged[k] = older[k];
-  });
-  // Deep-protect dealDetails sub-objects (secondHand, firstHand, mchirLm, tenant) — these hold
-  // lawyer/contractor contact info that must NOT be blanked by a stale push from another tab.
-  // Also deep-merge the `sellers` array by index so a lawyer edit on one device doesn't wipe a
-  // seller edit from the other.
-  {
-    const nDD = (newer && newer.dealDetails) || {};
-    const oDD = (older && older.dealDetails) || {};
-    const mDD = Object.assign({}, nDD);
-    const _protectScalars = (nObj, oObj) => {
-      if (!oObj) return nObj || {};
-      if (!nObj) return oObj;
-      const out = Object.assign({}, nObj);
-      Object.keys(oObj).forEach(k => {
-        const v = oObj[k];
-        if (v && typeof v === 'object' && !Array.isArray(v)) return; // handled separately
-        if (Array.isArray(v)) return; // handled separately
-        if (_isEmptyVal(out[k]) && !_isEmptyVal(v)) out[k] = v;
-      });
-      return out;
-    };
-    // secondHand — scalars + sellers array (merge by index: non-empty wins)
-    if (nDD.secondHand || oDD.secondHand) {
-      const nSH = nDD.secondHand || {};
-      const oSH = oDD.secondHand || {};
-      const mSH = _protectScalars(nSH, oSH);
-      const nSellers = Array.isArray(nSH.sellers) ? nSH.sellers : [];
-      const oSellers = Array.isArray(oSH.sellers) ? oSH.sellers : [];
-      const sLen = Math.max(nSellers.length, oSellers.length);
-      if (sLen > 0) {
-        const mSellers = [];
-        for (let i = 0; i < sLen; i++) {
-          const ns = nSellers[i] || {}; const os = oSellers[i] || {};
-          const row = Object.assign({}, ns);
-          ['name','phone','email'].forEach(k => {
-            if (_isEmptyVal(row[k]) && !_isEmptyVal(os[k])) row[k] = os[k];
-          });
-          if (row.name || row.phone || row.email) mSellers.push(row);
-        }
-        if (mSellers.length) mSH.sellers = mSellers;
-      }
-      mDD.secondHand = mSH;
-    }
-    // firstHand + mchirLm — just scalar protection
-    if (nDD.firstHand || oDD.firstHand) mDD.firstHand = _protectScalars(nDD.firstHand || {}, oDD.firstHand || {});
-    if (nDD.mchirLm || oDD.mchirLm) mDD.mchirLm = _protectScalars(nDD.mchirLm || {}, oDD.mchirLm || {});
-    if (nDD.tenant || oDD.tenant) mDD.tenant = _protectScalars(nDD.tenant || {}, oDD.tenant || {});
-    merged.dealDetails = mDD;
-  }
-  // Same rule inside each borrower (match by index — the only stable key the forms use).
-  if (Array.isArray(newer.borrowers) || Array.isArray(older.borrowers)) {
-    const nb = Array.isArray(newer.borrowers) ? newer.borrowers : [];
-    const ob = Array.isArray(older.borrowers) ? older.borrowers : [];
-    const len = Math.max(nb.length, ob.length);
-    const out = [];
-    for (let i = 0; i < len; i++) out.push(_mergeBorrowerLike(nb[i], ob[i]));
-    merged.borrowers = out;
-  }
-  if (Array.isArray(newer.guarantors) || Array.isArray(older.guarantors)) {
-    const nb = Array.isArray(newer.guarantors) ? newer.guarantors : [];
-    const ob = Array.isArray(older.guarantors) ? older.guarantors : [];
-    const len = Math.max(nb.length, ob.length);
-    const out = [];
-    for (let i = 0; i < len; i++) out.push(_mergeBorrowerLike(nb[i], ob[i]));
-    merged.guarantors = out;
-  }
-  _CLIENT_UNION_ARRAYS.forEach(k => {
-    const na = Array.isArray(newer[k]) ? newer[k] : [];
-    const oa = Array.isArray(older[k]) ? older[k] : [];
-    if (na.length === 0 && oa.length === 0) return;
-    // Score each item by its OWN timestamps — so when the same item appears on both sides,
-    // the one that was mutated more recently wins. Prevents a container-level "newer wins"
-    // from erasing a task/req status that was changed on the other device.
-    const _itemScore = (it) => {
-      if (!it) return 0;
-      const t = (v) => { try { return new Date(v).getTime() || 0; } catch (e) { return 0; } };
-      return Math.max(
-        t(it._updatedAt), t(it.doneAt), t(it.providedAt), t(it.at),
-        t(it.createdAt), t(it.updatedAt)
-      );
-    };
-    const map = {};
-    [...na, ...oa].forEach(it => {
-      if (!it) return;
-      let key;
-      // ROOT FIX for duplicate auto-seeded tasks across devices:
-      // Two devices that each ran a seed function (seedSellerStageTasks, seedBankStageTasks, etc.)
-      // produce DIFFERENT ids for the SAME logical task. Keying by id alone preserves both as
-      // separate entries → user sees every seller/bank/signature task duplicated after sync.
-      // Fix: for AUTO-seeded tasks, the identity is (stage + title + source), not the random id.
-      // User-created tasks (no source, or 'manual') keep id-based keying so renames still work.
-      if (k === 'tasks' && it.source && AUTO_SEED_SOURCES.has(it.source) && it.stage && it.title) {
-        key = 'seed:' + it.stage + ':' + it.title + ':' + it.source;
-      }
-      // Requirements seeded by name+section+dealType — same issue, same fix.
-      else if (k === 'requirements' && it.name && (it.section || it.dealType || it.stage)) {
-        key = 'req:' + (it.section || '') + ':' + (it.dealType || '') + ':' + (it.stage || '') + ':' + it.name;
-      }
-      else if (it.id) key = 'id:' + it.id;
-      else if (it.at) key = 'at:' + it.at + '::' + (it.kind || it.type || it.title || '');
-      else { try { key = 'j:' + JSON.stringify(it); } catch(e) { return; } }
-      const existing = map[key];
-      if (!existing) { map[key] = it; return; }
-      // Same item on both sides — pick the one with the more recent OWN timestamp.
-      // Tie: prefer the one coming from the newer container (first in iteration order).
-      if (_itemScore(it) > _itemScore(existing)) map[key] = it;
-    });
-    merged[k] = Object.values(map);
-  });
-  return merged;
+  const tLocal = _ts(a); // local (passed first by _buildMergedStateFromRemote)
+  const tCloud = _ts(b); // cloud
+  // Cloud wins only if it's more than 30 seconds newer than local.
+  if (tCloud > tLocal + 30000) return b;
+  return a;
 }
 
 // Build a merged state: start from remote, then layer in any LOCAL clients/trash that are
@@ -20102,6 +20883,9 @@ function sbApplyRemoteState(obj){
     }
   }
   state.clients.forEach(migrateClient);
+  // Re-seed the per-client snapshot after a sync pull — otherwise the next save would stamp
+  // clients the sync just overwrote as "locally changed" and push them back to cloud.
+  try { _seedClientSnapshot(); } catch (e) {}
 }
 
 function sbConnectRT(){
@@ -20439,6 +21223,248 @@ setTimeout(function(){
   // else: user can click the button when ready
 },200);
 
+</script>
+
+<script>
+// ============================================================
+// Client portal — קישור ללקוח: רואה רק שלבים ומה חסר, ויכול לסמן "שלחתי".
+// תמונת מצב מצומצמת מתפרסמת לטבלת client_portal (ראה supabase-client-portal.sql).
+// ============================================================
+var PORTAL = { sent: {}, hashes: {}, timer: null, stage: 'client', rows: [], filter: '' };
+var PORTAL_URL = 'https://mortgage-yitzhak.pages.dev/portal.html';
+var PORTAL_SEED_DOCS = ['ת"ז + ספח', 'דפי בנק 4 חודשים', 'אישור בעלות', 'פירוט הלוואות', 'דו"ח יתרות משכנתא',
+  'אישור על הלוואות בגמח', 'תלוש שכר', 'שומת מס', 'אישור רו"ח', 'אישור כולל', 'אישור רב', 'אישור ביטוח לאומי', 'אישור הכנסה'];
+
+// שם בסיסי של מסמך: בלי שם האדם / החודש / סוגריים, כדי שהגדרה אחת תחול על כל הלקוחות.
+function portalBase(name) {
+  var n = String(name || '').split(' — ')[0].replace(/\s*\([^)]*\)\s*$/, '').trim();
+  var best = '';
+  PORTAL_SEED_DOCS.forEach(function (p) { if (n.indexOf(p) === 0 && p.length > best.length) best = p; });
+  return best || n;
+}
+function portalKey(item, isTask) {
+  var base = portalBase(isTask ? item.title : item.name);
+  if (isTask) return 'task::' + base;
+  return (item.dealType ? item.dealType + '::' : '') + base;
+}
+// 'client' | 'advisor' | null (null = לא מוצג ללקוח; רק למשימות שלא הוגדרו)
+function portalOwner(item, isTask) {
+  var m = ((state.settings.portalOwners || {})[item.stage]) || {};
+  var v = m[portalKey(item, isTask)];
+  if (v === 'client' || v === 'advisor' || v === 'hidden') return v === 'hidden' ? null : v;
+  if (isTask) return null;
+  return item.stage === 'client' ? 'client' : 'advisor';
+}
+
+function portalSnapshot(c) {
+  var stages = STAGES.filter(function (s) { return s.id !== 'archive'; })
+    .map(function (s) { return { id: s.id, label: s.label, color: s.color, items: [] }; });
+  var by = {}; stages.forEach(function (s) { by[s.id] = s; });
+  var doneCount = 0;
+  (c.requirements || []).forEach(function (r) {
+    if (r.status === 'provided') { doneCount++; return; }
+    if (r.status !== 'pending' || !by[r.stage]) return;
+    var o = portalOwner(r, false);
+    if (o) by[r.stage].items.push({ id: r.id, name: r.name, owner: o });
+  });
+  (c.tasks || []).forEach(function (t) {
+    if (t.status === 'done' || t.done || !by[t.stage]) return;
+    var o = portalOwner({ stage: t.stage, title: t.title }, true);
+    if (o) by[t.stage].items.push({ id: t.id, name: t.title, owner: o });
+  });
+  var first = ((c.borrowers || [])[0] || {}).name || c.name || '';
+  return { v: 1, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount };
+}
+
+async function portalFetch(path, opts) {
+  opts = opts || {};
+  var go = function () { return fetch(SB_URL + path, { method: opts.method || 'GET', headers: sbHdrs(true), body: opts.body }); };
+  var r = await go();
+  if (r.status === 401) { try { await sbRefresh(); } catch (e) {} r = await go(); }
+  if (!r.ok) throw new Error('portal ' + r.status);
+  return r;
+}
+function portalOn() { return typeof SB !== 'undefined' && SB.mode === 'on' && SB.token; }
+
+async function portalPush(c, force) {
+  var js = JSON.stringify(portalSnapshot(c));
+  if (!force && PORTAL.hashes[c.portalToken] === js) return;
+  await portalFetch('/rest/v1/rpc/portal_publish', { method: 'POST', body: JSON.stringify({ p_token: c.portalToken, p_client: c.id, p_data: JSON.parse(js) }) });
+  PORTAL.hashes[c.portalToken] = js;
+}
+async function portalSyncAll() {
+  if (!portalOn()) return;
+  var list = state.clients.filter(function (c) { return c.portalToken; });
+  for (var i = 0; i < list.length; i++) { try { await portalPush(list[i]); } catch (e) {} }
+}
+function portalSchedule() { clearTimeout(PORTAL.timer); PORTAL.timer = setTimeout(portalSyncAll, 2500); }
+
+async function portalPullSent() {
+  if (!portalOn()) return;
+  var toks = state.clients.map(function (c) { return c.portalToken; }).filter(Boolean);
+  if (!toks.length) return;
+  try {
+    var r = await portalFetch('/rest/v1/client_portal?select=token,client_sent&token=in.(' + toks.join(',') + ')');
+    var rows = await r.json(), next = {};
+    rows.forEach(function (x) { next[x.token] = x.client_sent || {}; });
+    var changed = JSON.stringify(next) !== JSON.stringify(PORTAL.sent);
+    PORTAL.sent = next;
+    if (changed && currentTab === 'detail') renderClientDetail();
+  } catch (e) {}
+}
+function portalSentCount(c) { return c.portalToken ? Object.keys(PORTAL.sent[c.portalToken] || {}).length : 0; }
+
+function portalReqBadge(c, r) {
+  var s = c.portalToken && PORTAL.sent[c.portalToken];
+  if (!s || !s[r.id] || r.status !== 'pending') return '';
+  return '<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;white-space:nowrap" title="הלקוח סימן בקישור שהוא שלח. סמן \'התקבל\' כדי לאשר">📤 הלקוח סימן ששלח ' +
+    '<span style="cursor:pointer;margin-inline-start:4px" title="לא התקבל בפועל — בטל סימון" onclick="portalClearSent(\'' + c.id + '\',\'' + r.id + '\')">✕</span></span>';
+}
+async function portalClearSent(cid, rid) {
+  var c = state.clients.find(function (x) { return x.id === cid; });
+  if (!c || !c.portalToken) return;
+  try {
+    await portalFetch('/rest/v1/rpc/portal_clear_sent', { method: 'POST', body: JSON.stringify({ p_token: c.portalToken, p_req: rid }) });
+    if (PORTAL.sent[c.portalToken]) delete PORTAL.sent[c.portalToken][rid];
+    renderClientDetail();
+  } catch (e) { alert('הביטול לא נשמר. בדוק חיבור ונסה שוב.'); }
+}
+
+function portalHeaderButton(c) {
+  var n = portalSentCount(c);
+  return '<button onclick="portalOpenDialog(\'' + c.id + '\')" title="קישור ללקוח — מעקב מסמכים ושלבים" style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:' + (c.portalToken ? '#dbeafe' : '#f1f5f9') + ';border:1px solid var(--border);font-size:16px;cursor:pointer;line-height:1">🔗' +
+    (n ? '<span style="position:absolute;top:-6px;inset-inline-start:-6px;background:#dc2626;color:#fff;border-radius:999px;font-size:11px;min-width:18px;height:18px;line-height:18px;text-align:center;font-weight:700">' + n + '</span>' : '') + '</button>';
+}
+
+function portalNewToken() {
+  var a = new Uint8Array(18); crypto.getRandomValues(a);
+  return Array.prototype.map.call(a, function (b) { return 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]; }).join('');
+}
+function portalLink(c) { return PORTAL_URL + '?t=' + c.portalToken; }
+
+async function portalOpenDialog(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; });
+  if (!c) return;
+  if (!portalOn()) { alert('צריך להיות מחובר לענן (Supabase) כדי ליצור קישור ללקוח.'); return; }
+  if (!c.portalToken) { c.portalToken = portalNewToken(); save(); }
+  try { await portalPush(c, true); } catch (e) {
+    alert('לא הצלחתי לפרסם את הקישור. ודא שהרצת את supabase-client-portal.sql ב-Supabase.'); return;
+  }
+  var link = portalLink(c);
+  var old = document.getElementById('portalDlg'); if (old) old.remove();
+  var d = document.createElement('div');
+  d.id = 'portalDlg';
+  d.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;max-width:520px;width:100%;direction:rtl">' +
+    '<h3 style="margin:0 0 6px">🔗 קישור ללקוח — ' + escapeHtml(c.name) + '</h3>' +
+    '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">הלקוח רואה רק את השלבים ואת המסמכים החסרים, ויכול לסמן "שלחתי". הוא לא רואה שום דבר אחר מהמערכת.</div>' +
+    '<input id="portalLinkInp" readonly value="' + escapeAttr(link) + '" style="width:100%;direction:ltr;padding:8px;border:1px solid var(--border);border-radius:8px" onclick="this.select()">' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
+      '<button class="btn small" onclick="portalCopy()">📋 העתק</button>' +
+      '<button class="btn small secondary" onclick="window.open(document.getElementById(\'portalLinkInp\').value,\'_blank\')">👁 תצוגה כפי שהלקוח רואה</button>' +
+      '<button class="btn small secondary" onclick="portalWhatsapp(\'' + c.id + '\')">💬 שלח בוואטסאפ</button>' +
+      '<button class="btn small secondary" style="color:#dc2626" onclick="portalReset(\'' + c.id + '\')">♻ קישור חדש (מבטל את הישן)</button>' +
+      '<button class="btn small secondary" onclick="document.getElementById(\'portalDlg\').remove()">סגור</button>' +
+    '</div></div>';
+  d.addEventListener('click', function (e) { if (e.target === d) d.remove(); });
+  document.body.appendChild(d);
+  portalPullSent().then(function () { if (currentTab === 'detail') renderClientDetail(); });
+}
+function portalCopy() {
+  var i = document.getElementById('portalLinkInp');
+  i.select();
+  try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); }
+}
+function portalWhatsapp(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; });
+  var phone = String(c.phone || '').replace(/\D/g, '').replace(/^0/, '972');
+  var msg = 'שלום ' + (portalSnapshot(c).name || '') + ',\nבקישור הזה אפשר לראות באיזה שלב התיק שלך נמצא ואילו מסמכים עוד חסרים:\n' + portalLink(c) + '\nיצחק';
+  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
+}
+async function portalReset(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; });
+  if (!confirm('ליצור קישור חדש? הקישור הישן יפסיק לעבוד.')) return;
+  c.portalToken = portalNewToken(); save();
+  document.getElementById('portalDlg').remove();
+  portalOpenDialog(cid);
+}
+
+// ---------- הגדרות: מה קשור ללקוח ----------
+function portalSettingsRows(stageId) {
+  var seen = {}, rows = [];
+  function add(key, label, kind, group) {
+    if (seen[key]) return; seen[key] = 1;
+    rows.push({ key: key, label: label, kind: kind, group: group || '' });
+  }
+  if (stageId === 'client') {
+    PORTAL_SEED_DOCS.forEach(function (n) { add(n, n, 'doc'); });
+    var dd = state.settings.dealDocs || {};
+    Object.keys(dd).forEach(function (dt) { (dd[dt] || []).forEach(function (n) { add(dt + '::' + portalBase(n), portalBase(n), 'doc', dt); }); });
+  }
+  ((state.settings.stageRequirements || {})[stageId] || []).forEach(function (n) { add(portalBase(n), portalBase(n), 'doc'); });
+  if (stageId === 'appraisal') {
+    var ap = state.settings.appraisalTasksByReg || {};
+    Object.keys(ap).forEach(function (reg) { Object.keys(ap[reg] || {}).forEach(function (dt) { (ap[reg][dt] || []).forEach(function (n) { add(portalBase(n), portalBase(n), 'doc'); }); }); });
+  }
+  ((state.settings.stageTasks || {})[stageId] || []).forEach(function (n) { add('task::' + portalBase(n), portalBase(n), 'task'); });
+  state.clients.forEach(function (c) {
+    (c.requirements || []).forEach(function (r) { if (r.stage === stageId) add(portalKey(r, false), portalBase(r.name), 'doc', r.dealType || ''); });
+    (c.tasks || []).forEach(function (t) { if (t.stage === stageId && t.title) add('task::' + portalBase(t.title), portalBase(t.title), 'task'); });
+  });
+  return rows;
+}
+function renderPortalSettingsSection() {
+  var tabs = STAGES.filter(function (s) { return s.id !== 'archive'; });
+  var st = PORTAL.stage;
+  var rows = PORTAL.rows = portalSettingsRows(st);
+  var q = PORTAL.filter.trim();
+  var cur = ((state.settings.portalOwners || {})[st]) || {};
+  function eff(r) {
+    var v = cur[r.key];
+    if (v) return v;
+    return r.kind === 'task' ? 'hidden' : (st === 'client' ? 'client' : 'advisor');
+  }
+  var seg = function (i, val, active, label) {
+    return '<button onclick="portalSetOwner(' + i + ',\'' + val + '\')" style="padding:4px 10px;border:1px solid var(--border);cursor:pointer;font-size:12px;font-weight:' + (active ? 700 : 500) + ';background:' + (active ? (val === 'client' ? '#2563eb' : val === 'advisor' ? '#f59e0b' : '#64748b') : '#fff') + ';color:' + (active ? '#fff' : 'var(--text)') + '">' + label + '</button>';
+  };
+  var lastGroup = null, body = '';
+  rows.forEach(function (r, i) {
+    if (q && r.label.indexOf(q) < 0 && r.group.indexOf(q) < 0) return;
+    if (r.group !== lastGroup) { body += '<div style="font-size:12px;font-weight:700;color:var(--muted);margin:12px 0 4px">' + (r.group ? '📄 ' + escapeHtml(r.group) : 'כללי') + '</div>'; lastGroup = r.group; }
+    var e = eff(r);
+    body += '<div class="settings-item" style="display:flex;align-items:center;gap:8px;justify-content:space-between"><span>' + (r.kind === 'task' ? '✅ ' : '📎 ') + escapeHtml(r.label) + '</span>' +
+      '<span style="display:inline-flex;border-radius:6px;overflow:hidden">' + seg(i, 'client', e === 'client', '👤 לקוח') + seg(i, 'advisor', e === 'advisor', '🧑‍💼 אצלי') + (r.kind === 'task' ? seg(i, 'hidden', e === 'hidden', 'לא מוצג') : '') + '</span></div>';
+  });
+  return '<div class="panel"><h2 class="panel-title">🔗 פורטל לקוח — מה קשור אליו</h2>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">לכל שלב ולכל סוג עסקה: סמן אם המסמך/המשימה באחריות <b>הלקוח</b> או <b>אצלי</b>. הלקוח רואה את שניהם, מסומנים בנפרד. משימות מוצגות ללקוח רק אם סימנת אותן.</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + tabs.map(function (s) {
+      return '<button onclick="PORTAL.stage=\'' + s.id + '\';renderActiveSettingsSection()" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:' + (s.id === st ? 700 : 500) + ';background:' + (s.id === st ? s.color : '#fff') + ';color:' + (s.id === st ? '#fff' : 'var(--text)') + '">' + s.label + '</button>'; }).join('') + '</div>' +
+    '<input placeholder="חיפוש מסמך…" value="' + escapeAttr(PORTAL.filter) + '" oninput="PORTAL.filter=this.value;portalRerenderRows()" style="width:100%;margin-bottom:6px">' +
+    '<div id="portalRows">' + (body || '<div class="empty">אין פריטים בשלב הזה עדיין.</div>') + '</div></div>';
+}
+function portalRerenderRows() {
+  var el = document.getElementById('settingsPanelContent'); if (!el) return;
+  var pos = document.activeElement && document.activeElement.selectionStart;
+  renderActiveSettingsSection();
+  var inp = el.querySelector('input'); if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (e) {} }
+}
+function portalSetOwner(i, val) {
+  var r = PORTAL.rows[i]; if (!r) return;
+  var s = state.settings;
+  s.portalOwners = s.portalOwners || {};
+  s.portalOwners[PORTAL.stage] = s.portalOwners[PORTAL.stage] || {};
+  s.portalOwners[PORTAL.stage][r.key] = val;
+  save();
+  renderActiveSettingsSection();
+}
+
+// שמירה → סנכרון לפורטל (מדוכא), ורענון סימוני "שלחתי" של הלקוחות
+(function () {
+  var origSave = save;
+  save = function () { var r = origSave.apply(this, arguments); try { portalSchedule(); } catch (e) {} return r; };
+  setInterval(function () { portalPullSent(); portalSyncAll(); }, 30000);
+  setTimeout(function () { portalPullSent(); portalSyncAll(); }, 6000);
+})();
 </script>
 
 </body>
