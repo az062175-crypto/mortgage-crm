@@ -139,8 +139,9 @@ function render(){
       return '<div class="item'+(S.sent[it.id]?' sent':'')+'"><div class="nm">'+esc(it.name)+'</div><div class="note">'+(S.sent[it.id]?'📤 נשלח ליועץ, ממתין לאישור':'⏳ ממתין לך — אפשר לסמן למעלה')+'</div></div>';}).join('')+'</div>';
   }
   if(adv.length){
+    adv=adv.filter(function(it){return !it.done;}).concat(adv.filter(function(it){return it.done;}));
     h+='<div class="card"><h2><span class="tag adv">🧑‍💼 בטיפול היועץ</span></h2>'+adv.map(function(it){
-      return '<div class="item"><div class="nm">'+esc(it.name)+'</div></div>';}).join('')+'</div>';
+      return it.done?'<div class="item" style="background:#f0fdf4;border-color:#bbf7d0"><div class="nm" style="color:var(--ok)">✓ '+esc(it.name)+'</div></div>':'<div class="item"><div class="nm">'+esc(it.name)+'</div></div>';}).join('')+'</div>';
   }
   if(d.doneCount){
     var done=d.done||[],groups={};

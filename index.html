@@ -21273,14 +21273,19 @@ function portalSnapshot(c) {
   var by = {}; stages.forEach(function (s) { by[s.id] = s; });
   var doneCount = 0, done = [];
   (c.requirements || []).forEach(function (r) {
-    if (r.status === 'provided') { doneCount++; if (by[r.stage]) done.push({ name: r.name, stage: by[r.stage].label }); return; }
+    if (r.status === 'provided') {
+      // פריט שבאחריות היועץ ובוצע: נשאר ברשימת "בטיפול היועץ" עם V (למטה); אחרת נספר ב"התקבלו"
+      if (by[r.stage] && portalOwner(r, false) === 'advisor') { by[r.stage].items.push({ id: r.id, name: r.name, owner: 'advisor', done: true }); return; }
+      doneCount++; if (by[r.stage]) done.push({ name: r.name, stage: by[r.stage].label }); return;
+    }
     if (r.status !== 'pending' || !by[r.stage]) return;
     var o = portalOwner(r, false);
     if (o) by[r.stage].items.push({ id: r.id, name: r.name, owner: o });
   });
   (c.tasks || []).forEach(function (t) {
-    if (t.status === 'done' || t.done || !by[t.stage]) return;
+    if (!by[t.stage]) return;
     var o = portalOwner({ stage: t.stage, title: t.title }, true);
+    if (t.status === 'done' || t.done) { if (o === 'advisor') by[t.stage].items.push({ id: t.id, name: t.title, owner: 'advisor', done: true }); return; }
     if (o) by[t.stage].items.push({ id: t.id, name: t.title, owner: o });
   });
   var first = ((c.borrowers || [])[0] || {}).name || c.name || '';
