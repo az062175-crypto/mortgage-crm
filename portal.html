@@ -151,6 +151,7 @@ function summaryHtml(s){
   if(s.approvals&&s.approvals.length)h+=s.approvals.map(function(a){
     return '<div class="appr">✅ קיים אישור עקרוני'+(a.bank?' מבנק '+esc(a.bank):'')+(a.amount?' על סך '+money(a.amount):'')+'</div>';}).join('');
   if(s.appraised)h+='<div class="appr">✅ ב"ה אושר השמאות בסך '+money(s.appraised)+'</div>';
+  if(s.valueRow&&s.valueRow.amount)h+='<div class="card sum"><div class="sr"><span>'+esc(s.valueRow.label)+'</span><b>'+money(s.valueRow.amount)+'</b></div></div>';
   return h;
 }
 function itemHtml(it,stage){
