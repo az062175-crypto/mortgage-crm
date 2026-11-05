@@ -21330,8 +21330,8 @@ function portalSentCount(c) { return c.portalToken ? Object.keys(PORTAL.sent[c.p
 function portalReqBadge(c, r) {
   var s = c.portalToken && PORTAL.sent[c.portalToken];
   if (!s || !s[r.id] || r.status !== 'pending') return '';
-  return '<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;white-space:nowrap" title="הלקוח סימן בקישור שהוא שלח. סמן \'התקבל\' כדי לאשר">📤 הלקוח סימן ששלח ' +
-    '<span style="cursor:pointer;margin-inline-start:4px" title="לא התקבל בפועל — בטל סימון" onclick="portalClearSent(\'' + c.id + '\',\'' + r.id + '\')">✕</span></span>';
+  return '<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;white-space:nowrap;font-size:11px;padding:2px 6px;flex:0 0 auto" title="הלקוח סימן בקישור שהוא שלח. סמן \'התקבל\' כדי לאשר">📤 <span class="portal-badge-txt">שלח</span> ' +
+    '<span style="cursor:pointer;margin-inline-start:2px" title="לא התקבל בפועל — בטל סימון" onclick="portalClearSent(\'' + c.id + '\',\'' + r.id + '\')">✕</span></span>';
 }
 async function portalClearSent(cid, rid) {
   var c = state.clients.find(function (x) { return x.id === cid; });
