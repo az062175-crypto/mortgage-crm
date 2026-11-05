@@ -196,6 +196,13 @@
   .status-btn.active[data-status="not-required"] { background: var(--muted); color: white; border-color: var(--muted); }
   .status-btn.active[data-status="pending"] { background: var(--warning); color: white; border-color: var(--warning); }
   .status-btn.active[data-status="provided"] { background: var(--success); color: white; border-color: var(--success); }
+  @media (max-width: 640px) {
+    .req-item { flex-wrap: wrap; gap: 6px 8px; padding: 8px; max-width: 100%; box-sizing: border-box; }
+    .req-item .req-name { flex: 1 1 calc(100% - 40px); min-width: 0; }
+    .req-item .req-status-group { flex: 1 1 auto; min-width: 0; }
+    .req-item .status-btn { padding: 5px 8px; white-space: nowrap; }
+    .req-item .icon-btn { flex: 0 0 auto; }
+  }
 
   /* Filter chips */
   .chips { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
