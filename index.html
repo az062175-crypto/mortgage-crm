@@ -6242,11 +6242,14 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
     <h2 class="modal-title">📧 שליחת טיוטת מייל לשמאי</h2>
     <div class="form-group">
       <label>בחר שמאי</label>
-      <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px">
+      <div style="max-height:200px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;border:1px solid var(--border);border-radius:8px;padding:8px;background:#fafafa">
         ${state.settings.appraisers.map(a => `
-          <label style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:14px" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background=''">
-            <input type="radio" name="sendAppraiser" value="${a.id}" style="accent-color:var(--accent)">
-            <span><strong>${escapeHtml(a.name)}</strong>${a.email?' · '+escapeHtml(a.email):' · <span style="color:var(--danger)">ללא אימייל</span>'}${sentIds.includes(a.id)?' <span style="color:var(--success);font-weight:700">✓ נשלח</span>':''}</span>
+          <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer;font-size:13px;transition:all .15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <input type="radio" name="sendAppraiser" value="${a.id}" style="accent-color:var(--accent);flex-shrink:0">
+            <span style="min-width:0;flex:1;overflow:hidden">
+              <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(a.name)}${sentIds.includes(a.id)?' <span style="color:var(--success);font-weight:700">✓</span>':''}</div>
+              <div style="color:#6b7280;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.email?escapeHtml(a.email):'<span style="color:var(--danger)">ללא אימייל</span>'}</div>
+            </span>
           </label>
         `).join('')}
       </div>
@@ -6254,11 +6257,14 @@ function showAppraiserDialogWithBanker(clientId, bankerId) {
     ${contactCandidates.length > 1 ? `
     <div class="form-group">
       <label>איש קשר לתיאום ביקור</label>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">
         ${contactCandidates.map(cc => `
-          <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px;background:${cc.key===defaultContactKey?'#eef2ff':'#fff'}" onclick="setTimeout(_updateAppraiserContactLine,0)">
-            <input type="radio" name="apprContact" value="${cc.key}" ${cc.key===defaultContactKey?'checked':''} style="accent-color:var(--accent)">
-            <span><strong>${escapeHtml(cc.label)}</strong>${cc.name?' · '+escapeHtml(cc.name):''}${cc.phone?' · '+escapeHtml(cc.phone):''}</span>
+          <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px;background:${cc.key===defaultContactKey?'#eef2ff':'#fff'};transition:all .15s" onmouseover="if(!this.querySelector('input').checked)this.style.borderColor='var(--accent)'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='var(--border)'" onclick="setTimeout(_updateAppraiserContactLine,0)">
+            <input type="radio" name="apprContact" value="${cc.key}" ${cc.key===defaultContactKey?'checked':''} style="accent-color:var(--accent);flex-shrink:0">
+            <span style="min-width:0;flex:1;overflow:hidden">
+              <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(cc.label)}${cc.name?' · '+escapeHtml(cc.name):''}</div>
+              ${cc.phone?`<div style="color:#6b7280;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(cc.phone)}</div>`:''}
+            </span>
           </label>
         `).join('')}
       </div>
