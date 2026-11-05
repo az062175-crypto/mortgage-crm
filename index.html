@@ -21293,7 +21293,9 @@ function portalSnapshot(c) {
     banks: subBanks,
     approvals: (c.approvals || []).map(function (a) { return { bank: a.bankName || a.bank || '', amount: Number(a.amount) || 0 }; })
   };
-  return { v: 1, summary: summary, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
+  var phones = [];
+  if (!String(c.phone || '').trim()) (c.borrowers || []).forEach(function (b, i) { if (!String(b.phone || '').trim()) phones.push({ id: 'phone:' + i, name: String(b.name || '').trim().split(/\s+/)[0] }); });
+  return { v: 1, phones: phones, summary: summary, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
 }
 
 async function portalFetch(path, opts) {
@@ -21329,10 +21331,34 @@ async function portalPullSent() {
     rows.forEach(function (x) { next[x.token] = x.client_sent || {}; });
     var changed = JSON.stringify(next) !== JSON.stringify(PORTAL.sent);
     PORTAL.sent = next;
+    if (portalApplyPhones(next)) { save(); changed = true; }
     if (changed && currentTab === 'detail') renderClientDetail();
   } catch (e) {}
 }
-function portalSentCount(c) { return c.portalToken ? Object.keys(PORTAL.sent[c.portalToken] || {}).length : 0; }
+function portalSentCount(c) { return c.portalToken ? Object.keys(PORTAL.sent[c.portalToken] || {}).filter(function (k) { return k.indexOf('phone:') !== 0; }).length : 0; }
+// מספרי נייד שהלקוח הזין בפורטל: נכנסים לתיק רק אם השדה ריק (לא דורסים מידע קיים)
+function portalApplyPhones(sentByToken) {
+  var any = false;
+  state.clients.forEach(function (c) {
+    var s = c.portalToken && sentByToken[c.portalToken]; if (!s) return;
+    var touched = false;
+    Object.keys(s).forEach(function (k) {
+      if (k.indexOf('phone:') !== 0) return;
+      var v = String(s[k] || '').replace(/[\s\-]/g, '');
+      if (!/^(0\d{8,9}|\+972\d{8,9})$/.test(v)) return;
+      var idx = Number(k.slice(6));
+      var b = (c.borrowers || [])[idx];
+      if (b && !String(b.phone || '').trim()) { b.phone = v; touched = true; }
+      if (idx === 0 && !String(c.phone || '').trim()) { c.phone = v; touched = true; }
+    });
+    if (touched) {
+      any = true;
+      var all = (c.borrowers || []).length && c.borrowers.every(function (b) { return String(b.phone || '').trim() || String(c.phone || '').trim(); });
+      if (all) (c.tasks || []).forEach(function (t) { if (t.stage === 'submission' && t.title === 'ניידים של הלווים' && t.status !== 'done') { t.status = 'done'; t.done = true; t.doneAt = now(); } });
+    }
+  });
+  return any;
+}
 
 function portalReqBadge(c, r) {
   var s = c.portalToken && PORTAL.sent[c.portalToken];

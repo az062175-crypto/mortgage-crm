@@ -113,6 +113,11 @@ function render(){
   else if(!items.length)h+='<div class="empty">אין כרגע דברים פתוחים בשלב הזה.</div>';
   h+='</div>';
 
+  if(sel.id==='submission'&&d.phones&&d.phones.length){
+    h+='<div class="card"><h2><span class="tag me">📱 מספרי נייד</span></h2><div class="sub" style="margin:0 0 8px">חסר לנו מספר נייד. אפשר להזין כאן, וזה יישמר בתיק אצל היועץ.</div>'+d.phones.map(function(p){
+      if(S.sent[p.id])return '<div class="item sent"><div class="nm">'+esc(p.name||'לווה')+' — '+esc(S.sent[p.id])+'</div><div class="note">📤 נשלח ליועץ</div></div>';
+      return '<div class="item"><div class="nm">'+esc(p.name||'לווה')+'</div><div class="act" style="display:flex;gap:6px"><input id="ph_'+esc(p.id)+'" type="tel" inputmode="tel" dir="ltr" placeholder="05X-XXXXXXX" style="flex:1;min-width:0;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:16px;font-family:inherit"><button class="send" onclick="sendPhone(\''+esc(p.id)+'\')">שלח</button></div></div>';}).join('')+'</div>';
+  }
   if(mine.length){
     h+='<div class="card"><h2><span class="tag me">👤 ממך, בשלב הזה</span></h2>'+mine.map(function(it){
       return '<div class="item'+(S.sent[it.id]?' sent':'')+'"><div class="nm">'+esc(it.name)+'</div><div class="note">'+(S.sent[it.id]?'📤 נשלח ליועץ, ממתין לאישור':'⏳ ממתין לך — אפשר לסמן למעלה')+'</div></div>';}).join('')+'</div>';
@@ -150,11 +155,24 @@ function itemHtml(it,stage){
   var sent=!!S.sent[it.id];
   var chip=stage?'<span class="chip">'+esc(stage)+'</span>':'';
   if(sent)return '<div class="item sent"><div class="nm">'+chip+esc(it.name)+'</div>'+
-    '<div class="note">📤 נשלח ליועץ, ממתין לאישור היועץ לעדכון המסמך</div></div>';
+    '<div class="note">📤 נשלח ליועץ, ממתין לאישור היועץ לעדכון המסמך</div>'+
+    '<div class="act"><button class="link" onclick="mark(\''+esc(it.id)+'\',false)">שלחתי בטעות — ביטול</button></div></div>';
   return '<div class="item"><div class="nm">'+chip+esc(it.name)+'</div>'+
     '<div class="act"><button class="send" onclick="mark(\''+esc(it.id)+'\',true)">✔ שלחתי ליועץ</button></div></div>';
 }
 
+async function sendPhone(id){
+  if(S.busy)return;
+  var el=document.getElementById('ph_'+id);var v=(el&&el.value||'').replace(/[\s\-]/g,'');
+  if(!/^(0\d{8,9}|\+972\d{8,9})$/.test(v)){alert('מספר לא תקין. לדוגמה: 0501234567');return;}
+  S.busy=true;
+  try{
+    var r=await rpc('portal_set_input',{p_token:TOKEN,p_key:id,p_val:v});
+    if(r&&typeof r==='object')S.sent=r;else throw new Error('x');
+    render();
+  }catch(e){alert('השליחה לא נשמרה. נסה שוב.');}
+  S.busy=false;
+}
 function pick(id){S.sel=id;render();}
 function toggleTop(){S.openTop=!S.openTop;render();}
 
