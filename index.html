@@ -21438,7 +21438,7 @@ function portalSnapshot(c) {
     if (vc && vc.phone) ct = { name: vc.name || '', phone: vc.phone };
     else if (hasTenant) { if (tn.phone) ct = { name: tn.name || '', phone: tn.phone }; }
     else if (b1.phone || c.phone) ct = { name: b1.name || c.name || '', phone: b1.phone || c.phone };
-    return { contact: ct, contactKey: 'phone:visit', tenant: hasTenant, visit: st('תואם ביקור?'), pay: st('הועבר תשלום?'), ready: st('שמאות מוכנה?') };
+    return { contact: ct, contactKey: 'phone:visit', tenant: hasTenant, filled: !!(vc && vc.phone), visit: st('תואם ביקור?'), pay: st('הועבר תשלום?'), ready: st('שמאות מוכנה?') };
   })();
   var execs = (c.tasks || []).filter(function (t) { return t.stage === 'execution' && t.hasAmount; }).map(function (t) {
     var rows = (Array.isArray(t.executions) ? t.executions : []).map(function (e) { return { amount: Number(e.amount) || 0, date: e.date || '', notes: String(e.notes || '') }; });
@@ -21446,7 +21446,13 @@ function portalSnapshot(c) {
   }).filter(function (x) { return x.expected > 0 || x.rows.length; });
   var prog = (function () { var r = portalProgress(c); return { pct: r.pct, segs: r.segs }; })();
   var phones = [];
-  if (!String(c.phone || '').trim()) (c.borrowers || []).forEach(function (b, i) { if (!String(b.phone || '').trim()) phones.push({ id: 'phone:' + i, name: String(b.name || '').trim().split(/\s+/)[0] }); });
+  var pf = c.portalFilled || {};
+  var pfAny = Object.keys(pf).some(function (k) { return k !== 'phone:visit'; });
+  if (!String(c.phone || '').trim() || pfAny) (c.borrowers || []).forEach(function (b, i) {
+    var nm = String(b.name || '').trim().split(/\s+/)[0];
+    if (!String(b.phone || '').trim()) phones.push({ id: 'phone:' + i, name: nm });
+    else if (pf['phone:' + i]) phones.push({ id: 'phone:' + i, name: nm, done: true }); // הלקוח מילא והתקבל — יורד למטה עם ✓ בוצע
+  });
   return { v: 1, phones: phones, appr: appr, execs: execs, progress: prog, summary: summary, name: portalGreetName(c, first), stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
 }
 
@@ -21498,10 +21504,11 @@ function portalApplyPhones(sentByToken) {
       if (k.indexOf('phone:') !== 0) return;
       var v = String(s[k] || '').replace(/[\s\-]/g, '');
       if (!/^(0\d{8,9}|\+972\d{8,9})$/.test(v)) return;
-      if (k === 'phone:visit') { if (!(c.visitContact && c.visitContact.phone)) { c.visitContact = { name: '', phone: v }; touched = true; } return; }
+      var _mark = function () { (c.portalFilled = c.portalFilled || {})[k] = true; };
+      if (k === 'phone:visit') { if (!(c.visitContact && c.visitContact.phone)) { c.visitContact = { name: '', phone: v }; _mark(); touched = true; } return; }
       var idx = Number(k.slice(6));
       var b = (c.borrowers || [])[idx];
-      if (b && !String(b.phone || '').trim()) { b.phone = v; touched = true; }
+      if (b && !String(b.phone || '').trim()) { b.phone = v; _mark(); touched = true; }
       if (idx === 0 && !String(c.phone || '').trim()) { c.phone = v; touched = true; }
     });
     if (touched) {

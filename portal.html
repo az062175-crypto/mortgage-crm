@@ -92,21 +92,34 @@ function render(){
   h+=summaryHtml(d.summary);
   var allMine=[];
   stages.forEach(function(s){(s.items||[]).forEach(function(it){if(it.owner==='client')allMine.push({it:it,stage:s.label});});});
-  var needVisit=stages.some(function(s){return s.id==='appraisal';})&&d.appr&&!d.appr.contact&&d.appr.ready!=='done';
-  if(needVisit)allMine.push({it:{id:d.appr.contactKey,name:d.appr.tenant?'מספר טלפון של השוכר לתיאום ביקור השמאי':'מספר טלפון לתיאום ביקור השמאי',phone:true},stage:'שמאות'});
+  // טלפונים שהלקוח ממלא בעצמו (איש קשר לביקור שמאי, ניידי לווים) — נספרים כאן; אחרי שהתקבלו יורדים למטה עם ✓ בוצע
+  var pItems=[],doneMine=[],ap0=d.appr;
+  var hasStage=function(id){return stages.some(function(s){return s.id===id;});};
+  var stLabel=function(id){var s=stages.find(function(x){return x.id===id;});return s?s.label:'';};
+  if(hasStage('appraisal')&&ap0){
+    var vn=ap0.tenant?'מספר טלפון של השוכר לתיאום ביקור השמאי':'מספר טלפון לתיאום ביקור השמאי';
+    if(!ap0.contact){if(ap0.ready!=='done')pItems.push({it:{id:ap0.contactKey,name:vn,phone:true},stage:stLabel('appraisal'),sid:'appraisal'});}
+    else if(ap0.filled)doneMine.push({it:{id:ap0.contactKey,name:vn,phone:true,done:true},stage:stLabel('appraisal')});
+  }
+  if(hasStage('submission'))(d.phones||[]).forEach(function(p){
+    var x={it:{id:p.id,name:'מספר נייד של '+(p.name||'הלווה'),phone:true,done:!!p.done},stage:stLabel('submission'),sid:'submission'};
+    if(p.done)doneMine.push(x);else pItems.push(x);
+  });
+  allMine=allMine.concat(pItems);
   var openMine=allMine.filter(function(x){return !S.sent[x.it.id];}).length;
-  var showList=S.openTop&&allMine.length;
+  var anyMine=allMine.length+doneMine.length;
+  var showList=S.openTop&&anyMine;
   h+='<div class="card top"><h2><span class="tag me">👤 מה נדרש ממך</span>'+
     (openMine?'<button class="cnt2" onclick="toggleTop()" title="לחץ להצגת הרשימה">'+openMine+(showList?' ▴':' ▾')+'</button>':
-      (allMine.length?'<button class="cnt2 sentc" onclick="toggleTop()">'+(showList?'▴':'▾')+'</button>':''))+'</h2>'+
-    (!allMine.length?'<div class="empty">אין כרגע שום דבר שנדרש ממך 🎉</div>':
-      (showList?allMine.map(function(x){return itemHtml(x.it,x.stage);}).join(''):
-        '<div class="empty">'+(openMine?'יש '+openMine+' פריטים שמחכים לך. לחץ על המספר האדום כדי לראות אותם.':'כל הפריטים נשלחו וממתינים לאישור היועץ. לחץ על החץ כדי לראות.')+'</div>'))+'</div>';
+      (anyMine?'<button class="cnt2 sentc" onclick="toggleTop()">'+(showList?'▴':'▾')+'</button>':''))+'</h2>'+
+    (!anyMine?'<div class="empty">אין כרגע שום דבר שנדרש ממך 🎉</div>':
+      (showList?allMine.map(function(x){return itemHtml(x.it,x.stage);}).join('')+doneMine.map(function(x){return itemHtml(x.it,x.stage);}).join(''):
+        '<div class="empty">'+(openMine?'יש '+openMine+' פריטים שמחכים לך. לחץ על המספר האדום כדי לראות אותם.':(allMine.length?'כל הפריטים נשלחו וממתינים לאישור היועץ. לחץ על החץ כדי לראות.':'הכול בוצע ✓. לחץ על החץ כדי לראות.'))+'</div>'))+'</div>';
   h+='<div class="sub" style="margin:16px 0 4px">שלבי התיק — לחץ על שלב כדי לראות מה קורה בו:</div>';
   h+='<div class="steps">'+stages.map(function(s,i){
     var st=stageState(i,curIdx);
     var open=(s.items||[]).filter(function(it){return it.owner==='client'&&!S.sent[it.id];}).length;
-    if(needVisit&&s.id==='appraisal'&&!S.sent[d.appr.contactKey])open++;
+    pItems.forEach(function(x){if(x.sid===s.id&&!S.sent[x.it.id])open++;});
     var style=st==='current'?' style="background:'+esc(s.color)+'"':'';
     return '<button class="step '+st+(s.id===sel.id?' sel':'')+'"'+style+' onclick="pick(\''+esc(s.id)+'\')">'+(st==='done'?'✓ ':'')+esc(s.label)+(open?'<span class="cnt">'+open+'</span>':'')+'</button>';
   }).join('')+'</div>';
@@ -148,7 +161,8 @@ function render(){
     });
   }
   if(sel.id==='submission'&&d.phones&&d.phones.length){
-    h+='<div class="card"><h2><span class="tag me">📱 מספרי נייד</span></h2><div class="sub" style="margin:0 0 8px">חסר לנו מספר נייד. אפשר להזין כאן, וזה יישמר בתיק אצל היועץ.</div>'+d.phones.map(function(p){
+    h+='<div class="card"><h2><span class="tag me">📱 מספרי נייד</span></h2><div class="sub" style="margin:0 0 8px">חסר לנו מספר נייד. אפשר להזין כאן, וזה יישמר בתיק אצל היועץ.</div>'+d.phones.filter(function(p){return !p.done;}).concat(d.phones.filter(function(p){return p.done;})).map(function(p){
+      if(p.done)return '<div class="sr"><span>'+esc(p.name||'לווה')+'</span><b>✓ בוצע</b></div>';
       if(S.sent[p.id])return '<div class="item sent"><div class="nm">'+esc(p.name||'לווה')+' — '+esc(S.sent[p.id])+'</div><div class="note">📤 נשלח ליועץ</div></div>';
       return '<div class="item"><div class="nm">'+esc(p.name||'לווה')+'</div><div class="act" style="display:flex;gap:6px"><input id="ph_'+esc(p.id)+'" type="tel" inputmode="tel" dir="ltr" placeholder="05X-XXXXXXX" style="flex:1;min-width:0;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:16px;font-family:inherit"><button class="send" onclick="sendPhone(\''+esc(p.id)+'\')">שלח</button></div></div>';}).join('')+'</div>';
   }
@@ -211,6 +225,7 @@ function itemHtml(it,stage){
   var sent=!!S.sent[it.id];
   var chip=stage?'<span class="chip">'+esc(stage)+'</span>':'';
   if(it.phone){
+    if(it.done)return '<div class="sr"><span>'+chip+esc(it.name)+'</span><b>✓ בוצע</b></div>';
     if(sent)return '<div class="item sent"><div class="nm">'+chip+esc(it.name)+' — '+esc(S.sent[it.id])+'</div><div class="note">📤 נשלח ליועץ</div></div>';
     return '<div class="item"><div class="nm">'+chip+esc(it.name)+'</div><div class="act" style="display:flex;gap:6px"><input id="phT_'+esc(it.id)+'" type="tel" inputmode="tel" dir="ltr" placeholder="05X-XXXXXXX" style="flex:1;min-width:0;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:16px;font-family:inherit"><button class="send" onclick="sendPhone(\''+esc(it.id)+'\',\'phT_\')">שלח</button></div></div>';
   }
