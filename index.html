@@ -21328,9 +21328,28 @@ function portalSnapshot(c) {
     var rows = (Array.isArray(t.executions) ? t.executions : []).map(function (e) { return { amount: Number(e.amount) || 0, date: e.date || '', notes: String(e.notes || '') }; });
     return { title: t.title, expected: Number(t.expectedAmount) || 0, rows: rows, total: rows.reduce(function (a, e) { return a + e.amount; }, 0) };
   }).filter(function (x) { return x.expected > 0 || x.rows.length; });
+  // התקדמות כללית: שמאות 20%, אישור 20%, בטחונות מוכר 30%, והיתרה (30%) מתחלקת שווה בין שאר המשימות והמסמכים
+  var prog = (function () {
+    var agg = {};
+    function bump(st, done) { var a = agg[st] = agg[st] || { d: 0, t: 0 }; a.t++; if (done) a.d++; }
+    (c.requirements || []).forEach(function (r) { if (r.status !== 'not-required') bump(r.stage, r.status === 'provided'); });
+    (c.tasks || []).forEach(function (t) { bump(t.stage, t.status === 'done' || !!t.done); });
+    var ids = STAGES.map(function (x) { return x.id; }), cur = ids.indexOf(c.stage), arch = c.stage === 'archive';
+    var fixed = [{ id: 'appraisal', label: 'שמאות', w: 20 }, { id: 'approval', label: 'אישור', w: 20 }, { id: 'seller', label: 'בטחונות מוכר', w: 30 }];
+    var segs = fixed.map(function (f) {
+      var a = agg[f.id], past = arch || ids.indexOf(f.id) < cur;
+      return { label: f.label, w: f.w, f: a && a.t ? a.d / a.t : (past ? 1 : 0) };
+    });
+    var rd = 0, rt = 0;
+    Object.keys(agg).forEach(function (k) { if (k !== 'archive' && !fixed.some(function (f) { return f.id === k; })) { rd += agg[k].d; rt += agg[k].t; } });
+    var restW = 100 - fixed.reduce(function (a, f) { return a + f.w; }, 0);
+    segs.push({ label: 'שאר השלבים', w: restW, f: rt ? rd / rt : 0 });
+    var pct = Math.round(segs.reduce(function (a, g) { return a + g.w * g.f; }, 0));
+    return { pct: pct, segs: segs.map(function (g) { return { label: g.label, w: g.w, f: Math.round(g.f * 1000) / 1000 }; }) };
+  })();
   var phones = [];
   if (!String(c.phone || '').trim()) (c.borrowers || []).forEach(function (b, i) { if (!String(b.phone || '').trim()) phones.push({ id: 'phone:' + i, name: String(b.name || '').trim().split(/\s+/)[0] }); });
-  return { v: 1, phones: phones, appr: appr, execs: execs, summary: summary, name: portalGreetName(c, first), stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
+  return { v: 1, phones: phones, appr: appr, execs: execs, progress: prog, summary: summary, name: portalGreetName(c, first), stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
 }
 
 async function portalFetch(path, opts) {
