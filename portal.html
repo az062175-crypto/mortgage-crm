@@ -70,6 +70,7 @@ async function load(first){
   if(!TOKEN){fail('הקישור אינו תקין.');return;}
   try{
     var res=await rpc('portal_get',{p_token:TOKEN});
+    if(res&&res.data&&res.data.disabled){fail('הקישור הזה אינו פעיל כרגע. לפרטים פנה ליועץ שלך.');return;}
     if(!res||!res.data||!res.data.stages){fail('הקישור לא נמצא או שאינו פעיל. פנה ליועץ שלך.');return;}
     S.data=res.data;S.sent=res.sent||{};
     // שלב "בטחונות בנק" פנימי ליועץ — לא מוצג ללקוח; תיק שנמצא בו מוצג כשלב "אישור"

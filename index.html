@@ -21268,6 +21268,7 @@ function portalOwner(item, isTask) {
 }
 
 function portalSnapshot(c) {
+  if (c.portalDisabled) return { v: 1, disabled: true }; // קישור מבוטל: לא נשמר בשרת שום מידע על הלקוח
   var stages = STAGES.filter(function (s) { return s.id !== 'archive'; })
     .map(function (s) { return { id: s.id, label: s.label, color: s.color, items: [] }; });
   var by = {}; stages.forEach(function (s) { by[s.id] = s; });
@@ -21430,6 +21431,10 @@ async function portalOpenDialog(cid) {
   d.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;max-width:520px;width:100%;direction:rtl">' +
     '<h3 style="margin:0 0 6px">🔗 קישור ללקוח — ' + escapeHtml(c.name) + '</h3>' +
     '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">הלקוח רואה רק את השלבים ואת המסמכים החסרים, ויכול לסמן "שלחתי". הוא לא רואה שום דבר אחר מהמערכת.</div>' +
+    '<div style="display:flex;gap:6px;margin-bottom:10px">' +
+      '<button onclick="portalSetActive(\'' + c.id + '\',true)" style="flex:1;padding:8px;border-radius:8px;border:2px solid ' + (c.portalDisabled ? 'var(--border)' : '#16a34a') + ';background:' + (c.portalDisabled ? '#fff' : '#dcfce7') + ';font-weight:700;cursor:pointer">🟢 לינק פעיל</button>' +
+      '<button onclick="portalSetActive(\'' + c.id + '\',false)" style="flex:1;padding:8px;border-radius:8px;border:2px solid ' + (c.portalDisabled ? '#dc2626' : 'var(--border)') + ';background:' + (c.portalDisabled ? '#fee2e2' : '#fff') + ';font-weight:700;cursor:pointer">⛔ לינק מבוטל</button>' +
+    '</div>' +
     '<input id="portalLinkInp" readonly value="' + escapeAttr(link) + '" style="width:100%;direction:ltr;padding:8px;border:1px solid var(--border);border-radius:8px" onclick="this.select()">' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
       '<button class="btn small" onclick="portalCopy()">📋 העתק</button>' +
@@ -21442,6 +21447,13 @@ async function portalOpenDialog(cid) {
   document.body.appendChild(d);
   portalPullSent().then(function () { if (currentTab === 'detail') renderClientDetail(); });
 }
+async function portalSetActive(cid, active) {
+  var c = state.clients.find(function (x) { return x.id === cid; });
+  if (!c || !!c.portalDisabled === !active) return;
+  c.portalDisabled = !active; save();
+  try { await portalPush(c, true); } catch (e) { c.portalDisabled = active; save(); alert('השינוי לא נשמר. בדוק חיבור ונסה שוב.'); return; }
+  portalOpenDialog(cid);
+}
 function portalCopy() {
   var i = document.getElementById('portalLinkInp');
   i.select();
@@ -21450,7 +21462,7 @@ function portalCopy() {
 function portalWhatsapp(cid) {
   var c = state.clients.find(function (x) { return x.id === cid; });
   var phone = String(c.phone || '').replace(/\D/g, '').replace(/^0/, '972');
-  var msg = 'שלום ' + (portalSnapshot(c).name || '') + ',\nבקישור הזה אפשר לראות באיזה שלב התיק שלך נמצא ואילו מסמכים עוד חסרים:\n' + portalLink(c) + '\nיצחק';
+  var msg = 'שלום ' + (String(((c.borrowers || [])[0] || {}).name || c.name || '').trim().split(/\s+/)[0]) + ',\nבקישור הזה אפשר לראות באיזה שלב התיק שלך נמצא ואילו מסמכים עוד חסרים:\n' + portalLink(c) + '\nיצחק';
   window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
 }
 async function portalReset(cid) {
