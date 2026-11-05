@@ -20614,11 +20614,22 @@ async function sbFetchState(){
   if(!rows.length)return {state:null,updated_at:null};
   return {state:rows[0].state,updated_at:rows[0].updated_at,updated_by:rows[0].updated_by};
 }
+// בדיקה זולה (כמה בתים) אם המצב בשרת השתנה — חוסך הורדה של כל המצב בכל משיכה/שמירה
+async function sbFetchMeta(){
+  var u=SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1&select=updated_at,updated_by';
+  var r=await fetch(u,{headers:sbHdrs(true)});
+  if(r.status===401){ try{ await sbRefresh(); }catch(e){} r=await fetch(u,{headers:sbHdrs(true)}); }
+  if(!r.ok)return null;
+  var rows=await r.json();
+  return rows.length?rows[0]:null;
+}
 // Merge-before-push: fetch the latest server state, merge locally, and remember the server's
 // updated_at as our "known version" — used as a precondition on the subsequent PATCH so a
 // concurrent write from another device is detected and we retry instead of silently clobbering it.
 async function sbMergeFromServer(){
   try{
+    var _m = await sbFetchMeta();
+    if (_m && SB.rowUpdated && _m.updated_at === SB.rowUpdated) return; // אין שינוי בשרת — אין מה למזג
     var r = await sbFetchState();
     if (!r || !r.state) return;
     var remote = r.state;
@@ -20656,7 +20667,7 @@ async function sbPushState(){
       // STEP 2 — optimistic concurrency: PATCH only when updated_at still matches what we just pulled.
       // If someone else wrote between pull and push, the WHERE matches zero rows → retry.
       var precond = SB.rowUpdated ? ('&updated_at=eq.' + encodeURIComponent(SB.rowUpdated)) : '';
-      var url = SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1' + precond;
+      var url = SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1' + precond + '&select=updated_at';
       var r = await fetch(url, {
         method:'PATCH', headers:Object.assign(sbHdrs(true), {Prefer:'return=representation'}),
         body:body
@@ -20721,6 +20732,11 @@ async function sbPullState(){
     // Never overwrite the local state while we have pending writes queued —
     // that could wipe out a just-created client before it gets pushed to the cloud.
     if (SB && SB.pending) return;
+    var _m=await sbFetchMeta();
+    if(_m){
+      if(_m.updated_at===SB.rowUpdated)return;
+      if(_m.updated_by===(SB.user&&SB.user.id)&&SB.rowUpdated&&_m.updated_at<=SB.rowUpdated)return;
+    }
     var r=await sbFetchState();
     if(!r.state||Object.keys(r.state).length===0)return;
     if(r.updated_at===SB.rowUpdated)return;
@@ -20743,7 +20759,7 @@ async function sbPullState(){
 // Periodic fallback pull — every 30 seconds. Catches updates that the WebSocket may have missed
 // (mobile browser tab woke up, network dropped and reconnected, etc.)
 setInterval(function(){
-  if(SB.mode==='on' && SB.token) sbPullState();
+  if(SB.mode==='on' && SB.token && !document.hidden) sbPullState();
 }, 30000);
 
 // Deep merge two versions of the same client — scalars from the newer, arrays unioned by id
