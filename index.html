@@ -5564,11 +5564,19 @@ function renderClientDetail() {
             if (c.targetDate) {
               const today = new Date(); today.setHours(0,0,0,0);
               const target = new Date(c.targetDate + 'T00:00:00').getTime();
-              const diffDays = Math.round((target - today.getTime()) / 86400000);
-              const bg = diffDays < 0 ? '#fee2e2' : (diffDays <= 7 ? '#fef3c7' : '#f0fdf4');
-              const border = diffDays < 0 ? '#fca5a5' : (diffDays <= 7 ? '#fbbf24' : '#86efac');
-              const color = diffDays < 0 ? '#991b1b' : (diffDays <= 7 ? '#78350f' : '#166534');
-              const label = diffDays < 0 ? '⚠️ חלף התאריך: ' + Math.abs(diffDays) + ' ימים' : (diffDays === 0 ? '🔥 היום התאריך' : '🎯 נותרו ' + diffDays + ' ימים');
+              let diffDays = Math.round((target - today.getTime()) / 86400000);
+              let bg = diffDays < 0 ? '#fee2e2' : (diffDays <= 7 ? '#fef3c7' : '#f0fdf4');
+              let border = diffDays < 0 ? '#fca5a5' : (diffDays <= 7 ? '#fbbf24' : '#86efac');
+              let color = diffDays < 0 ? '#991b1b' : (diffDays <= 7 ? '#78350f' : '#166534');
+              let label = diffDays < 0 ? '⚠️ חלף התאריך: ' + Math.abs(diffDays) + ' ימים' : (diffDays === 0 ? '🔥 היום התאריך' : '🎯 נותרו ' + diffDays + ' ימים');
+              if (firstExecAt) {
+                // בוצע — הספירה נעצרת ביום הביצוע הראשון
+                const _ed = new Date(firstExecAt); _ed.setHours(0,0,0,0);
+                const late = Math.round((_ed.getTime() - target) / 86400000);
+                if (late > 0) { bg = '#fee2e2'; border = '#fca5a5'; color = '#991b1b'; label = '✓ בוצע ' + late + ' ימים אחרי היעד'; }
+                else if (late < 0) { bg = '#f0fdf4'; border = '#86efac'; color = '#166534'; label = '✓ בוצע ' + Math.abs(late) + ' ימים לפני היעד'; }
+                else { bg = '#f0fdf4'; border = '#86efac'; color = '#166534'; label = '✓ בוצע ביום היעד'; }
+              }
               targetHtml = `<div style="padding:6px 12px;background:${bg};border:1px solid ${border};border-radius:8px;font-size:12px;font-weight:700;color:${color};text-align:center">${label}<div style="font-size:10px;font-weight:500;margin-top:2px">יעד: ${fmtShort(c.targetDate)}</div></div>`;
             }
             let openHtml = '';
