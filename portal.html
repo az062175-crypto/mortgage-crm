@@ -129,6 +129,18 @@ function render(){
     if(ap.ready)h+=rw('שמאות מוכנה?',stx(ap.ready));
     h+='</div>';
   }
+  if(sel.id==='execution'&&d.execs&&d.execs.length){
+    d.execs.forEach(function(x){
+      var rem=Math.max(0,x.expected-x.total),over=x.expected>0&&x.total>x.expected;
+      var dt=function(v){if(!v)return '';var p=String(v).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:esc(v);};
+      h+='<div class="card"><h2><span class="tag me">💰 ביצוע המשכנתא</span></h2><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="color:var(--muted);text-align:right"><th style="padding:6px">סכום שבוצע</th><th style="padding:6px">תאריך</th><th style="padding:6px">הערה</th></tr></thead><tbody>'+
+        (x.rows.length?x.rows.map(function(e){return '<tr style="border-top:1px solid var(--border)"><td style="padding:6px;font-weight:700">'+(e.amount?money(e.amount):'')+'</td><td style="padding:6px">'+dt(e.date)+'</td><td style="padding:6px">'+esc(e.notes)+'</td></tr>';}).join(''):'<tr><td colspan="3" style="padding:10px;color:var(--muted);text-align:center">עדיין לא בוצעו תשלומים.</td></tr>')+
+        '</tbody></table></div>'+
+        (x.expected?'<div class="sr"><span>סכום מקורי (אישור הבנק)</span><b>'+money(x.expected)+'</b></div>':'')+
+        '<div class="sr"><span>סה"כ בוצע</span><b>'+money(x.total)+'</b></div>'+
+        (x.expected?'<div class="sr"><span>'+(over?'חריגה מהאישור':(rem<=0?'בוצע במלואו':'יתרה שטרם בוצעה'))+'</span><b>'+(over||rem<=0?'✓':money(rem))+'</b></div>':'')+'</div>';
+    });
+  }
   if(sel.id==='submission'&&d.phones&&d.phones.length){
     h+='<div class="card"><h2><span class="tag me">📱 מספרי נייד</span></h2><div class="sub" style="margin:0 0 8px">חסר לנו מספר נייד. אפשר להזין כאן, וזה יישמר בתיק אצל היועץ.</div>'+d.phones.map(function(p){
       if(S.sent[p.id])return '<div class="item sent"><div class="nm">'+esc(p.name||'לווה')+' — '+esc(S.sent[p.id])+'</div><div class="note">📤 נשלח ליועץ</div></div>';

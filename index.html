@@ -21314,9 +21314,13 @@ function portalSnapshot(c) {
     else if (b1.phone || c.phone) ct = { name: b1.name || c.name || '', phone: b1.phone || c.phone };
     return { contact: ct, contactKey: 'phone:visit', visit: st('תואם ביקור?'), pay: st('הועבר תשלום?'), ready: st('שמאות מוכנה?') };
   })();
+  var execs = (c.tasks || []).filter(function (t) { return t.stage === 'execution' && t.hasAmount; }).map(function (t) {
+    var rows = (Array.isArray(t.executions) ? t.executions : []).map(function (e) { return { amount: Number(e.amount) || 0, date: e.date || '', notes: String(e.notes || '') }; });
+    return { title: t.title, expected: Number(t.expectedAmount) || 0, rows: rows, total: rows.reduce(function (a, e) { return a + e.amount; }, 0) };
+  }).filter(function (x) { return x.expected > 0 || x.rows.length; });
   var phones = [];
   if (!String(c.phone || '').trim()) (c.borrowers || []).forEach(function (b, i) { if (!String(b.phone || '').trim()) phones.push({ id: 'phone:' + i, name: String(b.name || '').trim().split(/\s+/)[0] }); });
-  return { v: 1, phones: phones, appr: appr, summary: summary, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
+  return { v: 1, phones: phones, appr: appr, execs: execs, summary: summary, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
 }
 
 async function portalFetch(path, opts) {
