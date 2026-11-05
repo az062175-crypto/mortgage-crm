@@ -37,7 +37,8 @@
   .sr span{color:var(--muted)}
   .appr{margin-top:10px;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:12px;padding:12px 14px;font-weight:700}
   .card.top{border:2px solid #bfdbfe}
-  .cnt2{background:#dc2626;color:#fff;border-radius:999px;font-size:12px;font-weight:700;min-width:22px;text-align:center;padding:1px 7px}
+  .cnt2{background:#dc2626;color:#fff;border:none;border-radius:999px;font:inherit;font-size:14px;font-weight:700;min-width:28px;text-align:center;padding:3px 10px;cursor:pointer}
+  .cnt2.sentc{background:#d97706}
   .chip{display:inline-block;font-size:11px;font-weight:700;background:#f1f5f9;color:var(--muted);border-radius:999px;padding:1px 8px;margin-inline-end:8px}
   .empty{color:var(--muted);font-size:14px;padding:6px 0}
   .done-box{margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 12px}
@@ -88,8 +89,13 @@ function render(){
   var allMine=[];
   stages.forEach(function(s){(s.items||[]).forEach(function(it){if(it.owner==='client')allMine.push({it:it,stage:s.label});});});
   var openMine=allMine.filter(function(x){return !S.sent[x.it.id];}).length;
-  h+='<div class="card top"><h2><span class="tag me">👤 מה נדרש ממך</span>'+(openMine?'<span class="cnt2">'+openMine+'</span>':'')+'</h2>'+
-    (allMine.length?allMine.map(function(x){return itemHtml(x.it,x.stage);}).join(''):'<div class="empty">אין כרגע שום דבר שנדרש ממך 🎉</div>')+'</div>';
+  var showList=S.openTop&&allMine.length;
+  h+='<div class="card top"><h2><span class="tag me">👤 מה נדרש ממך</span>'+
+    (openMine?'<button class="cnt2" onclick="toggleTop()" title="לחץ להצגת הרשימה">'+openMine+(showList?' ▴':' ▾')+'</button>':
+      (allMine.length?'<button class="cnt2 sentc" onclick="toggleTop()">'+(showList?'▴':'▾')+'</button>':''))+'</h2>'+
+    (!allMine.length?'<div class="empty">אין כרגע שום דבר שנדרש ממך 🎉</div>':
+      (showList?allMine.map(function(x){return itemHtml(x.it,x.stage);}).join(''):
+        '<div class="empty">'+(openMine?'יש '+openMine+' פריטים שמחכים לך. לחץ על המספר האדום כדי לראות אותם.':'כל הפריטים נשלחו וממתינים לאישור היועץ. לחץ על החץ כדי לראות.')+'</div>'))+'</div>';
   h+='<div class="sub" style="margin:16px 0 4px">שלבי התיק — לחץ על שלב כדי לראות מה קורה בו:</div>';
   h+='<div class="steps">'+stages.map(function(s,i){
     var st=stageState(i,curIdx);
@@ -151,6 +157,7 @@ function itemHtml(it,stage){
 }
 
 function pick(id){S.sel=id;render();}
+function toggleTop(){S.openTop=!S.openTop;render();}
 
 async function mark(id,val){
   if(S.busy)return;S.busy=true;
