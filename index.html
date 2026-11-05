@@ -21273,7 +21273,18 @@ function portalSnapshot(c) {
     if (o) by[t.stage].items.push({ id: t.id, name: t.title, owner: o });
   });
   var first = ((c.borrowers || [])[0] || {}).name || c.name || '';
-  return { v: 1, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
+  var pct = null; try { pct = financingPct(c); } catch (e) {}
+  var bankIds = (c.submittedToBankerIds && c.submittedToBankerIds.length) ? c.submittedToBankerIds : (c.submittedToBankerId ? [c.submittedToBankerId] : []);
+  var subBanks = [];
+  bankIds.forEach(function (id) { var b = (state.settings.bankers || []).find(function (x) { return x.id === id; }); if (b && b.bank && subBanks.indexOf(b.bank) < 0) subBanks.push(b.bank); });
+  var summary = {
+    types: (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []),
+    amount: Number(c.loanAmount) || 0,
+    pct: pct,
+    banks: subBanks,
+    approvals: (c.approvals || []).map(function (a) { return { bank: a.bankName || a.bank || '', amount: Number(a.amount) || 0 }; })
+  };
+  return { v: 1, summary: summary, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
 }
 
 async function portalFetch(path, opts) {

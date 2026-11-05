@@ -31,6 +31,14 @@
   .act{margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   button.link{background:none;border:none;color:var(--accent);font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline}
   button.send{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+  .card.sum{padding:8px 16px}
+  .sr{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:15px}
+  .sr:last-child{border-bottom:none}
+  .sr span{color:var(--muted)}
+  .appr{margin-top:10px;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:12px;padding:12px 14px;font-weight:700}
+  .card.top{border:2px solid #bfdbfe}
+  .cnt2{background:#dc2626;color:#fff;border-radius:999px;font-size:12px;font-weight:700;min-width:22px;text-align:center;padding:1px 7px}
+  .chip{display:inline-block;font-size:11px;font-weight:700;background:#f1f5f9;color:var(--muted);border-radius:999px;padding:1px 8px;margin-inline-end:8px}
   .empty{color:var(--muted);font-size:14px;padding:6px 0}
   .done-box{margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 12px}
   .done-box summary{color:var(--ok);font-size:14px;font-weight:600;cursor:pointer}
@@ -76,6 +84,13 @@ function render(){
   var curIdx=Math.max(0,stages.findIndex(function(s){return s.id===d.stage;}));
   var sel=stages.find(function(s){return s.id===S.sel;})||stages[curIdx];
   var h='<h1>שלום '+esc(d.name||'')+'</h1><div class="sub">כאן רואים באיזה שלב התיק שלך נמצא ומה נדרש בכל שלב.</div>';
+  h+=summaryHtml(d.summary);
+  var allMine=[];
+  stages.forEach(function(s){(s.items||[]).forEach(function(it){if(it.owner==='client')allMine.push({it:it,stage:s.label});});});
+  var openMine=allMine.filter(function(x){return !S.sent[x.it.id];}).length;
+  h+='<div class="card top"><h2><span class="tag me">👤 מה נדרש ממך</span>'+(openMine?'<span class="cnt2">'+openMine+'</span>':'')+'</h2>'+
+    (allMine.length?allMine.map(function(x){return itemHtml(x.it,x.stage);}).join(''):'<div class="empty">אין כרגע שום דבר שנדרש ממך 🎉</div>')+'</div>';
+  h+='<div class="sub" style="margin:16px 0 4px">שלבי התיק — לחץ על שלב כדי לראות מה קורה בו:</div>';
   h+='<div class="steps">'+stages.map(function(s,i){
     var st=stageState(i,curIdx);
     var open=(s.items||[]).filter(function(it){return it.owner==='client'&&!S.sent[it.id];}).length;
@@ -93,7 +108,8 @@ function render(){
   h+='</div>';
 
   if(mine.length){
-    h+='<div class="card"><h2><span class="tag me">👤 מה נדרש ממך</span></h2>'+mine.map(itemHtml).join('')+'</div>';
+    h+='<div class="card"><h2><span class="tag me">👤 ממך, בשלב הזה</span></h2>'+mine.map(function(it){
+      return '<div class="item'+(S.sent[it.id]?' sent':'')+'"><div class="nm">'+esc(it.name)+'</div><div class="note">'+(S.sent[it.id]?'📤 נשלח ליועץ, ממתין לאישור':'⏳ ממתין לך — אפשר לסמן למעלה')+'</div></div>';}).join('')+'</div>';
   }
   if(adv.length){
     h+='<div class="card"><h2><span class="tag adv">🧑‍💼 בטיפול היועץ</span></h2>'+adv.map(function(it){
@@ -110,12 +126,27 @@ function render(){
   document.getElementById('app').innerHTML=h;
 }
 
-function itemHtml(it){
+function money(n){return Number(n).toLocaleString('he-IL')+' ₪';}
+function summaryHtml(s){
+  if(!s)return '';
+  var rows=[];
+  if(s.types&&s.types.length)rows.push(['סוג העסקה',s.types.join(' + ')]);
+  if(s.amount)rows.push(['סכום מבוקש',money(s.amount)]);
+  if(s.pct!=null)rows.push(['אחוז מימון',s.pct+'%']);
+  if(s.banks&&s.banks.length)rows.push(['הוגש לבנק',s.banks.join(', ')]);
+  var h='';
+  if(rows.length)h+='<div class="card sum">'+rows.map(function(r){return '<div class="sr"><span>'+esc(r[0])+'</span><b>'+esc(r[1])+'</b></div>';}).join('')+'</div>';
+  if(s.approvals&&s.approvals.length)h+=s.approvals.map(function(a){
+    return '<div class="appr">✅ קיים אישור עקרוני'+(a.bank?' מבנק '+esc(a.bank):'')+(a.amount?' על סך '+money(a.amount):'')+'</div>';}).join('');
+  return h;
+}
+function itemHtml(it,stage){
   var sent=!!S.sent[it.id];
-  if(sent)return '<div class="item sent"><div class="nm">'+esc(it.name)+'</div>'+
+  var chip=stage?'<span class="chip">'+esc(stage)+'</span>':'';
+  if(sent)return '<div class="item sent"><div class="nm">'+chip+esc(it.name)+'</div>'+
     '<div class="note">📤 נשלח ליועץ, ממתין לאישור היועץ לעדכון המסמך</div>'+
     '<div class="act"><button class="link" onclick="mark(\''+esc(it.id)+'\',false)">שלחתי בטעות — ביטול</button></div></div>';
-  return '<div class="item"><div class="nm">'+esc(it.name)+'</div>'+
+  return '<div class="item"><div class="nm">'+chip+esc(it.name)+'</div>'+
     '<div class="act"><button class="send" onclick="mark(\''+esc(it.id)+'\',true)">✔ שלחתי ליועץ</button></div></div>';
 }
 
