@@ -72,6 +72,9 @@ async function load(first){
     var res=await rpc('portal_get',{p_token:TOKEN});
     if(!res||!res.data||!res.data.stages){fail('הקישור לא נמצא או שאינו פעיל. פנה ליועץ שלך.');return;}
     S.data=res.data;S.sent=res.sent||{};
+    // שלב "בטחונות בנק" פנימי ליועץ — לא מוצג ללקוח; תיק שנמצא בו מוצג כשלב "אישור"
+    S.data.stages=(S.data.stages||[]).filter(function(s){return s.id!=='bank';});
+    if(S.data.stage==='bank')S.data.stage='approval';
     if(first||!S.sel||!S.data.stages.some(function(s){return s.id===S.sel;}))S.sel=S.data.stage;
     render();
   }catch(e){if(first)fail('לא הצלחנו לטעון. נסה לרענן את הדף.');}
