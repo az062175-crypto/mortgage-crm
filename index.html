@@ -21429,7 +21429,7 @@ function portalSettingsRows(stageId) {
   ((state.settings.stageTasks || {})[stageId] || []).forEach(function (n) { add('task::' + portalBase(n), portalBase(n), 'task'); });
   state.clients.forEach(function (c) {
     (c.requirements || []).forEach(function (r) { if (r.stage === stageId) add(portalKey(r, false), portalBase(r.name), 'doc', r.dealType || ''); });
-    (c.tasks || []).forEach(function (t) { if (t.stage === stageId && t.title) add('task::' + portalBase(t.title), portalBase(t.title), 'task'); });
+    (c.tasks || []).forEach(function (t) { if (t.stage === stageId && t.title && String(t.title).indexOf('הוגש ל:') !== 0) add('task::' + portalBase(t.title), portalBase(t.title), 'task'); });
   });
   return rows;
 }
