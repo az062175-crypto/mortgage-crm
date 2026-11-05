@@ -5547,8 +5547,14 @@ function renderClientDetail() {
             <button class="btn danger small" onclick="deleteClient('${c.id}')">מחק</button>
           </div>
           ${(() => {
-            const openedAt = c.createdAt;
-            const daysOpen = openedAt ? daysBetween(openedAt) : null;
+            // סופר מיום הכניסה כלקוח עד יום הביצוע הראשון בתיק (ואם עוד לא בוצע — עד היום)
+            const _hist = (c.stageHistory || []).find(h => h.stage === 'client');
+            const openedAt = c.clientAt || (_hist && _hist.enteredAt) || c.createdAt;
+            const _execDates = [];
+            (c.tasks || []).forEach(t => { if (t.stage === 'execution' && t.hasAmount) (t.executions || []).forEach(e => { if (e && e.date && (Number(e.amount) || 0) > 0) _execDates.push(e.date); }); });
+            _execDates.sort();
+            const firstExecAt = _execDates[0] ? _execDates[0] + 'T00:00:00' : null;
+            const daysOpen = openedAt ? Math.max(0, daysBetween(openedAt, firstExecAt)) : null;
             let targetHtml = '';
             if (c.targetDate) {
               const today = new Date(); today.setHours(0,0,0,0);
@@ -5562,7 +5568,7 @@ function renderClientDetail() {
             }
             let openHtml = '';
             if (daysOpen !== null) {
-              openHtml = `<div style="padding:6px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:700;color:var(--accent);text-align:center">⏱ ${daysOpen} ימים מפתיחת התיק<div style="font-size:10px;font-weight:500;margin-top:2px">מ־${fmtShort(openedAt)}</div></div>`;
+              openHtml = `<div style="padding:6px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:700;color:var(--accent);text-align:center">⏱ ${daysOpen} ימים מכניסה כלקוח${firstExecAt ? ' עד הביצוע הראשון' : ''}<div style="font-size:10px;font-weight:500;margin-top:2px">מ־${fmtShort(openedAt)}${firstExecAt ? ' עד ' + fmtShort(firstExecAt) : ' עד היום'}</div></div>`;
             }
             if (!openHtml && !targetHtml) return '';
             return `<div style="display:flex;flex-direction:column;gap:6px;min-width:150px">${openHtml}${targetHtml}</div>`;
