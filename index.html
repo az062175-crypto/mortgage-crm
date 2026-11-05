@@ -21276,6 +21276,8 @@ function portalSnapshot(c) {
   var pct = null; try { pct = financingPct(c); } catch (e) {}
   var bankIds = (c.submittedToBankerIds && c.submittedToBankerIds.length) ? c.submittedToBankerIds : (c.submittedToBankerId ? [c.submittedToBankerId] : []);
   var subBanks = [];
+  // הבנק של הבנקאי המטפל; אם לא הוגדר בנקאי מטפל — לפי מי שסומן ב"הוגש ב:"
+  if (c.bankerId) bankIds = [c.bankerId];
   bankIds.forEach(function (id) { var b = (state.settings.bankers || []).find(function (x) { return x.id === id; }); if (b && b.bank && subBanks.indexOf(b.bank) < 0) subBanks.push(b.bank); });
   var summary = {
     types: (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []),
