@@ -88,9 +88,9 @@ function render(){
   var d=S.data,stages=d.stages;
   var curIdx=Math.max(0,stages.findIndex(function(s){return s.id===d.stage;}));
   var sel=stages.find(function(s){return s.id===S.sel;})||stages[curIdx];
-  var h='<h1>'+greetByTime()+' '+esc(d.name||'')+'</h1><div class="sub">כאן רואים באיזה שלב התיק שלך נמצא ומה נדרש בכל שלב.</div>';
+  var h='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div style="min-width:0"><h1>'+greetByTime()+' '+esc(d.name||'')+'</h1><div class="sub">כאן רואים באיזה שלב התיק שלך נמצא ומה נדרש בכל שלב.</div></div>'+donutHtml(d.progress)+'</div>';
   h+=summaryHtml(d.summary);
-  h+=progressHtml(d.progress);
+  h+=legendHtml(d.progress);
   var allMine=[];
   stages.forEach(function(s){(s.items||[]).forEach(function(it){if(it.owner==='client')allMine.push({it:it,stage:s.label});});});
   var openMine=allMine.filter(function(x){return !S.sent[x.it.id];}).length;
@@ -170,9 +170,22 @@ function render(){
 
 // אותה ברכה לפי שעה כמו במיילים של ה-CRM
 function greetByTime(){var h=new Date().getHours();if(h>=9&&h<11)return 'בוקר טוב';if(h>=11&&h<16)return 'צהריים טובים';if(h>=16&&h<19)return 'ערב טוב';return 'לילה טוב';}
-function progressHtml(p){
-  if(!p||p.pct==null)return '';
-  return '<div class="card"><div class="sr"><span>📊 התקדמות התיק</span><b style="color:var(--ok);font-size:20px">'+p.pct+'%</b></div></div>';
+function donutHtml(p){
+  if(!p||!p.segs)return '';
+  var colors=['#22c55e','#0ea5e9','#f97316','#8b5cf6'],start=0,bg='',fg='';
+  p.segs.forEach(function(g,i){
+    var len=Math.max(0,g.w-1),off=25-start;
+    bg+='<circle cx="21" cy="21" r="15.9155" fill="none" stroke="'+colors[i%4]+'" stroke-opacity=".2" stroke-width="6" stroke-dasharray="'+len+' '+(100-len)+'" stroke-dashoffset="'+off+'"/>';
+    var dn=g.w*g.f;if(g.f>0)fg+='<circle cx="21" cy="21" r="15.9155" fill="none" stroke="'+colors[i%4]+'" stroke-width="6" stroke-dasharray="'+Math.min(len,dn)+' '+(100-Math.min(len,dn))+'" stroke-dashoffset="'+off+'"/>';
+    start+=g.w;
+  });
+  return '<svg viewBox="0 0 42 42" width="92" height="92" style="flex:0 0 auto">'+bg+fg+'<text x="21" y="23.5" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">'+p.pct+'%</text></svg>';
+}
+function legendHtml(p){
+  if(!p||!p.segs)return '';
+  var colors=['#22c55e','#0ea5e9','#f97316','#8b5cf6'];
+  return '<div class="card" style="padding:10px 12px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+p.segs.map(function(g,i){
+    return '<div style="font-size:12px;line-height:1.3"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+colors[i%4]+';margin-inline-end:5px"></span><b>'+esc(g.label)+'</b> <span style="color:var(--ok);font-weight:700">'+Math.round(g.w*g.f)+'/'+g.w+'%</span><div style="color:var(--muted);font-size:11px">'+esc(g.sub)+'</div></div>';}).join('')+'</div></div>';
 }
 function money(n){return Number(n).toLocaleString('he-IL')+' ₪';}
 function summaryHtml(s){
