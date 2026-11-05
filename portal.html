@@ -88,7 +88,7 @@ function render(){
   var d=S.data,stages=d.stages;
   var curIdx=Math.max(0,stages.findIndex(function(s){return s.id===d.stage;}));
   var sel=stages.find(function(s){return s.id===S.sel;})||stages[curIdx];
-  var h='<h1>שלום '+esc(d.name||'')+'</h1><div class="sub">כאן רואים באיזה שלב התיק שלך נמצא ומה נדרש בכל שלב.</div>';
+  var h='<h1>'+greetByTime()+' '+esc(d.name||'')+'</h1><div class="sub">כאן רואים באיזה שלב התיק שלך נמצא ומה נדרש בכל שלב.</div>';
   h+=summaryHtml(d.summary);
   var allMine=[];
   stages.forEach(function(s){(s.items||[]).forEach(function(it){if(it.owner==='client')allMine.push({it:it,stage:s.label});});});
@@ -167,6 +167,8 @@ function render(){
   document.getElementById('app').innerHTML=h;
 }
 
+// אותה ברכה לפי שעה כמו במיילים של ה-CRM
+function greetByTime(){var h=new Date().getHours();if(h>=9&&h<11)return 'בוקר טוב';if(h>=11&&h<16)return 'צהריים טובים';if(h>=16&&h<19)return 'ערב טוב';return 'לילה טוב';}
 function money(n){return Number(n).toLocaleString('he-IL')+' ₪';}
 function summaryHtml(s){
   if(!s)return '';
