@@ -21387,6 +21387,58 @@ function portalOpenMissing(cid) {
   document.body.appendChild(d);
 }
 
+// שדות שהלקוח יכול למלא בפורטל (הוספה בלבד — רק שדה ריק). מקור יחיד גם לתמונת המצב וגם לקליטה חזרה ל-CRM.
+// from = מאיזה שלב השדה נדרש/מוצג ללקוח
+function portalFieldSpecs(c) {
+  var out = [], dd = c.dealDetails || {};
+  var P = function (key, group, title, from, label, type, path, fb) { out.push({ key: key, group: group, title: title, from: from, label: label, type: type, path: path, fb: fb || null }); };
+  (c.borrowers || []).forEach(function (b, i) {
+    var g = 'b' + i, t = 'פרטי הלווה' + (String(b.name || '').trim() ? ' — ' + String(b.name).trim().split(/\s+/)[0] : '');
+    P('f:b' + i + ':idNumber', g, t, 'submission', 'תעודת זהות', 'id', 'borrowers.' + i + '.idNumber', i === 0 ? 'idNumber' : null);
+    P('f:b' + i + ':dob', g, t, 'submission', 'תאריך לידה', 'date', 'borrowers.' + i + '.dob');
+    P('f:b' + i + ':idIssueDate', g, t, 'submission', 'תאריך הנפקת ת"ז', 'date', 'borrowers.' + i + '.idIssueDate');
+    P('f:b' + i + ':email', g, t, 'submission', 'אימייל', 'email', 'borrowers.' + i + '.email', i === 0 ? 'email' : null);
+  });
+  if (c.isRented) {
+    P('f:t:name', 't', 'פרטי השוכר', 'submission', 'שם', 'text', 'dealDetails.tenant.name');
+    P('f:t:phone', 't', 'פרטי השוכר', 'submission', 'טלפון', 'tel', 'dealDetails.tenant.phone');
+    P('f:t:email', 't', 'פרטי השוכר', 'submission', 'אימייל', 'email', 'dealDetails.tenant.email');
+  }
+  [['secondHand', 'sh', [['buyerLawyer', 'bl', 'עו"ד הקונה'], ['sellerLawyer', 'sl', 'עו"ד המוכר']]],
+   ['firstHand', 'fh', [['buyerLawyer', 'bl', 'עו"ד הקונה'], ['contractorLawyer', 'cl', 'עו"ד הקבלן']]],
+   ['mchirLm', 'ml', [['buyerLawyer', 'bl', 'עו"ד הקונה'], ['contractorLawyer', 'cl', 'עו"ד הקבלן']]]].forEach(function (d) {
+    if (!dd[d[0]]) return;
+    d[2].forEach(function (r) {
+      var g = 'l' + d[1] + r[1], t = 'פרטי ' + r[2], base = 'dealDetails.' + d[0] + '.' + r[0], k = 'f:l:' + d[1] + ':' + r[1] + ':';
+      P(k + 'name', g, t, 'approval', 'שם', 'text', base);
+      P(k + 'phone', g, t, 'approval', 'טלפון', 'tel', base + 'Phone');
+      P(k + 'email', g, t, 'approval', 'אימייל', 'email', base + 'Email');
+    });
+  });
+  return out;
+}
+function portalFieldClean(type, v) {
+  v = String(v == null ? '' : v).trim();
+  if (type === 'tel') { v = v.replace(/[\s\-]/g, ''); return /^(0\d{8,9}|\+972\d{8,9})$/.test(v) ? v : null; }
+  if (type === 'email') return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v) && v.length <= 120 ? v : null;
+  if (type === 'id') return /^\d{5,9}$/.test(v) ? v : null;
+  if (type === 'date') return /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v)) ? v : null;
+  return v && v.length <= 80 && !/[<>]/.test(v) ? v : null;
+}
+function portalForms(c) {
+  var pf = c.portalFilled || {}, groups = [], by = {};
+  portalFieldSpecs(c).forEach(function (s) {
+    var cur = _getPath(c, s.path), fbv = s.fb ? c[s.fb] : '';
+    var filled = String(cur == null ? '' : cur).trim() !== '' || String(fbv == null ? '' : fbv).trim() !== '';
+    var f = null;
+    if (!filled) f = { key: s.key, label: s.label, type: s.type };
+    else if (pf[s.key]) f = { key: s.key, label: s.label, type: s.type, done: true };
+    if (!f) return;
+    var g = by[s.group]; if (!g) { g = by[s.group] = { id: s.group, title: s.title, from: s.from, fields: [] }; groups.push(g); }
+    g.fields.push(f);
+  });
+  return groups;
+}
 function portalSnapshot(c) {
   if (c.portalDisabled) return { v: 1, disabled: true }; // קישור מבוטל: לא נשמר בשרת שום מידע על הלקוח
   var stages = STAGES.filter(function (s) { return s.id !== 'archive'; })
@@ -21449,7 +21501,7 @@ function portalSnapshot(c) {
     if (!String(b.phone || '').trim()) phones.push({ id: 'phone:' + i, name: nm });
     else if (pf['phone:' + i]) phones.push({ id: 'phone:' + i, name: nm, done: true }); // הלקוח מילא והתקבל — יורד למטה עם ✓ בוצע
   });
-  return { v: 1, phones: phones, appr: appr, execs: execs, progress: prog, summary: summary, name: portalGreetName(c, first), stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
+  return { v: 1, phones: phones, forms: portalForms(c), appr: appr, execs: execs, progress: prog, summary: summary, name: portalGreetName(c, first), stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
 }
 
 async function portalFetch(path, opts) {
@@ -21489,7 +21541,7 @@ async function portalPullSent() {
     if (changed && currentTab === 'detail') renderClientDetail();
   } catch (e) {}
 }
-function portalSentCount(c) { return c.portalToken ? Object.keys(PORTAL.sent[c.portalToken] || {}).filter(function (k) { return k.indexOf('phone:') !== 0; }).length : 0; }
+function portalSentCount(c) { return c.portalToken ? Object.keys(PORTAL.sent[c.portalToken] || {}).filter(function (k) { return k.indexOf('phone:') !== 0 && k.indexOf('f:') !== 0; }).length : 0; }
 // מספרי נייד שהלקוח הזין בפורטל: נכנסים לתיק רק אם השדה ריק (לא דורסים מידע קיים)
 function portalApplyPhones(sentByToken) {
   var any = false;
@@ -21497,6 +21549,17 @@ function portalApplyPhones(sentByToken) {
     var s = c.portalToken && sentByToken[c.portalToken]; if (!s) return;
     var touched = false;
     Object.keys(s).forEach(function (k) {
+      if (k.indexOf('f:') === 0) {
+        var sp = portalFieldSpecs(c).find(function (x) { return x.key === k; });
+        if (!sp) return;
+        var fv = portalFieldClean(sp.type, s[k]); if (!fv) return;
+        var cur = _getPath(c, sp.path);
+        if (String(cur == null ? '' : cur).trim() !== '' || (sp.fb && String(c[sp.fb] || '').trim() !== '')) return;
+        _setPath(c, sp.path, fv);
+        if (sp.fb && !String(c[sp.fb] || '').trim() && /^f:b0:/.test(k)) c[sp.fb] = fv;
+        (c.portalFilled = c.portalFilled || {})[k] = true; touched = true;
+        return;
+      }
       if (k.indexOf('phone:') !== 0) return;
       var v = String(s[k] || '').replace(/[\s\-]/g, '');
       if (!/^(0\d{8,9}|\+972\d{8,9})$/.test(v)) return;

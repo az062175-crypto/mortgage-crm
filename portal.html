@@ -105,8 +105,18 @@ function render(){
     var x={it:{id:p.id,name:'מספר נייד של '+(p.name||'הלווה'),phone:true,done:!!p.done},stage:stLabel('submission'),sid:'submission'};
     if(p.done)doneMine.push(x);else pItems.push(x);
   });
+  // פרטים שהלקוח ממלא (ת"ז/תאריכים/אימייל ללווים, שוכר, עורכי דין): קבוצה אחת = פריט אחד
+  var fIdx=function(id){return stages.findIndex(function(s){return s.id===id;});};
+  var forms=(d.forms||[]).filter(function(g){return fIdx(g.from)>=0;});
+  forms.forEach(function(g){
+    var counts=g.from==='submission'||curIdx>=fIdx(g.from);
+    var allDone=g.fields.every(function(f){return f.done;});
+    var x={it:{id:'grp:'+g.id,name:g.title,form:g,done:allDone},stage:stLabel(g.from),sid:g.from};
+    if(allDone)doneMine.push(x);else if(counts)pItems.push(x);
+  });
   allMine=allMine.concat(pItems);
-  var openMine=allMine.filter(function(x){return !S.sent[x.it.id];}).length;
+  var isOpen=function(x){return x.it.form?x.it.form.fields.some(function(f){return !f.done&&!S.sent[f.key];}):!S.sent[x.it.id];};
+  var openMine=allMine.filter(isOpen).length;
   var anyMine=allMine.length+doneMine.length;
   var showList=S.openTop&&anyMine;
   h+='<div class="card top"><h2><span class="tag me">👤 מה נדרש ממך</span>'+
@@ -119,7 +129,7 @@ function render(){
   h+='<div class="steps">'+stages.map(function(s,i){
     var st=stageState(i,curIdx);
     var open=(s.items||[]).filter(function(it){return it.owner==='client'&&!S.sent[it.id];}).length;
-    pItems.forEach(function(x){if(x.sid===s.id&&!S.sent[x.it.id])open++;});
+    pItems.forEach(function(x){if(x.sid===s.id&&isOpen(x))open++;});
     var style=st==='current'?' style="background:'+esc(s.color)+'"':'';
     return '<button class="step '+st+(s.id===sel.id?' sel':'')+'"'+style+' onclick="pick(\''+esc(s.id)+'\')">'+(st==='done'?'✓ ':'')+esc(s.label)+(open?'<span class="cnt">'+open+'</span>':'')+'</button>';
   }).join('')+'</div>';
@@ -166,6 +176,10 @@ function render(){
       if(S.sent[p.id])return '<div class="item sent"><div class="nm">'+esc(p.name||'לווה')+' — '+esc(S.sent[p.id])+'</div><div class="note">📤 נשלח ליועץ</div></div>';
       return '<div class="item"><div class="nm">'+esc(p.name||'לווה')+'</div><div class="act" style="display:flex;gap:6px"><input id="ph_'+esc(p.id)+'" type="tel" inputmode="tel" dir="ltr" placeholder="05X-XXXXXXX" style="flex:1;min-width:0;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:16px;font-family:inherit"><button class="send" onclick="sendPhone(\''+esc(p.id)+'\')">שלח</button></div></div>';}).join('')+'</div>';
   }
+  forms.forEach(function(g){
+    var fi=fIdx(g.from),open=g.fields.some(function(f){return !f.done&&!S.sent[f.key];});
+    if(selIdx===fi||(selIdx>fi&&open))h+='<div class="card"><h2><span class="tag me">📝 '+esc(g.title)+'</span></h2>'+formFieldsHtml(g,'fs_')+'</div>';
+  });
   if(mine.length){
     h+='<div class="card"><h2><span class="tag me">👤 ממך, בשלב הזה</span></h2>'+mine.map(function(it){
       return '<div class="item'+(S.sent[it.id]?' sent':'')+'"><div class="nm">'+esc(it.name)+'</div><div class="note">'+(S.sent[it.id]?'📤 נשלח ליועץ, ממתין לאישור':'⏳ ממתין לך — אפשר לסמן למעלה')+'</div></div>';}).join('')+'</div>';
@@ -221,9 +235,36 @@ function summaryHtml(s){
   if(s.valueRow&&s.valueRow.amount)h+='<div class="card sum"><div class="sr"><span>'+esc(s.valueRow.label)+'</span><b>'+money(s.valueRow.amount)+'</b></div></div>';
   return h;
 }
+function formFieldsHtml(g,pre){
+  var ord=g.fields.filter(function(f){return !f.done;}).concat(g.fields.filter(function(f){return f.done;}));
+  return ord.map(function(f){
+    if(f.done)return '<div class="sr"><span>'+esc(f.label)+'</span><b>✓ בוצע</b></div>';
+    if(S.sent[f.key])return '<div class="sr"><span>'+esc(f.label)+'</span><b>📤 נשלח ליועץ</b></div>';
+    var ty=f.type==='tel'?'tel':f.type==='email'?'email':f.type==='date'?'date':f.type==='id'?'tel':'text';
+    return '<div class="note" style="margin-top:8px">'+esc(f.label)+'</div><div class="act" style="display:flex;gap:6px"><input id="'+pre+esc(f.key)+'" type="'+ty+'"'+(f.type!=='text'?' dir="ltr"':'')+' inputmode="'+(f.type==='id'||f.type==='tel'?'numeric':'text')+'" style="flex:1;min-width:0;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:16px;font-family:inherit"><button class="send" onclick="sendField(\''+esc(f.key)+'\',\''+f.type+'\',\''+pre+'\')">שלח</button></div>';
+  }).join('');
+}
+async function sendField(key,type,pre){
+  if(S.busy)return;
+  var el=document.getElementById(pre+key);var v=(el&&el.value||'').trim();
+  if(type==='tel')v=v.replace(/[\s\-]/g,'');
+  var ok=type==='tel'?/^(0\d{8,9}|\+972\d{8,9})$/.test(v):type==='email'?/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v):type==='id'?/^\d{5,9}$/.test(v):type==='date'?/^\d{4}-\d{2}-\d{2}$/.test(v):(v.length>0&&v.length<=80&&!/[<>]/.test(v));
+  if(!ok){alert('הערך לא תקין. בדוק ונסה שוב.');return;}
+  S.busy=true;
+  try{
+    var r=await rpc('portal_set_input',{p_token:TOKEN,p_key:key,p_val:v});
+    if(r&&typeof r==='object'&&r[key]!==undefined)S.sent=r;else throw new Error('x');
+    render();
+  }catch(e){alert('השליחה לא נשמרה. נסה שוב.');}
+  S.busy=false;
+}
 function itemHtml(it,stage){
   var sent=!!S.sent[it.id];
   var chip=stage?'<span class="chip">'+esc(stage)+'</span>':'';
+  if(it.form){
+    if(it.done)return '<div class="sr"><span>'+chip+esc(it.name)+'</span><b>✓ בוצע</b></div>';
+    return '<div class="item"><div class="nm">'+chip+esc(it.name)+'</div>'+formFieldsHtml(it.form,'ft_')+'</div>';
+  }
   if(it.phone){
     if(it.done)return '<div class="sr"><span>'+chip+esc(it.name)+'</span><b>✓ בוצע</b></div>';
     if(sent)return '<div class="item sent"><div class="nm">'+chip+esc(it.name)+' — '+esc(S.sent[it.id])+'</div><div class="note">📤 נשלח ליועץ</div></div>';
