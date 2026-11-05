@@ -21514,8 +21514,7 @@ function portalRerenderRows() {
 }
 function portalRemoveRow(i) {
   var r = PORTAL.rows[i]; if (!r) return;
-  if (!confirm('להסיר את "' + r.label + '" מרשימת הפורטל?
-המשימה עצמה ב-CRM לא נמחקת, רק לא תוצג כאן ולא ללקוח.')) return;
+  if (!confirm('להסיר את "' + r.label + '" מרשימת הפורטל? המשימה עצמה ב-CRM לא נמחקת, רק לא תוצג כאן ולא ללקוח.')) return;
   var s = state.settings; s.portalRemoved = s.portalRemoved || {};
   s.portalRemoved[r.key] = 1;
   save(); renderActiveSettingsSection();
