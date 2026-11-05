@@ -110,6 +110,8 @@ function render(){
 
   var selIdx=stages.indexOf(sel);
   var items=sel.items||[];
+  // אם כבר בוצע חלק (יש שורות בטבלת הביצוע) — המשימה "בוצע סך" לא מוצגת, הטבלה מחליפה אותה
+  if(d.execs&&d.execs.some(function(x){return x.rows&&x.rows.length;}))items=items.filter(function(it){return String(it.name||'').indexOf('בוצע סך')!==0;});
   var mine=items.filter(function(it){return it.owner==='client';});
   var adv=items.filter(function(it){return it.owner!=='client';});
   h+='<div class="card"><h2>'+esc(sel.label)+(selIdx===curIdx?' <span class="tag me">השלב הנוכחי</span>':'')+'</h2>';
