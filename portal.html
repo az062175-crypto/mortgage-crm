@@ -50,6 +50,7 @@
 </head>
 <body>
 <div class="wrap" id="app"><div class="center">טוען…</div></div>
+<div id="chatRoot"></div>
 <script>
 var SB_URL='https://pfimmngjgkgzjjhemjdy.supabase.co';
 var SB_KEY='sb_publishable_iOafusxiYK5ZBPqEb3IwOQ_jijlKgvO';
@@ -311,6 +312,50 @@ async function mark(id,val){
 
 load(true);
 setInterval(function(){if(!S.busy&&!document.hidden)load(false);},30000);
+
+// ===== צ'אט עם היועץ (סגנון וואטסאפ) =====
+var CH={open:false,msgs:[],seen:0,busy:false};
+try{CH.seen=Number(localStorage.getItem('chatSeen_'+TOKEN))||0;}catch(e){}
+function chTime(at){var d=new Date(at),t=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);return d.toDateString()===new Date().toDateString()?t:d.getDate()+'/'+(d.getMonth()+1)+' '+t;}
+function chUnread(){return CH.msgs.filter(function(m){return m.sender==='advisor'&&new Date(m.at).getTime()>CH.seen;}).length;}
+function chMarkSeen(){var l=0;CH.msgs.forEach(function(m){if(m.sender==='advisor')l=Math.max(l,new Date(m.at).getTime());});if(l>CH.seen){CH.seen=l;try{localStorage.setItem('chatSeen_'+TOKEN,String(l));}catch(e){}}}
+function chDraw(scroll){
+  var root=document.getElementById('chatRoot');if(!root||!S.data)return;
+  var n=CH.open?0:chUnread();
+  var fab='<button onclick="chToggle()" aria-label="צ\'אט עם היועץ" style="position:fixed;bottom:16px;left:16px;z-index:50;width:56px;height:56px;border-radius:50%;border:none;background:#075e54;color:#fff;font-size:26px;box-shadow:0 4px 14px rgba(0,0,0,.3);cursor:pointer">💬'+(n?'<span style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border-radius:999px;font-size:12px;min-width:20px;height:20px;line-height:20px;font-weight:700">'+n+'</span>':'')+'</button>';
+  if(!CH.open){root.innerHTML=fab;return;}
+  var keep=document.getElementById('chInp'),draft=keep?keep.value:'';
+  var list=document.getElementById('chList'),atBottom=scroll||!list||list.scrollHeight-list.scrollTop-list.clientHeight<60;
+  root.innerHTML='<div style="position:fixed;bottom:0;left:0;z-index:60;width:min(100vw,420px);height:min(80vh,580px);background:#efeae2;border-radius:14px 14px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.3);display:flex;flex-direction:column">'+
+    '<div style="background:#075e54;color:#fff;padding:10px 14px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center;font-weight:700"><span>💬 צ\'אט עם היועץ</span><span style="cursor:pointer;font-size:20px" onclick="chToggle()">✕</span></div>'+
+    '<div id="chList" style="flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px">'+
+    (CH.msgs.length?CH.msgs.map(function(m){var mine=m.sender==='client';
+      return '<div style="align-self:'+(mine?'flex-start':'flex-end')+';max-width:82%;background:'+(mine?'#d9fdd3':'#fff')+';border-radius:10px;padding:6px 10px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15px;white-space:pre-wrap;word-break:break-word">'+esc(m.body)+'<div style="font-size:11px;color:#667781;text-align:left;margin-top:2px">'+chTime(m.at)+'</div></div>';}).join(''):'<div style="text-align:center;color:#667781;font-size:14px;margin-top:30px">אפשר לכתוב ליועץ כאן.</div>')+'</div>'+
+    '<div style="background:#f0f2f5;padding:8px;display:flex;gap:6px;align-items:flex-end"><textarea id="chInp" rows="1" maxlength="1000" placeholder="הקלד הודעה…" style="flex:1;resize:none;border:none;border-radius:18px;padding:9px 14px;font:inherit;font-size:16px;max-height:100px" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();chSend();}"></textarea><button onclick="chSend()" style="background:#075e54;color:#fff;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer">➤</button></div></div>';
+  var inp=document.getElementById('chInp');inp.value=draft;
+  var l2=document.getElementById('chList');if(atBottom)l2.scrollTop=l2.scrollHeight;
+}
+async function chPoll(){
+  if(!S.data||document.hidden)return;
+  try{
+    var rows=await rpc('portal_msg_list',{p_token:TOKEN,p_since:null});
+    if(!Array.isArray(rows))return;
+    var changed=rows.length!==CH.msgs.length||(rows.length&&CH.msgs.length&&rows[rows.length-1].id!==CH.msgs[CH.msgs.length-1].id);
+    CH.msgs=rows;
+    if(CH.open)chMarkSeen();
+    if(changed||!document.getElementById('chatRoot').innerHTML)chDraw(false);
+  }catch(e){}
+}
+function chToggle(){CH.open=!CH.open;if(CH.open)chMarkSeen();chDraw(true);}
+async function chSend(){
+  if(CH.busy)return;var inp=document.getElementById('chInp'),v=(inp&&inp.value||'').trim();if(!v)return;
+  CH.busy=true;
+  try{var r=await rpc('portal_msg_send',{p_token:TOKEN,p_body:v});if(!r||!r.id)throw new Error('x');CH.msgs.push(r);inp.value='';chDraw(true);}
+  catch(e){alert('ההודעה לא נשלחה. נסה שוב.');}
+  CH.busy=false;
+}
+setInterval(chPoll,15000);
+setTimeout(chPoll,1500);
 </script>
 </body>
 </html>

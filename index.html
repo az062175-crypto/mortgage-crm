@@ -21596,7 +21596,8 @@ async function portalClearSent(cid, rid) {
 function portalHeaderButton(c) {
   var n = portalSentCount(c);
   return '<button onclick="portalOpenDialog(\'' + c.id + '\')" title="קישור ללקוח — מעקב מסמכים ושלבים" style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:' + (c.portalToken ? '#dbeafe' : '#f1f5f9') + ';border:1px solid var(--border);font-size:16px;cursor:pointer;line-height:1">🔗' +
-    (n ? '<span style="position:absolute;top:-6px;inset-inline-start:-6px;background:#dc2626;color:#fff;border-radius:999px;font-size:11px;min-width:18px;height:18px;line-height:18px;text-align:center;font-weight:700">' + n + '</span>' : '') + '</button>';
+    (n ? '<span style="position:absolute;top:-6px;inset-inline-start:-6px;background:#dc2626;color:#fff;border-radius:999px;font-size:11px;min-width:18px;height:18px;line-height:18px;text-align:center;font-weight:700">' + n + '</span>' : '') + '</button>' +
+    ' ' + (typeof chatButton === 'function' ? chatButton(c) : '');
 }
 
 function portalNewToken() {
@@ -21772,6 +21773,149 @@ function portalSetOwner(i, val) {
   setInterval(function () { portalPullSent(); portalSyncAll(); }, 30000);
   setTimeout(function () { portalPullSent(); portalSyncAll(); }, 6000);
 })();
+
+// ============================
+// צ'אט עם הלקוח (פורטל) — סגנון וואטסאפ
+// ============================
+var CHAT = { msgs: {}, att: [], open: null, dismissed: [] };
+try { CHAT.dismissed = JSON.parse(localStorage.getItem('portalChatDismissed') || '[]'); } catch (e) {}
+function chatFetch(path, opts) {
+  opts = opts || {};
+  var go = function () { var h = sbHdrs(true); if (opts.prefer) h.Prefer = opts.prefer; return fetch(SB_URL + path, { method: opts.method || 'GET', headers: h, body: opts.body }); };
+  return go().then(function (r) { if (r.status !== 401) return r; return sbRefresh().catch(function () {}).then(go); }).then(function (r) { if (!r.ok) throw new Error('chat ' + r.status); return r; });
+}
+function chatClientByToken(t) { return state.clients.find(function (x) { return x.portalToken === t; }); }
+function chatFmt(at) {
+  var d = new Date(at), t = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  return d.toDateString() === new Date().toDateString() ? t : d.getDate() + '/' + (d.getMonth() + 1) + ' ' + t;
+}
+function chatUnread(token) { return CHAT.att.filter(function (m) { return m.token === token && m.sender === 'client' && !m.is_read; }).length; }
+function chatPinCount(token) { return CHAT.att.filter(function (m) { return m.token === token && m.pinned && !m.handled; }).length; }
+function chatButton(c) {
+  var n = c.portalToken ? chatUnread(c.portalToken) : 0;
+  return '<button data-chatbtn="' + c.id + '" onclick="chatOpen(\'' + c.id + '\')" title="צ\'אט עם הלקוח" style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:#dcfce7;border:1px solid var(--border);font-size:16px;cursor:pointer;line-height:1">💬' +
+    '<span class="chatbadge" style="' + (n ? '' : 'display:none;') + 'position:absolute;top:-6px;inset-inline-start:-6px;background:#dc2626;color:#fff;border-radius:999px;font-size:11px;min-width:18px;height:18px;line-height:18px;text-align:center;font-weight:700">' + n + '</span></button>';
+}
+async function chatPoll() {
+  if (!portalOn() || document.hidden) return;
+  try {
+    var r = await chatFetch('/rest/v1/portal_messages?select=id,token,sender,body,created_at,is_read,pinned,handled&or=(and(sender.eq.client,is_read.eq.false),and(pinned.eq.true,handled.eq.false))&order=created_at.asc&limit=200');
+    CHAT.att = await r.json();
+    chatRefreshBadges(); chatToasts();
+    if (CHAT.open) { var c = state.clients.find(function (x) { return x.id === CHAT.open; }); if (c) { await chatLoad(c); chatDraw(); } }
+  } catch (e) {}
+}
+function chatRefreshBadges() {
+  document.querySelectorAll('[data-chatbtn]').forEach(function (b) {
+    var c = state.clients.find(function (x) { return x.id === b.getAttribute('data-chatbtn'); });
+    var n = c && c.portalToken ? chatUnread(c.portalToken) : 0, s = b.querySelector('.chatbadge');
+    if (s) { s.textContent = n; s.style.display = n ? '' : 'none'; }
+  });
+}
+function chatToasts() {
+  var el = document.getElementById('chatToasts');
+  var fresh = CHAT.att.filter(function (m) { return m.sender === 'client' && !m.is_read && CHAT.dismissed.indexOf(m.id) < 0 && !(CHAT.open && chatClientByToken(m.token) && chatClientByToken(m.token).id === CHAT.open); });
+  if (!fresh.length) { if (el) el.remove(); return; }
+  var by = {}; fresh.forEach(function (m) { (by[m.token] = by[m.token] || []).push(m); });
+  if (!el) { el = document.createElement('div'); el.id = 'chatToasts'; el.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;width:320px;direction:rtl'; document.body.appendChild(el); }
+  el.innerHTML = Object.keys(by).map(function (t) {
+    var c = chatClientByToken(t), ms = by[t], last = ms[ms.length - 1]; if (!c) return '';
+    return '<div style="background:#fff;border:2px solid #16a34a;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.25);overflow:hidden">' +
+      '<div style="background:#16a34a;color:#fff;padding:6px 12px;font-weight:700;font-size:13px;display:flex;justify-content:space-between">💬 הודעה מלקוח (' + ms.length + ')<span style="cursor:pointer" onclick="chatDismiss(\'' + t + '\')">✕</span></div>' +
+      '<div style="padding:10px 12px;font-size:13px"><b>' + escapeHtml(c.name) + '</b><div style="color:#334155;margin:4px 0 8px;white-space:pre-wrap">' + escapeHtml(String(last.body).slice(0, 140)) + '</div>' +
+      '<button class="btn small" onclick="chatOpen(\'' + c.id + '\')">פתח צ\'אט</button></div></div>';
+  }).join('');
+}
+function chatDismiss(token) {
+  CHAT.att.forEach(function (m) { if (m.token === token && m.sender === 'client' && CHAT.dismissed.indexOf(m.id) < 0) CHAT.dismissed.push(m.id); });
+  CHAT.dismissed = CHAT.dismissed.slice(-300);
+  try { localStorage.setItem('portalChatDismissed', JSON.stringify(CHAT.dismissed)); } catch (e) {}
+  chatToasts();
+}
+async function chatLoad(c) {
+  var r = await chatFetch('/rest/v1/portal_messages?select=*&token=eq.' + encodeURIComponent(c.portalToken) + '&order=created_at.asc&limit=300');
+  CHAT.msgs[c.portalToken] = await r.json();
+}
+async function chatOpen(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
+  if (!portalOn()) { alert('צריך להיות מחובר לענן (Supabase) כדי לשוחח עם הלקוח.'); return; }
+  if (!c.portalToken) { alert('אין ללקוח הזה קישור. לחץ קודם על 🔗 כדי ליצור קישור, ואז אפשר לשוחח.'); return; }
+  CHAT.open = cid;
+  chatDismiss(c.portalToken);
+  var p = document.getElementById('chatPanel');
+  if (!p) {
+    p = document.createElement('div'); p.id = 'chatPanel';
+    p.style.cssText = 'position:fixed;top:0;bottom:0;right:0;width:400px;max-width:100vw;z-index:100001;background:#efeae2;box-shadow:-8px 0 32px rgba(15,23,42,.3);display:flex;flex-direction:column;direction:rtl;font-family:inherit';
+    p.innerHTML = '<div id="chatHead" style="background:#075e54;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;font-weight:700"></div>' +
+      '<div id="chatPins"></div><div id="chatList" style="flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px"></div>' +
+      '<div style="background:#f0f2f5;padding:8px;display:flex;gap:6px;align-items:flex-end"><textarea id="chatInp" rows="1" placeholder="הקלד הודעה ללקוח…" style="flex:1;resize:none;border:none;border-radius:18px;padding:9px 14px;font:inherit;font-size:14px;max-height:100px" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();chatSend();}"></textarea>' +
+      '<button onclick="chatSend()" style="background:#075e54;color:#fff;border:none;border-radius:50%;width:40px;height:40px;font-size:18px;cursor:pointer">➤</button></div>';
+    document.body.appendChild(p);
+  }
+  p.style.display = 'flex';
+  try { await chatLoad(c); } catch (e) { alert('לא הצלחתי לטעון את הצ\'אט. ודא שהרצת את supabase-portal-chat.sql ב-Supabase.'); return; }
+  chatDraw(true);
+  chatToasts();
+}
+function chatClose() { CHAT.open = null; var p = document.getElementById('chatPanel'); if (p) p.style.display = 'none'; }
+function chatDraw(scroll) {
+  var c = state.clients.find(function (x) { return x.id === CHAT.open; }); if (!c) return;
+  var ms = CHAT.msgs[c.portalToken] || [];
+  document.getElementById('chatHead').innerHTML = '<span>💬 ' + escapeHtml(c.name) + '</span><span style="cursor:pointer;font-size:20px" onclick="chatClose()">✕</span>';
+  var pins = ms.filter(function (m) { return m.pinned && !m.handled; });
+  document.getElementById('chatPins').innerHTML = pins.length ? '<div style="background:#fef3c7;border-bottom:2px solid #f59e0b;padding:6px 12px;max-height:150px;overflow-y:auto"><div style="font-weight:700;font-size:12px;color:#78350f">📌 משימות לביצוע (' + pins.length + ')</div>' +
+    pins.map(function (m) { return '<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:13px;padding:3px 0"><span style="white-space:pre-wrap">' + escapeHtml(String(m.body).slice(0, 120)) + '</span><button class="btn small" onclick="chatMark(\'' + m.id + '\',\'handled\',true)">✓ טופל</button></div>'; }).join('') + '</div>' : '';
+  var list = document.getElementById('chatList'), atBottom = scroll || list.scrollHeight - list.scrollTop - list.clientHeight < 60;
+  var act = function (m, f, label, on) { return '<span onclick="chatMark(\'' + m.id + '\',\'' + f + '\')" style="cursor:pointer;padding:1px 6px;border-radius:10px;font-size:11px;border:1px solid ' + (on ? '#16a34a' : '#cbd5e1') + ';background:' + (on ? '#dcfce7' : '#fff') + '">' + label + '</span>'; };
+  list.innerHTML = ms.length ? ms.map(function (m) {
+    var mine = m.sender === 'advisor';
+    var h = '<div style="align-self:' + (mine ? 'flex-start' : 'flex-end') + ';max-width:82%"><div style="background:' + (mine ? '#d9fdd3' : '#fff') + ';border-radius:10px;padding:6px 10px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:14px;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.body) + '<div style="font-size:10px;color:#667781;text-align:left;margin-top:2px">' + chatFmt(m.created_at) + (mine ? ' ✓' : '') + '</div></div>';
+    if (!mine) h += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">' +
+      act(m, 'react:like', '👍', m.react === 'like') + act(m, 'react:dislike', '👎', m.react === 'dislike') +
+      act(m, 'is_read', '👁 נקרא', m.is_read) + act(m, 'is_done', '✔ בוצע', m.is_done) + act(m, 'remind', '⏰ תזכורת', m.remind) + act(m, 'pinned', '📌 הצמד', m.pinned && !m.handled) + '</div>';
+    return h + '</div>';
+  }).join('') : '<div style="text-align:center;color:#667781;font-size:13px;margin-top:30px">אין עדיין הודעות. כתוב ללקוח למטה.</div>';
+  if (atBottom) list.scrollTop = list.scrollHeight;
+}
+async function chatMark(id, field, val) {
+  var c = state.clients.find(function (x) { return x.id === CHAT.open; }); if (!c) return;
+  var ms = CHAT.msgs[c.portalToken] || [], m = ms.find(function (x) { return x.id === id; }); if (!m) return;
+  var patch = {};
+  if (field.indexOf('react:') === 0) { var rv = field.slice(6); patch.react = m.react === rv ? null : rv; }
+  else if (field === 'handled') { patch.handled = true; }
+  else if (field === 'pinned') { patch.pinned = !(m.pinned && !m.handled); patch.handled = false; }
+  else { patch[field] = !m[field]; }
+  if (patch.is_done === true) patch.is_read = true;
+  try {
+    await chatFetch('/rest/v1/portal_messages?id=eq.' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(patch), prefer: 'return=minimal' });
+  } catch (e) { alert('הסימון לא נשמר. בדוק חיבור ונסה שוב.'); return; }
+  Object.keys(patch).forEach(function (k) { m[k] = patch[k]; });
+  if (patch.remind === true) chatRemindTask(c, m);
+  CHAT.att = CHAT.att.filter(function (a) { return a.id !== id; });
+  if (m.sender === 'client' && !m.is_read || m.pinned && !m.handled) CHAT.att.push(m);
+  chatRefreshBadges(); chatToasts(); chatDraw();
+}
+function chatRemindTask(c, m) {
+  if ((c.tasks || []).some(function (t) { return t.chatMsgId === m.id; })) return;
+  c.tasks = c.tasks || [];
+  c.tasks.push({ id: uid(), stage: c.stage, title: 'תזכורת מהצ\'אט: ' + String(m.body).replace(/\s+/g, ' ').slice(0, 80), subTopic: '', dueDate: todayLocal(), notifyDaysBefore: 0, assignee: null, custom: true, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], chatMsgId: m.id });
+  save();
+  try { refreshTaskAlertsFloat(); } catch (e) {}
+  if (currentTab === 'detail') renderClientDetail();
+}
+async function chatSend() {
+  var c = state.clients.find(function (x) { return x.id === CHAT.open; }); if (!c) return;
+  var inp = document.getElementById('chatInp'), v = inp.value.trim(); if (!v) return;
+  if (v.length > 2000) { alert('ההודעה ארוכה מדי.'); return; }
+  try {
+    var r = await chatFetch('/rest/v1/portal_messages', { method: 'POST', body: JSON.stringify({ token: c.portalToken, client_id: c.id, sender: 'advisor', body: v }), prefer: 'return=representation' });
+    var row = (await r.json())[0];
+    (CHAT.msgs[c.portalToken] = CHAT.msgs[c.portalToken] || []).push(row);
+    inp.value = ''; chatDraw(true);
+  } catch (e) { alert('ההודעה לא נשלחה. בדוק חיבור ונסה שוב.'); }
+}
+setInterval(chatPoll, 20000);
+setTimeout(chatPoll, 8000);
 </script>
 
 </body>
