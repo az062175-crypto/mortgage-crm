@@ -21291,6 +21291,7 @@ function portalSnapshot(c) {
     amount: Number(c.loanAmount) || 0,
     pct: pct,
     banks: subBanks,
+    appraised: Number(c.appraiserValue) || 0,
     approvals: (c.approvals || []).map(function (a) { return { bank: a.bankName || a.bank || '', amount: Number(a.amount) || 0 }; })
   };
   var phones = [];
