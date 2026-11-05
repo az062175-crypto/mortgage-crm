@@ -21434,12 +21434,13 @@ function portalSnapshot(c) {
   var appr = (function () {
     var tk = c.tasks || [];
     function st(title) { var t = tk.find(function (x) { return x.stage === 'appraisal' && x.title === title; }); return t ? ((t.status === 'done' || t.done) ? 'done' : 'open') : null; }
-    var dd = c.dealDetails || {}, ps = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []), b1 = (c.borrowers || [])[0] || {}, vc = c.visitContact, ct = null;
+    // לפי הנוהל (כמו במייל לשמאי): יש שוכר — פרטי השוכר; אחרת הלווה הראשי. אם אין טלפון — נשאר פתוח למילוי הלקוח
+    var dd = c.dealDetails || {}, b1 = (c.borrowers || [])[0] || {}, vc = c.visitContact, ct = null;
+    var tn = dd.tenant, hasTenant = !!(c.isRented && tn && (tn.name || tn.phone));
     if (vc && vc.phone) ct = { name: vc.name || '', phone: vc.phone };
-    else if (c.isRented && dd.tenant && dd.tenant.phone) ct = { name: dd.tenant.name || '', phone: dd.tenant.phone };
-    else if (ps.indexOf('יד שנייה') >= 0 && dd.secondHand && dd.secondHand.sellerPhone) ct = { name: dd.secondHand.sellerName || '', phone: dd.secondHand.sellerPhone };
+    else if (hasTenant) { if (tn.phone) ct = { name: tn.name || '', phone: tn.phone }; }
     else if (b1.phone || c.phone) ct = { name: b1.name || c.name || '', phone: b1.phone || c.phone };
-    return { contact: ct, contactKey: 'phone:visit', visit: st('תואם ביקור?'), pay: st('הועבר תשלום?'), ready: st('שמאות מוכנה?') };
+    return { contact: ct, contactKey: 'phone:visit', tenant: hasTenant, visit: st('תואם ביקור?'), pay: st('הועבר תשלום?'), ready: st('שמאות מוכנה?') };
   })();
   var execs = (c.tasks || []).filter(function (t) { return t.stage === 'execution' && t.hasAmount; }).map(function (t) {
     var rows = (Array.isArray(t.executions) ? t.executions : []).map(function (e) { return { amount: Number(e.amount) || 0, date: e.date || '', notes: String(e.notes || '') }; });
