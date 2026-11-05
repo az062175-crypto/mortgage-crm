@@ -21394,7 +21394,7 @@ function portalFieldSpecs(c) {
   var P = function (key, group, title, from, label, type, path, fb) { out.push({ key: key, group: group, title: title, from: from, label: label, type: type, path: path, fb: fb || null }); };
   (c.borrowers || []).forEach(function (b, i) {
     var g = 'b' + i, t = 'פרטי הלווה' + (String(b.name || '').trim() ? ' — ' + String(b.name).trim().split(/\s+/)[0] : '');
-    P('f:b' + i + ':idNumber', g, t, 'submission', 'תעודת זהות', 'id', 'borrowers.' + i + '.idNumber', i === 0 ? 'idNumber' : null);
+    P('phone:' + i, g, t, 'submission', 'נייד', 'tel', 'borrowers.' + i + '.phone', i === 0 ? 'phone' : null);
     P('f:b' + i + ':email', g, t, 'submission', 'אימייל', 'email', 'borrowers.' + i + '.email', i === 0 ? 'email' : null);
   });
   if (c.isRented) {
@@ -21499,7 +21499,7 @@ function portalSnapshot(c) {
     if (!String(b.phone || '').trim()) phones.push({ id: 'phone:' + i, name: nm });
     else if (pf['phone:' + i]) phones.push({ id: 'phone:' + i, name: nm, done: true }); // הלקוח מילא והתקבל — יורד למטה עם ✓ בוצע
   });
-  return { v: 1, phones: phones, forms: portalForms(c), appr: appr, execs: execs, progress: prog, summary: summary, name: portalGreetName(c, first), stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
+  return { v: 1, phones: [], forms: portalForms(c), appr: appr, execs: execs, progress: prog, summary: summary, name: portalGreetName(c, first), stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
 }
 
 async function portalFetch(path, opts) {
