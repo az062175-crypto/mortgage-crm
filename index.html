@@ -21292,6 +21292,7 @@ function portalSnapshot(c) {
     pct: pct,
     banks: subBanks,
     appraised: Number(c.appraiserValue) || 0,
+    valueRow: (function () { try { var dn = ltvDenom(c), ct = Number(c.propertyValue) || 0, ap = Number(c.appraiserValue) || 0; if (!(dn > 0)) return null; return { label: (ap > 0 && c.requiresAppraisal !== false && dn === ap && dn !== ct) ? 'שווי לפי שמאי' : propertyValueLabel(c), amount: dn }; } catch (e) { return null; } })(),
     approvals: (c.approvals || []).map(function (a) { return { bank: a.bankName || a.bank || '', amount: Number(a.amount) || 0 }; })
   };
   var phones = [];

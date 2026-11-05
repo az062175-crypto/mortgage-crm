@@ -111,7 +111,7 @@ function render(){
   h+='<div class="card"><h2>'+esc(sel.label)+(selIdx===curIdx?' <span class="tag me">השלב הנוכחי</span>':'')+'</h2>';
   if(selIdx<curIdx&&!items.length)h+='<div class="empty">שלב זה הושלם ✓</div>';
   else if(!items.length)h+='<div class="empty">אין כרגע דברים פתוחים בשלב הזה.</div>';
-  if(sel.id==='appraisal'&&d.summary&&d.summary.appraised)h+='<div class="appr">✅ אושר שווי השמאות בסך '+money(d.summary.appraised)+'</div>';
+  if(sel.id==='appraisal'&&d.summary&&d.summary.appraised)h+='<div class="appr">✅ ב"ה אושר השמאות בסך '+money(d.summary.appraised)+'</div>';
   h+='</div>';
 
   if(sel.id==='submission'&&d.phones&&d.phones.length){
@@ -150,7 +150,7 @@ function summaryHtml(s){
   if(rows.length)h+='<div class="card sum">'+rows.map(function(r){return '<div class="sr"><span>'+esc(r[0])+'</span><b>'+esc(r[1])+'</b></div>';}).join('')+'</div>';
   if(s.approvals&&s.approvals.length)h+=s.approvals.map(function(a){
     return '<div class="appr">✅ קיים אישור עקרוני'+(a.bank?' מבנק '+esc(a.bank):'')+(a.amount?' על סך '+money(a.amount):'')+'</div>';}).join('');
-  if(s.appraised)h+='<div class="appr">✅ אושר שווי השמאות בסך '+money(s.appraised)+'</div>';
+  if(s.appraised)h+='<div class="appr">✅ ב"ה אושר השמאות בסך '+money(s.appraised)+'</div>';
   return h;
 }
 function itemHtml(it,stage){
