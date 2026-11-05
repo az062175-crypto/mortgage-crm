@@ -90,7 +90,6 @@ function render(){
   var sel=stages.find(function(s){return s.id===S.sel;})||stages[curIdx];
   var h='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div style="min-width:0"><h1>'+greetByTime()+' '+esc(d.name||'')+'</h1><div class="sub">כאן רואים באיזה שלב התיק שלך נמצא ומה נדרש בכל שלב.</div></div>'+donutHtml(d.progress)+'</div>';
   h+=summaryHtml(d.summary);
-  h+=legendHtml(d.progress);
   var allMine=[];
   stages.forEach(function(s){(s.items||[]).forEach(function(it){if(it.owner==='client')allMine.push({it:it,stage:s.label});});});
   var openMine=allMine.filter(function(x){return !S.sent[x.it.id];}).length;

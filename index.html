@@ -5496,6 +5496,7 @@ function renderClientDetail() {
             ${typeof portalHeaderButton === 'function' ? portalHeaderButton(c) : ''}
           </h1>
           <div class="client-sub">${(c.borrowers||[]).map(b => `<span style="margin-inline-end:12px"><strong>${escapeHtml(b.role||'לווה')}:</strong> ${escapeHtml(b.name||'—')} · ת.ז ${escapeHtml(b.idNumber||'—')} · ${escapeHtml(b.employmentType||'—')}</span>`).join('')} · 📞 ${escapeHtml(c.phone||'—')}</div>
+          ${typeof portalProgressWidget === 'function' ? portalProgressWidget(c) : ''}
           <div class="badges">
             <span class="badge">${escapeHtml(c.purpose||'לא הוגדר')}</span>
             <span class="badge">${escapeHtml(c.employmentType)}</span>
@@ -21276,6 +21277,80 @@ function portalGreetName(c, fallback) {
   if (fn || fam) return (fn + ' ' + fam).trim();
   return String(fallback || '').trim();
 }
+// התקדמות כללית: אישור (ליד+לקוח+הגשה+אישור) 20%, שמאות 20%, בטחונות מוכר (בטחונות מוכר+חתימות) 30%,
+// ושאר המשימות עד שלב הביצוע (בטחונות בנק) 30%. ביצוע וארכיון לא נמדדים.
+function portalProgress(c) {
+  var agg = {}, open = {};
+  function bump(st, done, name) {
+    var a = agg[st] = agg[st] || { d: 0, t: 0 }; a.t++;
+    if (done) a.d++; else (open[st] = open[st] || []).push(name);
+  }
+  (c.requirements || []).forEach(function (r) { if (r.status !== 'not-required') bump(r.stage, r.status === 'provided', r.name); });
+  (c.tasks || []).forEach(function (t) { bump(t.stage, t.status === 'done' || !!t.done, t.title); });
+  var ids = STAGES.map(function (x) { return x.id; }), cur = ids.indexOf(c.stage), later = c.stage === 'archive' || c.stage === 'execution';
+  var groups = [
+    { label: 'אישור', sub: 'ליד, לקוח, הגשה, אישור', w: 20, st: ['lead', 'client', 'submission', 'approval'] },
+    { label: 'שמאות', sub: 'שמאות', w: 20, st: ['appraisal'] },
+    { label: 'בטחונות מוכר', sub: 'בטחונות מוכר, חתימות', w: 30, st: ['seller', 'signature'] },
+    { label: 'שאר המשימות', sub: 'בטחונות בנק', w: 30, st: ['bank'] }
+  ];
+  var openList = [];
+  var segs = groups.map(function (g) {
+    var d = 0, t = 0, items = [];
+    g.st.forEach(function (k) {
+      if (agg[k]) { d += agg[k].d; t += agg[k].t; }
+      (open[k] || []).forEach(function (n) { items.push({ name: n, stage: (STAGES.find(function (x) { return x.id === k; }) || {}).label || '' }); });
+    });
+    openList.push(items);
+    var past = later || Math.max.apply(null, g.st.map(function (k) { return ids.indexOf(k); })) < cur;
+    return { label: g.label, sub: g.sub, w: g.w, f: t ? Math.round(d / t * 1000) / 1000 : (past ? 1 : 0) };
+  });
+  var pct = Math.round(segs.reduce(function (a, g) { return a + g.w * g.f; }, 0));
+  return { pct: pct, segs: segs, open: openList };
+}
+var PORTAL_PIE_COLORS = ['#22c55e', '#0ea5e9', '#f97316', '#8b5cf6'];
+function portalDonutSvg(p, size) {
+  var start = 0, bg = '', fg = '';
+  p.segs.forEach(function (g, i) {
+    var len = Math.max(0, g.w - 1), off = 25 - start, col = PORTAL_PIE_COLORS[i % 4], dn = Math.min(len, g.w * g.f);
+    bg += `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${col}" stroke-opacity=".2" stroke-width="6" stroke-dasharray="${len} ${100 - len}" stroke-dashoffset="${off}"/>`;
+    if (g.f > 0) fg += `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${col}" stroke-width="6" stroke-dasharray="${dn} ${100 - dn}" stroke-dashoffset="${off}"/>`;
+    start += g.w;
+  });
+  return `<svg viewBox="0 0 42 42" width="${size}" height="${size}" style="flex:0 0 auto">${bg}${fg}<text x="21" y="23.5" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">${p.pct}%</text></svg>`;
+}
+function portalProgressWidget(c) {
+  var p = portalProgress(c);
+  var leg = p.segs.map(function (g, i) {
+    return `<div style="font-size:12px;line-height:1.3"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PORTAL_PIE_COLORS[i % 4]};margin-inline-end:5px"></span><b>${escapeHtml(g.label)}</b> <span style="color:#16a34a;font-weight:700">${Math.round(g.w * g.f)}/${g.w}%</span><div style="color:var(--muted);font-size:11px">${escapeHtml(g.sub)}</div></div>`;
+  }).join('');
+  return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:10px 0;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:12px;max-width:560px">
+    ${portalDonutSvg(p, 84)}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;flex:1;min-width:200px">${leg}</div>
+    <button class="btn small secondary" onclick="portalOpenMissing('${c.id}')">🔍 מה עוד חסר</button>
+  </div>`;
+}
+function portalOpenMissing(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
+  var p = portalProgress(c);
+  var old = document.getElementById('portalMissingDlg'); if (old) old.remove();
+  var body = p.segs.map(function (g, i) {
+    var items = p.open[i];
+    return `<div style="margin-bottom:12px"><div style="font-weight:700"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PORTAL_PIE_COLORS[i % 4]};margin-inline-end:6px"></span>${escapeHtml(g.label)} <span style="color:#16a34a">${Math.round(g.w * g.f)}/${g.w}%</span></div>` +
+      (items.length ? items.map(function (it) { return `<div style="font-size:13px;padding:3px 14px">• ${escapeHtml(it.name)} <span style="color:var(--muted);font-size:11px">(${escapeHtml(it.stage)})</span></div>`; }).join('') : '<div style="font-size:13px;padding:3px 14px;color:#16a34a">✓ הכול הושלם</div>') + '</div>';
+  }).join('');
+  var d = document.createElement('div');
+  d.id = 'portalMissingDlg';
+  d.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML = `<div style="background:#fff;border-radius:14px;padding:20px;max-width:560px;width:100%;max-height:85vh;overflow-y:auto;direction:rtl">
+    <h3 style="margin:0 0 4px">🔍 מה עוד חסר — ${escapeHtml(c.name)}</h3>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">התקדמות ${p.pct}%. מוצגים רק פריטים שנספרים בעוגה: מסמכים בסטטוס "ממתין" ומשימות שלא סומנו "בוצע".</div>
+    ${body}
+    <div style="text-align:left"><button class="btn small secondary" onclick="document.getElementById('portalMissingDlg').remove()">סגור</button></div></div>`;
+  d.addEventListener('click', function (e) { if (e.target === d) d.remove(); });
+  document.body.appendChild(d);
+}
+
 function portalSnapshot(c) {
   if (c.portalDisabled) return { v: 1, disabled: true }; // קישור מבוטל: לא נשמר בשרת שום מידע על הלקוח
   var stages = STAGES.filter(function (s) { return s.id !== 'archive'; })
@@ -21328,29 +21403,7 @@ function portalSnapshot(c) {
     var rows = (Array.isArray(t.executions) ? t.executions : []).map(function (e) { return { amount: Number(e.amount) || 0, date: e.date || '', notes: String(e.notes || '') }; });
     return { title: t.title, expected: Number(t.expectedAmount) || 0, rows: rows, total: rows.reduce(function (a, e) { return a + e.amount; }, 0) };
   }).filter(function (x) { return x.expected > 0 || x.rows.length; });
-  // התקדמות כללית: אישור (ליד+לקוח+הגשה+אישור) 20%, שמאות 20%, בטחונות מוכר (בטחונות מוכר+חתימות) 30%,
-  // ושאר המשימות עד שלב הביצוע (בטחונות בנק) 30%. ביצוע וארכיון לא נמדדים.
-  var prog = (function () {
-    var agg = {};
-    function bump(st, done) { var a = agg[st] = agg[st] || { d: 0, t: 0 }; a.t++; if (done) a.d++; }
-    (c.requirements || []).forEach(function (r) { if (r.status !== 'not-required') bump(r.stage, r.status === 'provided'); });
-    (c.tasks || []).forEach(function (t) { bump(t.stage, t.status === 'done' || !!t.done); });
-    var ids = STAGES.map(function (x) { return x.id; }), cur = ids.indexOf(c.stage), later = c.stage === 'archive' || c.stage === 'execution';
-    var groups = [
-      { label: 'אישור', sub: 'ליד, לקוח, הגשה, אישור', w: 20, st: ['lead', 'client', 'submission', 'approval'] },
-      { label: 'שמאות', sub: 'שמאות', w: 20, st: ['appraisal'] },
-      { label: 'בטחונות מוכר', sub: 'בטחונות מוכר, חתימות', w: 30, st: ['seller', 'signature'] },
-      { label: 'שאר המשימות', sub: 'בטחונות בנק', w: 30, st: ['bank'] }
-    ];
-    var segs = groups.map(function (g) {
-      var d = 0, t = 0;
-      g.st.forEach(function (k) { if (agg[k]) { d += agg[k].d; t += agg[k].t; } });
-      var past = later || Math.max.apply(null, g.st.map(function (k) { return ids.indexOf(k); })) < cur;
-      return { label: g.label, sub: g.sub, w: g.w, f: t ? Math.round(d / t * 1000) / 1000 : (past ? 1 : 0) };
-    });
-    var pct = Math.round(segs.reduce(function (a, g) { return a + g.w * g.f; }, 0));
-    return { pct: pct, segs: segs };
-  })();
+  var prog = (function () { var r = portalProgress(c); return { pct: r.pct, segs: r.segs }; })();
   var phones = [];
   if (!String(c.phone || '').trim()) (c.borrowers || []).forEach(function (b, i) { if (!String(b.phone || '').trim()) phones.push({ id: 'phone:' + i, name: String(b.name || '').trim().split(/\s+/)[0] }); });
   return { v: 1, phones: phones, appr: appr, execs: execs, progress: prog, summary: summary, name: portalGreetName(c, first), stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
