@@ -1999,6 +1999,17 @@ function _miniDonut(values, palette, total) {
 }
 function clientClockEnd(c) { if (!c) return null; const execEntry = (c.stageHistory || []).find(h => h.stage === 'execution'); return (execEntry && execEntry.enteredAt) ? execEntry.enteredAt : null; }
 function daysInFile(c) { if (!c || !c.leadAt) return 0; const end = clientClockEnd(c); return daysBetween(c.leadAt, end); }
+// ימים מיום הכניסה כלקוח עד יום הביצוע הראשון בתיק (שורת ביצוע ראשונה בטבלה; אם אין — כניסה לשלב ביצוע; אם עוד לא בוצע — עד היום)
+function clientSpan(c) {
+  if (!c) return { days: null, openedAt: null, endAt: null, done: false };
+  const _hist = (c.stageHistory || []).find(h => h.stage === 'client');
+  const openedAt = c.clientAt || (_hist && _hist.enteredAt) || c.createdAt || null;
+  const _execDates = [];
+  (c.tasks || []).forEach(t => { if (t.stage === 'execution' && t.hasAmount) (t.executions || []).forEach(e => { if (e && e.date && (Number(e.amount) || 0) > 0) _execDates.push(e.date); }); });
+  _execDates.sort();
+  const endAt = _execDates[0] ? _execDates[0] + 'T00:00:00' : clientClockEnd(c);
+  return { days: openedAt ? Math.max(0, daysBetween(openedAt, endAt)) : null, openedAt, endAt, done: !!endAt };
+}
 function daysInStage(c) { if (!c || !c.stageEnteredAt) return 0; if (c.stage === 'execution' || c.stage === 'archive') return 0; return daysBetween(c.stageEnteredAt); }
 function stageInfo(id) { return STAGES.find(s => s.id === id) || STAGES[0]; }
 
@@ -4807,7 +4818,7 @@ function renderClientsList() {
               <td>${banker ? escapeHtml(banker.name) : '—'}</td>
               <td><span class="stage-pill" style="background:${stageInfo(c.stage).color}">${stageInfo(c.stage).label}</span></td>
               <td>${(c.stage==='execution'||c.stage==='archive') ? '—' : daysBetween(c.stageEnteredAt)}</td>
-              <td>${daysInFile(c)}</td>
+              <td>${(() => { const _s = clientSpan(c); return _s.days === null ? '—' : _s.days; })()}</td>
               <td onclick="event.stopPropagation();${reqPending>0?`openMissingDocsPopup('${c.id}')`:''}" style="${reqPending>0?'cursor:pointer':''}" title="${reqPending>0?'לחץ להצגת המסמכים החסרים':''}">${reqPending > 0 ? `<span style="color:var(--warning);font-weight:600">חסר ${reqPending}</span>` : `<span style="color:var(--success);font-weight:600">${reqProvided} ✓</span>`}</td>
             </tr>`;
           }).join('')}
@@ -5548,13 +5559,8 @@ function renderClientDetail() {
           </div>
           ${(() => {
             // סופר מיום הכניסה כלקוח עד יום הביצוע הראשון בתיק (ואם עוד לא בוצע — עד היום)
-            const _hist = (c.stageHistory || []).find(h => h.stage === 'client');
-            const openedAt = c.clientAt || (_hist && _hist.enteredAt) || c.createdAt;
-            const _execDates = [];
-            (c.tasks || []).forEach(t => { if (t.stage === 'execution' && t.hasAmount) (t.executions || []).forEach(e => { if (e && e.date && (Number(e.amount) || 0) > 0) _execDates.push(e.date); }); });
-            _execDates.sort();
-            const firstExecAt = _execDates[0] ? _execDates[0] + 'T00:00:00' : null;
-            const daysOpen = openedAt ? Math.max(0, daysBetween(openedAt, firstExecAt)) : null;
+            const _span = clientSpan(c);
+            const openedAt = _span.openedAt, firstExecAt = _span.endAt, daysOpen = _span.days;
             let targetHtml = '';
             if (c.targetDate) {
               const today = new Date(); today.setHours(0,0,0,0);
