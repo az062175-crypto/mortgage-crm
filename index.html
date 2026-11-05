@@ -19086,6 +19086,7 @@ function renderSettings() {
     { id: 'reminders', label: '📌 תזכורות ללקוח חדש', icon: '📌' },
     { id: 'dealDocs', label: '📄 מסמכים לפי סוג עסקה', icon: '📄' },
     { id: 'portal', label: '🔗 פורטל לקוח — מה קשור אליו', icon: '🔗' },
+    { id: 'portalLinks', label: '🟢 קישורי לקוחות — מי פעיל', icon: '🟢' },
     { id: 'stageTasks', label: '✅ משימות ברירת מחדל', icon: '✅' },
     { id: 'bankTasks', label: '🏦 משימות בטחונות בנק', icon: '🏦' },
     { id: 'sellerTasks', label: '🤝 משימות בטחונות מוכר', icon: '🤝' },
@@ -19131,6 +19132,7 @@ function renderActiveSettingsSection() {
 
 function renderSettingsSection(id) {
   if (id === 'portal') return renderPortalSettingsSection();
+  if (id === 'portalLinks') return renderPortalLinksSection();
   if (id === 'accompanimentBanks') return renderAccompanimentBanksSection();
   if (id === 'snapshots') return renderSnapshotsSection();
   if (id === 'clientsFolder') return renderClientsFolderSection();
@@ -21447,12 +21449,37 @@ async function portalOpenDialog(cid) {
   document.body.appendChild(d);
   portalPullSent().then(function () { if (currentTab === 'detail') renderClientDetail(); });
 }
-async function portalSetActive(cid, active) {
+async function portalSetActive(cid, active, fromList) {
   var c = state.clients.find(function (x) { return x.id === cid; });
   if (!c || !!c.portalDisabled === !active) return;
   c.portalDisabled = !active; save();
   try { await portalPush(c, true); } catch (e) { c.portalDisabled = active; save(); alert('השינוי לא נשמר. בדוק חיבור ונסה שוב.'); return; }
-  portalOpenDialog(cid);
+  if (fromList) renderActiveSettingsSection(); else portalOpenDialog(cid);
+}
+function portalCopyLink(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c || !c.portalToken) return;
+  var l = portalLink(c);
+  try { navigator.clipboard.writeText(l); } catch (e) { prompt('העתק את הקישור:', l); }
+}
+function renderPortalLinksSection() {
+  var list = state.clients.filter(function (c) { return c.portalToken; });
+  var act = list.filter(function (c) { return !c.portalDisabled; }), off = list.filter(function (c) { return c.portalDisabled; });
+  function stageLbl(c) { var st = (typeof STAGES !== 'undefined' ? STAGES : []).find(function (x) { return x.id === c.stage; }); return st ? st.label : ''; }
+  function row(c) {
+    var on = !c.portalDisabled, n = portalSentCount(c);
+    return '<div class="settings-item" style="display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap">' +
+      '<span style="min-width:0"><b style="cursor:pointer" onclick="openClient(\'' + c.id + '\')">' + escapeHtml(c.name || '—') + '</b>' +
+      ' <span style="font-size:12px;color:var(--muted)">' + escapeHtml(stageLbl(c)) + '</span>' +
+      (n ? ' <span class="badge" style="background:#fef3c7;color:#92400e;font-size:11px">📤 ' + n + ' ממתינים לאישור</span>' : '') + '</span>' +
+      '<span style="display:inline-flex;gap:6px;align-items:center">' +
+        '<span class="badge" style="background:' + (on ? '#dcfce7' : '#fee2e2') + ';color:' + (on ? '#166534' : '#991b1b') + ';font-weight:700">' + (on ? '🟢 פעיל' : '⛔ מבוטל') + '</span>' +
+        (on ? '<button class="btn small secondary" onclick="portalCopyLink(\'' + c.id + '\')">📋</button>' : '') +
+        '<button class="btn small secondary" onclick="portalSetActive(\'' + c.id + '\',' + (on ? 'false' : 'true') + ',true)">' + (on ? 'בטל' : 'הפעל') + '</button>' +
+      '</span></div>';
+  }
+  return '<div class="panel"><h2 class="panel-title">🟢 קישורי לקוחות — מי פעיל</h2>' +
+    '<div style="font-size:13px;margin-bottom:10px"><b style="color:#166534">' + act.length + ' פעילים</b> · <b style="color:#991b1b">' + off.length + ' מבוטלים</b></div>' +
+    (list.length ? act.concat(off).map(row).join('') : '<div class="empty">עוד לא נוצר קישור לאף לקוח. נוצר בלחיצה על 🔗 בכרטיס הלקוח.</div>') + '</div>';
 }
 function portalCopy() {
   var i = document.getElementById('portalLinkInp');
