@@ -150,8 +150,7 @@ function itemHtml(it,stage){
   var sent=!!S.sent[it.id];
   var chip=stage?'<span class="chip">'+esc(stage)+'</span>':'';
   if(sent)return '<div class="item sent"><div class="nm">'+chip+esc(it.name)+'</div>'+
-    '<div class="note">📤 נשלח ליועץ, ממתין לאישור היועץ לעדכון המסמך</div>'+
-    '<div class="act"><button class="link" onclick="mark(\''+esc(it.id)+'\',false)">שלחתי בטעות — ביטול</button></div></div>';
+    '<div class="note">📤 נשלח ליועץ, ממתין לאישור היועץ לעדכון המסמך</div></div>';
   return '<div class="item"><div class="nm">'+chip+esc(it.name)+'</div>'+
     '<div class="act"><button class="send" onclick="mark(\''+esc(it.id)+'\',true)">✔ שלחתי ליועץ</button></div></div>';
 }
