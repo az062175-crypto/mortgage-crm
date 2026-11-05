@@ -21286,7 +21286,8 @@ function portalProgress(c) {
     if (done) a.d++; else (open[st] = open[st] || []).push(name);
   }
   (c.requirements || []).forEach(function (r) { if (r.status !== 'not-required') bump(r.stage, r.status === 'provided', r.name); });
-  (c.tasks || []).forEach(function (t) { bump(t.stage, t.status === 'done' || !!t.done, t.title); });
+  // "האישור לא מקובל" היא משימת מילוט פסיבית ולא משימה לפי הנוהל — לא נספרת
+  (c.tasks || []).forEach(function (t) { if (String(t.title || '').indexOf('האישור לא מקובל') === 0) return; bump(t.stage, t.status === 'done' || !!t.done, t.title); });
   var ids = STAGES.map(function (x) { return x.id; }), cur = ids.indexOf(c.stage), later = c.stage === 'archive' || c.stage === 'execution';
   var groups = [
     { label: 'אישור', sub: 'ליד, לקוח, הגשה, אישור', w: 20, st: ['lead', 'client', 'submission', 'approval'] },
