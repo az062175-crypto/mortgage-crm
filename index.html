@@ -1999,11 +1999,10 @@ function _miniDonut(values, palette, total) {
 }
 function clientClockEnd(c) { if (!c) return null; const execEntry = (c.stageHistory || []).find(h => h.stage === 'execution'); return (execEntry && execEntry.enteredAt) ? execEntry.enteredAt : null; }
 function daysInFile(c) { if (!c || !c.leadAt) return 0; const end = clientClockEnd(c); return daysBetween(c.leadAt, end); }
-// ימים מיום הכניסה כלקוח עד יום הביצוע הראשון בתיק (שורת ביצוע ראשונה בטבלה; אם אין — כניסה לשלב ביצוע; אם עוד לא בוצע — עד היום)
+// ימים מ"תאריך פתיחת תיק" עד יום הביצוע הראשון בתיק (שורת ביצוע ראשונה בטבלה; אם אין — כניסה לשלב ביצוע; אם עוד לא בוצע — עד היום)
 function clientSpan(c) {
   if (!c) return { days: null, openedAt: null, endAt: null, done: false };
-  const _hist = (c.stageHistory || []).find(h => h.stage === 'client');
-  const openedAt = c.clientAt || (_hist && _hist.enteredAt) || c.createdAt || null;
+  const openedAt = c.createdAt || c.leadAt || c.clientAt || null; // "תאריך פתיחת תיק" מהטופס
   const _execDates = [];
   (c.tasks || []).forEach(t => { if (t.stage === 'execution' && t.hasAmount) (t.executions || []).forEach(e => { if (e && e.date && (Number(e.amount) || 0) > 0) _execDates.push(e.date); }); });
   _execDates.sort();
@@ -5574,7 +5573,7 @@ function renderClientDetail() {
             }
             let openHtml = '';
             if (daysOpen !== null) {
-              openHtml = `<div style="padding:6px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:700;color:var(--accent);text-align:center">⏱ ${daysOpen} ימים מכניסה כלקוח${firstExecAt ? ' עד הביצוע הראשון' : ''}<div style="font-size:10px;font-weight:500;margin-top:2px">מ־${fmtShort(openedAt)}${firstExecAt ? ' עד ' + fmtShort(firstExecAt) : ' עד היום'}</div></div>`;
+              openHtml = `<div style="padding:6px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;font-size:12px;font-weight:700;color:var(--accent);text-align:center">⏱ ${daysOpen} ימים מפתיחת התיק${firstExecAt ? ' עד הביצוע הראשון' : ''}<div style="font-size:10px;font-weight:500;margin-top:2px">מ־${fmtShort(openedAt)}${firstExecAt ? ' עד ' + fmtShort(firstExecAt) : ' עד היום'}</div></div>`;
             }
             if (!openHtml && !targetHtml) return '';
             return `<div style="display:flex;flex-direction:column;gap:6px;min-width:150px">${openHtml}${targetHtml}</div>`;
