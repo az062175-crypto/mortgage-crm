@@ -21260,9 +21260,9 @@ function portalSnapshot(c) {
   var stages = STAGES.filter(function (s) { return s.id !== 'archive'; })
     .map(function (s) { return { id: s.id, label: s.label, color: s.color, items: [] }; });
   var by = {}; stages.forEach(function (s) { by[s.id] = s; });
-  var doneCount = 0;
+  var doneCount = 0, done = [];
   (c.requirements || []).forEach(function (r) {
-    if (r.status === 'provided') { doneCount++; return; }
+    if (r.status === 'provided') { doneCount++; if (by[r.stage]) done.push({ name: r.name, stage: by[r.stage].label }); return; }
     if (r.status !== 'pending' || !by[r.stage]) return;
     var o = portalOwner(r, false);
     if (o) by[r.stage].items.push({ id: r.id, name: r.name, owner: o });
@@ -21273,7 +21273,7 @@ function portalSnapshot(c) {
     if (o) by[t.stage].items.push({ id: t.id, name: t.title, owner: o });
   });
   var first = ((c.borrowers || [])[0] || {}).name || c.name || '';
-  return { v: 1, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount };
+  return { v: 1, name: String(first).trim().split(/\s+/)[0], stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
 }
 
 async function portalFetch(path, opts) {

@@ -32,7 +32,10 @@
   button.link{background:none;border:none;color:var(--accent);font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline}
   button.send{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
   .empty{color:var(--muted);font-size:14px;padding:6px 0}
-  .done-line{color:var(--ok);font-size:13px;margin-top:12px}
+  .done-box{margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 12px}
+  .done-box summary{color:var(--ok);font-size:14px;font-weight:600;cursor:pointer}
+  .done-box .dg{font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 2px}
+  .done-box .di{font-size:14px;padding:2px 0;color:#166534}
   .center{text-align:center;padding:60px 16px;color:var(--muted)}
 </style>
 </head>
@@ -96,7 +99,14 @@ function render(){
     h+='<div class="card"><h2><span class="tag adv">🧑‍💼 בטיפול היועץ</span></h2>'+adv.map(function(it){
       return '<div class="item"><div class="nm">'+esc(it.name)+'</div></div>';}).join('')+'</div>';
   }
-  if(d.doneCount)h+='<div class="done-line">✓ '+d.doneCount+' מסמכים כבר התקבלו ואושרו</div>';
+  if(d.doneCount){
+    var done=d.done||[],groups={};
+    done.forEach(function(x){(groups[x.stage]=groups[x.stage]||[]).push(x.name);});
+    h+='<details class="done-box"><summary>✓ '+d.doneCount+' מסמכים כבר התקבלו ואושרו</summary>'+
+      Object.keys(groups).map(function(g){
+        return '<div class="dg">'+esc(g)+'</div>'+groups[g].map(function(n){return '<div class="di">✓ '+esc(n)+'</div>';}).join('');
+      }).join('')+'</details>';
+  }
   document.getElementById('app').innerHTML=h;
 }
 
