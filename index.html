@@ -21901,8 +21901,12 @@ async function chatMark(id, field, val) {
   // הלקוח רואה בצ'אט תגובה עם תיוג ההודעה: הפכה למשימה/תזכורת, ובסיום "בוצע בתאריך"
   if (patch.remind === true) await chatSystem(c, m, 'reminder', 'הודעה זו הפכה לתזכורת');
   if (patch.pinned === true) await chatSystem(c, m, 'task', 'הודעה זו הפכה למשימה');
-  if ((patch.handled === true || (patch.is_done === true && (m.pinned || m.remind))) && !ms.some(function (x) { return x.reply_to === m.id && x.kind === 'done'; }))
-    await chatSystem(c, m, 'done', 'בוצע בתאריך ' + chatDate(new Date()));
+  var _tagIds = ms.filter(function (x) { return x.reply_to === m.id && (x.kind === 'reminder' || x.kind === 'task'); }).map(function (x) { return x.id; });
+  if ((patch.handled === true || (patch.is_done === true && (m.pinned || m.remind))) && !ms.some(function (x) { return x.kind === 'done' && (x.reply_to === m.id || _tagIds.indexOf(x.reply_to) >= 0); }))
+    { // "בוצע" מתייג את ההודעה "הפכה לתזכורת/למשימה" ולא את המקורית
+      var _tag = ms.filter(function (x) { return x.reply_to === m.id && (x.kind === 'reminder' || x.kind === 'task'); }).pop();
+      await chatSystem(c, { id: _tag ? _tag.id : m.id, origId: m.id }, 'done', 'בוצע בתאריך ' + chatDate(new Date()));
+    }
   CHAT.att = CHAT.att.filter(function (a) { return a.id !== id; });
   if (m.sender === 'client' && !m.is_read || m.pinned && !m.handled) CHAT.att.push(m);
   chatRefreshBadges(); chatToasts(); chatDraw();
@@ -21932,7 +21936,9 @@ async function chatTaskDoneScan() {
       if (!t.chatMsgId || t.chatDoneSent || !(t.status === 'done' || t.done)) continue;
       t.chatDoneSent = true; save();
       try {
-        await chatFetch('/rest/v1/portal_messages', { method: 'POST', body: JSON.stringify({ token: c.portalToken, client_id: c.id, sender: 'system', body: 'בוצע בתאריך ' + chatDate(t.doneAt ? new Date(t.doneAt) : new Date()), reply_to: t.chatMsgId, kind: 'done' }), prefer: 'return=minimal' });
+        var tagId = t.chatMsgId;
+        try { var tr = await chatFetch('/rest/v1/portal_messages?select=id&reply_to=eq.' + encodeURIComponent(t.chatMsgId) + '&kind=eq.reminder&order=created_at.desc&limit=1'); var tj = await tr.json(); if (tj[0]) tagId = tj[0].id; } catch (e2) {}
+        await chatFetch('/rest/v1/portal_messages', { method: 'POST', body: JSON.stringify({ token: c.portalToken, client_id: c.id, sender: 'system', body: 'בוצע בתאריך ' + chatDate(t.doneAt ? new Date(t.doneAt) : new Date()), reply_to: tagId, kind: 'done' }), prefer: 'return=minimal' });
       } catch (e) { t.chatDoneSent = false; }
     }
   }
