@@ -227,6 +227,7 @@ function summaryHtml(s){
   if(!s)return '';
   var rows=[];
   if(s.types&&s.types.length)rows.push(['סוג העסקה',s.types.join(' + ')]);
+  if(s.valueRow&&s.valueRow.amount)rows.push([s.valueRow.label,money(s.valueRow.amount)]);
   if(s.amount)rows.push(['סכום מבוקש',money(s.amount)]);
   if(s.pct!=null)rows.push(['אחוז מימון',s.pct+'%']);
   if(s.banks&&s.banks.length)rows.push(['הוגש לבנק',s.banks.join(', ')]);
@@ -235,8 +236,6 @@ function summaryHtml(s){
   if(s.approvals&&s.approvals.length)h+=s.approvals.map(function(a){
     return '<div class="appr">✅ קיים אישור עקרוני'+(a.bank?' מבנק '+esc(a.bank):'')+(a.amount?' על סך '+money(a.amount):'')+'</div>';}).join('');
   if(s.appraised)h+='<div class="appr">✅ ב"ה אושר השמאות בסך '+money(s.appraised)+'</div>';
-  if(s.contractRow&&s.contractRow.amount)h+='<div class="card sum"><div class="sr"><span>'+esc(s.contractRow.label)+'</span><b>'+money(s.contractRow.amount)+'</b></div></div>';
-  if(s.valueRow&&s.valueRow.amount)h+='<div class="card sum"><div class="sr"><span>'+esc(s.valueRow.label)+'</span><b>'+money(s.valueRow.amount)+'</b></div></div>';
   return h;
 }
 function formFieldsHtml(g,pre){

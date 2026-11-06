@@ -21472,9 +21472,9 @@ function portalSnapshot(c) {
     pct: pct,
     banks: subBanks,
     appraised: Number(c.appraiserValue) || 0,
-    valueRow: (function () { try { var dn = ltvDenom(c), ct = Number(c.propertyValue) || 0, ap = Number(c.appraiserValue) || 0; if (!(dn > 0)) return null; if (ap > 0 && c.requiresAppraisal !== false && (propertyValueLabel(c) !== 'מחיר חוזה' || ap === ct)) return null; return { label: (ap > 0 && c.requiresAppraisal !== false && dn === ap && dn !== ct) ? 'שווי לפי שמאי' : propertyValueLabel(c), amount: dn }; } catch (e) { return null; } })(),
+    // שורת שווי מתחת ל"סוג העסקה": מחיר חוזה (עסקאות חוזה); הערכת לקוח רק כל עוד אין שווי שמאי. שווי השמאי עצמו מוצג בבאנר "אושר השמאות"
+    valueRow: (function () { try { var ct = Number(c.propertyValue) || 0, ap = Number(c.appraiserValue) || 0; if (!(ct > 0)) return null; if (propertyValueLabel(c) === 'מחיר חוזה') return { label: 'מחיר חוזה', amount: ct }; if (ap > 0 && c.requiresAppraisal !== false) return null; return { label: propertyValueLabel(c), amount: ct }; } catch (e) { return null; } })(),
     // כשמחיר החוזה שונה משווי השמאי (והשמאי הוא הקובע) — מוצגים שניהם
-    contractRow: (function () { try { var dn = ltvDenom(c), ct = Number(c.propertyValue) || 0, ap = Number(c.appraiserValue) || 0; if (propertyValueLabel(c) !== 'מחיר חוזה' || !(ap > 0) || !(ct > 0) || ap === ct || dn === ct || c.requiresAppraisal === false) return null; return { label: 'מחיר חוזה', amount: ct }; } catch (e) { return null; } })(),
     approvals: (c.approvals || []).map(function (a) { return { bank: a.bankName || a.bank || '', amount: Number(a.amount) || 0 }; })
   };
   var appr = (function () {
