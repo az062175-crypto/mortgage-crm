@@ -21802,6 +21802,7 @@ async function chatPoll() {
     var r = await chatFetch('/rest/v1/portal_messages?select=id,token,sender,body,created_at,is_read,pinned,handled&or=(and(sender.eq.client,is_read.eq.false),and(pinned.eq.true,handled.eq.false))&order=created_at.asc&limit=200');
     CHAT.att = await r.json();
     chatRefreshBadges(); chatToasts();
+    chatTaskDoneScan();
     if (CHAT.open) { var c = state.clients.find(function (x) { return x.id === CHAT.open; }); if (c) { await chatLoad(c); chatDraw(); } }
   } catch (e) {}
 }
@@ -21868,6 +21869,12 @@ function chatDraw(scroll) {
   var list = document.getElementById('chatList'), atBottom = scroll || list.scrollHeight - list.scrollTop - list.clientHeight < 60;
   var act = function (m, f, label, on) { return '<span onclick="chatMark(\'' + m.id + '\',\'' + f + '\')" style="cursor:pointer;padding:1px 6px;border-radius:10px;font-size:11px;border:1px solid ' + (on ? '#16a34a' : '#cbd5e1') + ';background:' + (on ? '#dcfce7' : '#fff') + '">' + label + '</span>'; };
   list.innerHTML = ms.length ? ms.map(function (m) {
+    if (m.sender === 'system') {
+      var orig = ms.find(function (x) { return x.id === m.reply_to; });
+      return '<div style="align-self:center;max-width:90%;background:#fff8e1;border-radius:10px;padding:5px 10px;font-size:12px;box-shadow:0 1px 1px rgba(0,0,0,.1)">' +
+        (orig ? '<div style="border-inline-start:3px solid #f59e0b;padding-inline-start:6px;color:#667781;margin-bottom:3px;white-space:pre-wrap">' + escapeHtml(String(orig.body).slice(0, 70)) + '</div>' : '') +
+        (m.kind === 'done' ? '✔ ' : m.kind === 'reminder' ? '⏰ ' : '📌 ') + escapeHtml(m.body) + '</div>';
+    }
     var mine = m.sender === 'advisor';
     var h = '<div style="align-self:' + (mine ? 'flex-start' : 'flex-end') + ';max-width:82%"><div style="background:' + (mine ? '#d9fdd3' : '#fff') + ';border-radius:10px;padding:6px 10px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:14px;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.body) + '<div style="font-size:10px;color:#667781;text-align:left;margin-top:2px">' + chatFmt(m.created_at) + (mine ? ' ✓' : '') + '</div></div>';
     if (!mine) h += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">' +
@@ -21891,6 +21898,11 @@ async function chatMark(id, field, val) {
   } catch (e) { alert('הסימון לא נשמר. בדוק חיבור ונסה שוב.'); return; }
   Object.keys(patch).forEach(function (k) { m[k] = patch[k]; });
   if (patch.remind === true) chatRemindTask(c, m);
+  // הלקוח רואה בצ'אט תגובה עם תיוג ההודעה: הפכה למשימה/תזכורת, ובסיום "בוצע בתאריך"
+  if (patch.remind === true) await chatSystem(c, m, 'reminder', 'הודעה זו הפכה לתזכורת');
+  if (patch.pinned === true) await chatSystem(c, m, 'task', 'הודעה זו הפכה למשימה');
+  if ((patch.handled === true || (patch.is_done === true && (m.pinned || m.remind))) && !ms.some(function (x) { return x.reply_to === m.id && x.kind === 'done'; }))
+    await chatSystem(c, m, 'done', 'בוצע בתאריך ' + chatDate(new Date()));
   CHAT.att = CHAT.att.filter(function (a) { return a.id !== id; });
   if (m.sender === 'client' && !m.is_read || m.pinned && !m.handled) CHAT.att.push(m);
   chatRefreshBadges(); chatToasts(); chatDraw();
@@ -21902,6 +21914,28 @@ function chatRemindTask(c, m) {
   save();
   try { refreshTaskAlertsFloat(); } catch (e) {}
   if (currentTab === 'detail') renderClientDetail();
+}
+function chatDate(d) { return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
+async function chatSystem(c, m, kind, body) {
+  try {
+    var r = await chatFetch('/rest/v1/portal_messages', { method: 'POST', body: JSON.stringify({ token: c.portalToken, client_id: c.id, sender: 'system', body: body, reply_to: m.id, kind: kind }), prefer: 'return=representation' });
+    var row = (await r.json())[0];
+    (CHAT.msgs[c.portalToken] = CHAT.msgs[c.portalToken] || []).push(row);
+  } catch (e) { console.warn('chat system msg failed', e); }
+}
+// משימת תזכורת שבוצעה ב-CRM → הודעת "בוצע בתאריך" ללקוח
+async function chatTaskDoneScan() {
+  for (var i = 0; i < state.clients.length; i++) {
+    var c = state.clients[i]; if (!c.portalToken) continue;
+    for (var j = 0; j < (c.tasks || []).length; j++) {
+      var t = c.tasks[j];
+      if (!t.chatMsgId || t.chatDoneSent || !(t.status === 'done' || t.done)) continue;
+      t.chatDoneSent = true; save();
+      try {
+        await chatFetch('/rest/v1/portal_messages', { method: 'POST', body: JSON.stringify({ token: c.portalToken, client_id: c.id, sender: 'system', body: 'בוצע בתאריך ' + chatDate(t.doneAt ? new Date(t.doneAt) : new Date()), reply_to: t.chatMsgId, kind: 'done' }), prefer: 'return=minimal' });
+      } catch (e) { t.chatDoneSent = false; }
+    }
+  }
 }
 async function chatSend() {
   var c = state.clients.find(function (x) { return x.id === CHAT.open; }); if (!c) return;
