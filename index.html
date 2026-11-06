@@ -21801,7 +21801,9 @@ async function chatPoll() {
   try {
     var r = await chatFetch('/rest/v1/portal_messages?select=id,token,sender,body,created_at,is_read,pinned,handled&or=(and(sender.eq.client,is_read.eq.false),and(pinned.eq.true,handled.eq.false))&order=created_at.asc&limit=200');
     CHAT.att = await r.json();
-    chatRefreshBadges(); chatToasts();
+    chatRefreshBadges(); chatToasts(); chatFab();
+    var _ib = document.getElementById('chatInbox');
+    if (_ib && _ib.style.display !== 'none') { await chatInboxLoad(); chatInboxDraw(); }
     chatTaskDoneScan();
     if (CHAT.open) { var c = state.clients.find(function (x) { return x.id === CHAT.open; }); if (c) { await chatLoad(c); chatDraw(); } }
   } catch (e) {}
@@ -21812,13 +21814,14 @@ function chatRefreshBadges() {
     var n = c && c.portalToken ? chatUnread(c.portalToken) : 0, s = b.querySelector('.chatbadge');
     if (s) { s.textContent = n; s.style.display = n ? '' : 'none'; }
   });
+  if (typeof chatFab === 'function' && document.getElementById('chatFab')) chatFab();
 }
 function chatToasts() {
   var el = document.getElementById('chatToasts');
   var fresh = CHAT.att.filter(function (m) { return m.sender === 'client' && !m.is_read && CHAT.dismissed.indexOf(m.id) < 0 && !(CHAT.open && chatClientByToken(m.token) && chatClientByToken(m.token).id === CHAT.open); });
   if (!fresh.length) { if (el) el.remove(); return; }
   var by = {}; fresh.forEach(function (m) { (by[m.token] = by[m.token] || []).push(m); });
-  if (!el) { el = document.createElement('div'); el.id = 'chatToasts'; el.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;width:320px;direction:rtl'; document.body.appendChild(el); }
+  if (!el) { el = document.createElement('div'); el.id = 'chatToasts'; el.style.cssText = 'position:fixed;bottom:84px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;width:320px;direction:rtl'; document.body.appendChild(el); }
   el.innerHTML = Object.keys(by).map(function (t) {
     var c = chatClientByToken(t), ms = by[t], last = ms[ms.length - 1]; if (!c) return '';
     return '<div style="background:#fff;border:2px solid #16a34a;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.25);overflow:hidden">' +
@@ -21842,6 +21845,7 @@ async function chatOpen(cid) {
   if (!portalOn()) { alert('צריך להיות מחובר לענן (Supabase) כדי לשוחח עם הלקוח.'); return; }
   if (!c.portalToken) { alert('אין ללקוח הזה קישור. לחץ קודם על 🔗 כדי ליצור קישור, ואז אפשר לשוחח.'); return; }
   CHAT.open = cid;
+  chatInboxClose();
   chatDismiss(c.portalToken);
   var p = document.getElementById('chatPanel');
   if (!p) {
@@ -21862,7 +21866,7 @@ function chatClose() { CHAT.open = null; var p = document.getElementById('chatPa
 function chatDraw(scroll) {
   var c = state.clients.find(function (x) { return x.id === CHAT.open; }); if (!c) return;
   var ms = CHAT.msgs[c.portalToken] || [];
-  document.getElementById('chatHead').innerHTML = '<span>💬 ' + escapeHtml(c.name) + '</span><span style="cursor:pointer;font-size:20px" onclick="chatClose()">✕</span>';
+  document.getElementById('chatHead').innerHTML = '<span><span style="cursor:pointer" onclick="chatBack()" title="כל השיחות">›</span> 💬 ' + escapeHtml(c.name) + '</span><span style="cursor:pointer;font-size:20px" onclick="chatClose()">✕</span>';
   var pins = ms.filter(function (m) { return m.pinned && !m.handled; });
   document.getElementById('chatPins').innerHTML = pins.length ? '<div style="background:#fef3c7;border-bottom:2px solid #f59e0b;padding:6px 12px;max-height:150px;overflow-y:auto"><div style="font-weight:700;font-size:12px;color:#78350f">📌 משימות לביצוע (' + pins.length + ')</div>' +
     pins.map(function (m) { return '<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:13px;padding:3px 0"><span style="white-space:pre-wrap">' + escapeHtml(String(m.body).slice(0, 120)) + '</span><button class="btn small" onclick="chatMark(\'' + m.id + '\',\'handled\',true)">✓ טופל</button></div>'; }).join('') + '</div>' : '';
@@ -21954,8 +21958,56 @@ async function chatSend() {
     inp.value = ''; chatDraw(true);
   } catch (e) { alert('ההודעה לא נשלחה. בדוק חיבור ונסה שוב.'); }
 }
+// ----- חלון כל השיחות: לקוחות ששלחו הודעה למעלה, עם מספר הודעות באדום -----
+function chatTotalUnread() { return CHAT.att.filter(function (m) { return m.sender === 'client' && !m.is_read; }).length; }
+function chatFab() {
+  var f = document.getElementById('chatFab');
+  if (!f) {
+    f = document.createElement('button'); f.id = 'chatFab'; f.title = 'כל השיחות עם הלקוחות';
+    f.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99998;width:52px;height:52px;border-radius:50%;border:none;background:#075e54;color:#fff;font-size:24px;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer';
+    f.onclick = function () { chatInboxOpen(); };
+    document.body.appendChild(f);
+  }
+  var n = chatTotalUnread();
+  f.innerHTML = '💬' + (n ? '<span style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border-radius:999px;font-size:12px;min-width:20px;height:20px;line-height:20px;font-weight:700">' + n + '</span>' : '');
+}
+async function chatInboxLoad() {
+  var r = await chatFetch('/rest/v1/portal_messages?select=token,sender,body,created_at&sender=neq.system&order=created_at.desc&limit=400');
+  var rows = await r.json(), by = {};
+  rows.forEach(function (m) { if (!by[m.token]) by[m.token] = m; });
+  CHAT.convs = by;
+}
+function chatInboxDraw() {
+  var p = document.getElementById('chatInbox'); if (!p || p.style.display === 'none') return;
+  var items = Object.keys(CHAT.convs || {}).map(function (t) { var c = chatClientByToken(t); return c ? { c: c, last: CHAT.convs[t], n: chatUnread(t) } : null; }).filter(Boolean);
+  items.sort(function (a, b) { if ((a.n > 0) !== (b.n > 0)) return a.n > 0 ? -1 : 1; return new Date(b.last.created_at) - new Date(a.last.created_at); });
+  document.getElementById('chatInboxList').innerHTML = items.length ? items.map(function (x) {
+    return '<div onclick="chatOpen(\'' + x.c.id + '\')" style="display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;background:' + (x.n ? '#f0fdf4' : '#fff') + '">' +
+      '<div style="width:40px;height:40px;border-radius:50%;background:#075e54;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none">' + escapeHtml(String(x.c.name || '?').trim().charAt(0)) + '</div>' +
+      '<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:6px"><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(x.c.name) + '</b><span style="font-size:11px;color:#667781;flex:none">' + chatFmt(x.last.created_at) + '</span></div>' +
+      '<div style="font-size:13px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (x.last.sender === 'advisor' ? 'אתה: ' : '') + escapeHtml(String(x.last.body).replace(/\s+/g, ' ')) + '</div></div>' +
+      (x.n ? '<span style="background:#dc2626;color:#fff;border-radius:999px;font-size:12px;min-width:22px;height:22px;line-height:22px;text-align:center;font-weight:700;flex:none">' + x.n + '</span>' : '') + '</div>';
+  }).join('') : '<div style="text-align:center;color:#667781;font-size:13px;margin-top:30px">אין עדיין שיחות. פתח צ\'אט מכרטיס לקוח (💬).</div>';
+}
+async function chatInboxOpen() {
+  if (!portalOn()) { alert('צריך להיות מחובר לענן (Supabase).'); return; }
+  chatClose();
+  var p = document.getElementById('chatInbox');
+  if (!p) {
+    p = document.createElement('div'); p.id = 'chatInbox';
+    p.style.cssText = 'position:fixed;top:0;bottom:0;right:0;width:400px;max-width:100vw;z-index:100001;background:#fff;box-shadow:-8px 0 32px rgba(15,23,42,.3);display:flex;flex-direction:column;direction:rtl;font-family:inherit';
+    p.innerHTML = '<div style="background:#075e54;color:#fff;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;font-weight:700"><span>💬 כל השיחות</span><span style="cursor:pointer;font-size:20px" onclick="chatInboxClose()">✕</span></div><div id="chatInboxList" style="flex:1;overflow-y:auto"></div>';
+    document.body.appendChild(p);
+  }
+  p.style.display = 'flex';
+  try { await chatInboxLoad(); } catch (e) { alert('לא הצלחתי לטעון את השיחות. ודא שהרצת את supabase-portal-chat.sql ב-Supabase.'); }
+  chatInboxDraw();
+}
+function chatInboxClose() { var p = document.getElementById('chatInbox'); if (p) p.style.display = 'none'; }
+function chatBack() { chatClose(); chatInboxOpen(); }
 setInterval(chatPoll, 20000);
 setTimeout(chatPoll, 8000);
+setTimeout(chatFab, 1500);
 </script>
 
 </body>
