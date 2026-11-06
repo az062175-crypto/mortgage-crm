@@ -318,7 +318,9 @@ setInterval(function(){if(!S.busy&&!document.hidden)load(false);},30000);
 var CH={open:window.innerWidth>=1000,msgs:[],seen:0,busy:false};
 function chWide(){return window.innerWidth>=1000;}
 function chDock(){document.body.style.paddingLeft=chWide()&&CH.open?'430px':'';}
-window.addEventListener('resize',function(){if(chWide()&&!CH.open){CH.open=true;chMarkSeen();}chDock();chDraw(false);});
+CH.wasWide=chWide();
+// במובייל פתיחת המקלדת משנה את גובה החלון: לא לצייר מחדש (זה סוגר את המקלדת), רק כשעוברים בין מסך רחב לצר
+window.addEventListener('resize',function(){var w=chWide();if(w===CH.wasWide)return;CH.wasWide=w;if(w&&!CH.open){CH.open=true;chMarkSeen();}chDock();chDraw(false);});
 try{CH.seen=Number(localStorage.getItem('chatSeen_'+TOKEN))||0;}catch(e){}
 function chTime(at){var d=new Date(at),t=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);return d.toDateString()===new Date().toDateString()?t:d.getDate()+'/'+(d.getMonth()+1)+' '+t;}
 function chUnread(){return CH.msgs.filter(function(m){return m.sender!=='client'&&new Date(m.at).getTime()>CH.seen;}).length;}
@@ -330,6 +332,7 @@ function chDraw(scroll){
   var fab='<button onclick="chToggle()" aria-label="צ\'אט עם היועץ" style="position:fixed;bottom:16px;left:16px;z-index:50;width:56px;height:56px;border-radius:50%;border:none;background:#075e54;color:#fff;font-size:26px;box-shadow:0 4px 14px rgba(0,0,0,.3);cursor:pointer">💬'+(n?'<span style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border-radius:999px;font-size:12px;min-width:20px;height:20px;line-height:20px;font-weight:700">'+n+'</span>':'')+'</button>';
   if(!CH.open){root.innerHTML=fab;return;}
   var keep=document.getElementById('chInp'),draft=keep?keep.value:'';
+  var hadFocus=!!keep&&document.activeElement===keep,ss=keep?keep.selectionStart:0,se=keep?keep.selectionEnd:0;
   var list=document.getElementById('chList'),atBottom=scroll||!list||list.scrollHeight-list.scrollTop-list.clientHeight<60;
   root.innerHTML='<div style="position:fixed;bottom:0;left:0;z-index:60;width:min(100vw,420px);height:min(80vh,580px);background:#efeae2;border-radius:14px 14px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.3);display:flex;flex-direction:column">'+
     '<div style="background:#075e54;color:#fff;padding:10px 14px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center;font-weight:700"><span>💬 צ\'אט עם היועץ</span>'+(chWide()?'':'<span style="cursor:pointer;font-size:20px" onclick="chToggle()">✕</span>')+'</div>'+
@@ -345,6 +348,7 @@ function chDraw(scroll){
       return '<div style="align-self:'+(mine?'flex-start':'flex-end')+';max-width:82%;background:'+(mine?'#d9fdd3':'#fff')+';border-radius:10px;padding:6px 10px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15px;white-space:pre-wrap;word-break:break-word">'+esc(m.body)+'<div style="font-size:11px;color:#667781;text-align:left;margin-top:2px">'+(m.react==='like'?'👍 ':m.react==='dislike'?'👎 ':'')+chTime(m.at)+'</div></div>';}).join(''):'<div style="text-align:center;color:#667781;font-size:14px;margin-top:30px">אפשר לכתוב ליועץ כאן.</div>')+'</div>'+
     '<div style="background:#f0f2f5;padding:8px;display:flex;gap:6px;align-items:flex-end"><textarea id="chInp" rows="1" maxlength="1000" placeholder="הקלד הודעה…" style="flex:1;resize:none;border:none;border-radius:18px;padding:9px 14px;font:inherit;font-size:16px;max-height:100px" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();chSend();}"></textarea><button onclick="chSend()" style="background:#075e54;color:#fff;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer">➤</button></div></div>';
   var inp=document.getElementById('chInp');inp.value=draft;
+  if(hadFocus){inp.focus();try{inp.setSelectionRange(ss,se);}catch(e){}}
   var l2=document.getElementById('chList');if(atBottom)l2.scrollTop=l2.scrollHeight;
 }
 async function chPoll(){
