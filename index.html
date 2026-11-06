@@ -21871,9 +21871,9 @@ function chatDraw(scroll) {
   list.innerHTML = ms.length ? ms.map(function (m) {
     if (m.sender === 'system') {
       var orig = ms.find(function (x) { return x.id === m.reply_to; });
-      return '<div style="align-self:center;max-width:90%;background:#fff8e1;border-radius:10px;padding:5px 10px;font-size:12px;box-shadow:0 1px 1px rgba(0,0,0,.1)">' +
-        (orig ? '<div style="border-inline-start:3px solid #f59e0b;padding-inline-start:6px;color:#667781;margin-bottom:3px;white-space:pre-wrap">' + escapeHtml(String(orig.body).slice(0, 70)) + '</div>' : '') +
-        (m.kind === 'done' ? '✔ ' : m.kind === 'reminder' ? '⏰ ' : '📌 ') + escapeHtml(m.body) + '</div>';
+      return '<div style="align-self:flex-start;max-width:82%;background:#d9fdd3;border-radius:10px;padding:4px 4px 6px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:14px;word-break:break-word">' +
+        (orig ? '<div style="background:rgba(7,94,84,.1);border-inline-start:4px solid #075e54;border-radius:6px;padding:4px 8px;margin-bottom:4px"><div style="font-size:12px;font-weight:700;color:#075e54">' + (orig.sender === 'client' ? escapeHtml(c.name) : 'אתה') + '</div><div style="font-size:13px;color:#54656f;white-space:pre-wrap">' + escapeHtml(String(orig.body).slice(0, 90)) + '</div></div>' : '') +
+        '<div style="padding:0 6px;white-space:pre-wrap">' + (m.kind === 'done' ? '✔ ' : m.kind === 'reminder' ? '⏰ ' : '📌 ') + escapeHtml(m.body) + '</div><div style="font-size:10px;color:#667781;text-align:left;padding:0 6px;margin-top:2px">' + chatFmt(m.created_at) + ' ✓</div></div>';
     }
     var mine = m.sender === 'advisor';
     var h = '<div style="align-self:' + (mine ? 'flex-start' : 'flex-end') + ';max-width:82%"><div style="background:' + (mine ? '#d9fdd3' : '#fff') + ';border-radius:10px;padding:6px 10px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:14px;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.body) + '<div style="font-size:10px;color:#667781;text-align:left;margin-top:2px">' + chatFmt(m.created_at) + (mine ? ' ✓' : '') + '</div></div>';

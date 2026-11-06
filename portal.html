@@ -332,9 +332,10 @@ function chDraw(scroll){
     (CH.msgs.length?CH.msgs.map(function(m){var mine=m.sender==='client';
       if(m.sender==='system'){
         var orig=CH.msgs.find(function(x){return x.id===m.reply;});
-        return '<div style="align-self:center;max-width:90%;background:#fff8e1;border-radius:10px;padding:6px 10px;font-size:13px;box-shadow:0 1px 1px rgba(0,0,0,.1)">'+
-          (orig?'<div style="border-inline-start:3px solid #f59e0b;padding-inline-start:6px;color:#667781;margin-bottom:3px;white-space:pre-wrap">'+esc(String(orig.body).slice(0,70))+'</div>':'')+
-          (m.kind==='done'?'✔ ':m.kind==='reminder'?'⏰ ':'📌 ')+esc(m.body)+'</div>';
+        // תגובה על ההודעה (כמו "השב" בוואטסאפ): ציטוט ההודעה המקורית ומתחתיה הטקסט
+        return '<div style="align-self:flex-end;max-width:82%;background:#fff;border-radius:10px;padding:4px 4px 6px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15px;word-break:break-word">'+
+          (orig?'<div style="background:rgba(7,94,84,.08);border-inline-start:4px solid #075e54;border-radius:6px;padding:4px 8px;margin-bottom:4px"><div style="font-size:12px;font-weight:700;color:#075e54">'+(orig.sender==='client'?'את/ה':'היועץ')+'</div><div style="font-size:13px;color:#54656f;white-space:pre-wrap">'+esc(String(orig.body).slice(0,90))+'</div></div>':'')+
+          '<div style="padding:0 6px;white-space:pre-wrap">'+(m.kind==='done'?'✔ ':m.kind==='reminder'?'⏰ ':'📌 ')+esc(m.body)+'</div><div style="font-size:11px;color:#667781;text-align:left;padding:0 6px;margin-top:2px">'+chTime(m.at)+'</div></div>';
       }
       return '<div style="align-self:'+(mine?'flex-start':'flex-end')+';max-width:82%;background:'+(mine?'#d9fdd3':'#fff')+';border-radius:10px;padding:6px 10px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15px;white-space:pre-wrap;word-break:break-word">'+esc(m.body)+'<div style="font-size:11px;color:#667781;text-align:left;margin-top:2px">'+(m.react==='like'?'👍 ':m.react==='dislike'?'👎 ':'')+chTime(m.at)+'</div></div>';}).join(''):'<div style="text-align:center;color:#667781;font-size:14px;margin-top:30px">אפשר לכתוב ליועץ כאן.</div>')+'</div>'+
     '<div style="background:#f0f2f5;padding:8px;display:flex;gap:6px;align-items:flex-end"><textarea id="chInp" rows="1" maxlength="1000" placeholder="הקלד הודעה…" style="flex:1;resize:none;border:none;border-radius:18px;padding:9px 14px;font:inherit;font-size:16px;max-height:100px" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();chSend();}"></textarea><button onclick="chSend()" style="background:#075e54;color:#fff;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer">➤</button></div></div>';
