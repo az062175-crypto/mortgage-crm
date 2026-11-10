@@ -92,7 +92,7 @@ function render(){
   var h='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div style="min-width:0"><h1>'+greetByTime()+' '+esc(d.name||'')+'</h1><div class="sub">כאן רואים באיזה שלב התיק שלך נמצא ומה נדרש בכל שלב.</div></div>'+donutHtml(d.progress)+'</div>';
   h+=summaryHtml(d.summary);
   var allMine=[];
-  stages.forEach(function(s){(s.items||[]).forEach(function(it){if(it.owner==='client')allMine.push({it:it,stage:s.label});});});
+  stages.forEach(function(s){(s.items||[]).forEach(function(it){if(it.owner==='client'&&!it.preview&&!it.done)allMine.push({it:it,stage:s.label});});});
   // טלפונים שהלקוח ממלא בעצמו (איש קשר לביקור שמאי, ניידי לווים) — נספרים כאן; אחרי שהתקבלו יורדים למטה עם ✓ בוצע
   var pItems=[],doneMine=[],ap0=d.appr;
   var hasStage=function(id){return stages.some(function(s){return s.id===id;});};
@@ -130,23 +130,28 @@ function render(){
   h+='<div class="sub" style="margin:16px 0 4px">שלבי התיק — לחץ על שלב כדי לראות מה קורה בו:</div>';
   h+='<div class="steps">'+stages.map(function(s,i){
     var st=stageState(i,curIdx);
-    var open=(s.items||[]).filter(function(it){return it.owner==='client'&&!S.sent[it.id];}).length;
+    var open=(s.items||[]).filter(function(it){return it.owner==='client'&&!it.preview&&!it.done&&!S.sent[it.id];}).length;
     pItems.forEach(function(x){if(x.sid===s.id&&isOpen(x))open++;});
     var style=st==='current'?' style="background:'+esc(s.color)+'"':'';
     return '<button class="step '+st+(s.id===sel.id?' sel':'')+'"'+style+' onclick="pick(\''+esc(s.id)+'\')">'+(st==='done'?'✓ ':'')+esc(s.label)+(open?'<span class="cnt">'+open+'</span>':'')+'</button>';
   }).join('')+'</div>';
 
   var selIdx=stages.indexOf(sel);
-  var items=sel.items||[];
+  var allItems=sel.items||[];
+  var pv=allItems.filter(function(it){return it.preview;}); // משימות שיתחילו כשהתיק יגיע לשלב (מידע בלבד)
+  var items=allItems.filter(function(it){return !it.preview;});
   // אם כבר בוצע חלק (יש שורות בטבלת הביצוע) — המשימה "בוצע סך" לא מוצגת, הטבלה מחליפה אותה
   if(d.execs&&d.execs.some(function(x){return x.rows&&x.rows.length;}))items=items.filter(function(it){return String(it.name||'').indexOf('בוצע סך')!==0;});
   var mine=items.filter(function(it){return it.owner==='client';});
   var adv=items.filter(function(it){return it.owner!=='client';});
   h+='<div class="card"><h2>'+esc(sel.label)+(selIdx===curIdx?' <span class="tag me">השלב הנוכחי</span>':'')+'</h2>';
   if(selIdx<curIdx&&!items.length)h+='<div class="empty">שלב זה הושלם ✓</div>';
-  else if(!items.length)h+='<div class="empty">אין כרגע דברים פתוחים בשלב הזה.</div>';
+  else if(!items.length&&!pv.length)h+='<div class="empty">אין כרגע דברים פתוחים בשלב הזה.</div>';
   if(sel.id==='appraisal'&&d.summary&&d.summary.appraised)h+='<div class="appr">✅ ב"ה אושר השמאות בסך '+money(d.summary.appraised)+'</div>';
   h+='</div>';
+  var mineDone=mine.filter(function(it){return it.done;});
+  if(mineDone.length)h+='<div class="card"><h2><span class="tag me">👤 ממך</span></h2>'+mineDone.map(function(it){return '<div class="sr"><span>'+esc(it.name)+'</span><b>✓ בוצע</b></div>';}).join('')+'</div>';
+  if(pv.length)h+='<div class="card"><h2><span class="tag adv">📅 יתחיל בשלב זה</span></h2><div class="sub" style="margin:0 0 6px">אלה המשימות שיפתחו כשהתיק יגיע לשלב. כרגע אין מה לעשות.</div>'+pv.map(function(it){return '<div class="sr"><span>'+esc(it.name)+'</span><b>'+(it.owner==='client'?'ממך':'היועץ')+'</b></div>';}).join('')+'</div>';
 
   if(sel.id==='appraisal'&&d.appr){
     var ap=d.appr,rw=function(l,v){return '<div class="sr"><span>'+esc(l)+'</span><b>'+v+'</b></div>';};

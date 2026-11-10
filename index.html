@@ -21703,8 +21703,20 @@ function portalSnapshot(c) {
   (c.tasks || []).forEach(function (t) {
     if (!by[t.stage]) return;
     var o = portalOwner({ stage: t.stage, title: t.title }, true);
-    if (t.status === 'done' || t.done) { if (o === 'advisor') by[t.stage].items.push({ id: t.id, name: t.title, owner: 'advisor', done: true }); return; }
+    // משימה שבוצעה (של הלקוח או של היועץ): נשארת ברשימת השלב עם ✓ בוצע, למשל "חתימה דיגיטלית על שטרות"
+    if (t.status === 'done' || t.done) { if (o) by[t.stage].items.push({ id: t.id, name: t.title, owner: o, done: true }); return; }
     if (o) by[t.stage].items.push({ id: t.id, name: t.title, owner: o });
+  });
+  // שלבים שהתיק עוד לא הגיע אליהם: משימות התבנית מוצגות ללקוח כמידע בלבד ("יתחיל בשלב זה") לפי הסימון בהגדרות הפורטל
+  var _ord = STAGES.map(function (s) { return s.id; }), _ci = _ord.indexOf(c.stage);
+  stages.forEach(function (s) {
+    if (_ord.indexOf(s.id) <= _ci || (c.tasks || []).some(function (t) { return t.stage === s.id; })) return;
+    var tpl = (state.settings.stageTasks || {})[s.id];
+    if (!(Array.isArray(tpl) && tpl.length)) tpl = (DEFAULT_DATA.settings.stageTasks || {})[s.id] || [];
+    tpl.forEach(function (title, i) {
+      var o = portalOwner({ stage: s.id, title: title }, true);
+      if (o) s.items.push({ id: 'pv:' + s.id + ':' + i, name: title, owner: o, preview: true });
+    });
   });
   var first = ((c.borrowers || [])[0] || {}).name || c.name || '';
   var pct = null; try { pct = financingPct(c); } catch (e) {}
