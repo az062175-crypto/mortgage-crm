@@ -21534,7 +21534,8 @@ function portalOwner(item, isTask) {
   if (portalRemoved(portalKey(item, isTask))) return null;
   var v = m[portalKey(item, isTask)];
   if (v === 'client' || v === 'advisor' || v === 'hidden') return v === 'hidden' ? null : v;
-  if (isTask) return null;
+  // משימות שלא הוגדרו: מוצגות ללקוח כ"בטיפול היועץ" (אפשר להסיר ✕ / "לא מוצג" בהגדרות הפורטל). פנימיות נשארות מוסתרות.
+  if (isTask) { var tt = String(item.title || ''); return (/^הוגש ל:/.test(tt) || tt.indexOf('תזכורת מהצ\'אט:') === 0) ? null : 'advisor'; }
   return item.stage === 'client' ? 'client' : 'advisor';
 }
 
@@ -21970,7 +21971,7 @@ function renderPortalSettingsSection() {
   function eff(r) {
     var v = cur[r.key];
     if (v) return v;
-    return r.kind === 'task' ? 'hidden' : (st === 'client' ? 'client' : 'advisor');
+    return r.kind === 'task' ? 'advisor' : (st === 'client' ? 'client' : 'advisor');
   }
   var seg = function (i, val, active, label) {
     return '<button onclick="portalSetOwner(' + i + ',\'' + val + '\')" style="padding:4px 10px;border:1px solid var(--border);cursor:pointer;font-size:12px;font-weight:' + (active ? 700 : 500) + ';background:' + (active ? (val === 'client' ? '#2563eb' : val === 'advisor' ? '#f59e0b' : '#64748b') : '#fff') + ';color:' + (active ? '#fff' : 'var(--text)') + '">' + label + '</button>';
@@ -21985,7 +21986,7 @@ function renderPortalSettingsSection() {
        '<button title="הסר מהרשימה (המשימה ב-CRM לא נמחקת)" onclick="portalRemoveRow(' + i + ')" style="border:none;background:none;cursor:pointer;color:#dc2626;font-size:15px">✕</button></div>';
   });
   return '<div class="panel"><h2 class="panel-title">🔗 פורטל לקוח — מה קשור אליו</h2>' +
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">לכל שלב ולכל סוג עסקה: סמן אם המסמך/המשימה באחריות <b>הלקוח</b> או <b>אצלי</b>. הלקוח רואה את שניהם, מסומנים בנפרד. משימות מוצגות ללקוח רק אם סימנת אותן.</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">לכל שלב ולכל סוג עסקה: סמן אם המסמך/המשימה באחריות <b>הלקוח</b> או <b>אצלי</b>. הלקוח רואה את שניהם, מסומנים בנפרד. משימות שלא סימנת מוצגות ללקוח כ"בטיפול היועץ"; כדי להסתיר משימה בחר "לא מוצג".</div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + tabs.map(function (s) {
       return '<button onclick="PORTAL.stage=\'' + s.id + '\';renderActiveSettingsSection()" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:' + (s.id === st ? 700 : 500) + ';background:' + (s.id === st ? s.color : '#fff') + ';color:' + (s.id === st ? '#fff' : 'var(--text)') + '">' + s.label + '</button>'; }).join('') + '</div>' +
     '<input placeholder="חיפוש מסמך…" value="' + escapeAttr(PORTAL.filter) + '" oninput="PORTAL.filter=this.value;portalRerenderRows()" style="width:100%;margin-bottom:6px">' +
