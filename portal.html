@@ -119,13 +119,13 @@ function render(){
   allMine=allMine.concat(pItems);
   var isOpen=function(x){return x.it.form?x.it.form.fields.some(function(f){return !f.done&&!S.sent[f.key];}):!S.sent[x.it.id];};
   var openMine=allMine.filter(isOpen).length;
-  var anyMine=allMine.length+doneMine.length;
+  var anyMine=allMine.length; // מה שהושלם עובר לקופסה מקופלת "✓ הושלמו" למטה (כמו המסמכים)
   var showList=S.openTop&&anyMine;
   h+='<div class="card top"><h2><span class="tag me">👤 מה נדרש ממך</span>'+
     (openMine?'<button class="cnt2" onclick="toggleTop()" title="לחץ להצגת הרשימה">'+openMine+(showList?' ▴':' ▾')+'</button>':
       (anyMine?'<button class="cnt2 sentc" onclick="toggleTop()">'+(showList?'▴':'▾')+'</button>':''))+'</h2>'+
     (!anyMine?'<div class="empty">אין כרגע שום דבר שנדרש ממך 🎉</div>':
-      (showList?allMine.map(function(x){return itemHtml(x.it,x.stage);}).join('')+doneMine.map(function(x){return itemHtml(x.it,x.stage);}).join(''):
+      (showList?allMine.map(function(x){return itemHtml(x.it,x.stage);}).join(''):
         '<div class="empty">'+(openMine?'יש '+openMine+' פריטים שמחכים לך. לחץ על המספר האדום כדי לראות אותם.':(allMine.length?'כל הפריטים נשלחו וממתינים לאישור היועץ. לחץ על החץ כדי לראות.':'הכול בוצע ✓. לחץ על החץ כדי לראות.'))+'</div>'))+'</div>';
   h+='<div class="sub" style="margin:16px 0 4px">שלבי התיק — לחץ על שלב כדי לראות מה קורה בו:</div>';
   h+='<div class="steps">'+stages.map(function(s,i){
@@ -181,7 +181,7 @@ function render(){
   }
   forms.forEach(function(g){
     var fi=fIdx(g.from),open=g.fields.some(function(f){return !f.done&&!S.sent[f.key];});
-    if(selIdx===fi||(selIdx>fi&&open))h+='<div class="card"><h2><span class="tag me">📝 '+esc(g.title)+'</span></h2>'+formFieldsHtml(g,'fs_')+'</div>';
+    if(!g.fields.every(function(f){return f.done;})&&(selIdx===fi||(selIdx>fi&&open)))h+='<div class="card"><h2><span class="tag me">📝 '+esc(g.title)+'</span></h2>'+formFieldsHtml(g,'fs_')+'</div>';
   });
   if(adv.length){
     adv=adv.filter(function(it){return !it.done;}).concat(adv.filter(function(it){return it.done;}));
@@ -195,6 +195,12 @@ function render(){
       Object.keys(groups).map(function(g){
         return '<div class="dg">'+esc(g)+'</div>'+groups[g].map(function(n){return '<div class="di">✓ '+esc(n)+'</div>';}).join('');
       }).join('')+'</details>';
+  }
+  if(doneMine.length){
+    h+='<details class="done-box"><summary>✓ '+doneMine.length+' משימות מילוי פרטים הושלמו</summary>'+doneMine.map(function(x){
+      var f=x.it.form?x.it.form.fields.filter(function(q){return q.done;}).map(function(q){return q.label;}).join(', '):'';
+      return '<div class="dg">'+esc(x.stage)+'</div><div class="di">✓ '+esc(x.it.name)+(f?' ('+esc(f)+')':'')+'</div>';
+    }).join('')+'</details>';
   }
   document.getElementById('app').innerHTML=h;
 }
