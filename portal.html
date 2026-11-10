@@ -183,10 +183,6 @@ function render(){
     var fi=fIdx(g.from),open=g.fields.some(function(f){return !f.done&&!S.sent[f.key];});
     if(selIdx===fi||(selIdx>fi&&open))h+='<div class="card"><h2><span class="tag me">📝 '+esc(g.title)+'</span></h2>'+formFieldsHtml(g,'fs_')+'</div>';
   });
-  if(mine.length){
-    h+='<div class="card"><h2><span class="tag me">👤 ממך, בשלב הזה</span></h2>'+mine.map(function(it){
-      return '<div class="item'+(S.sent[it.id]?' sent':'')+'"><div class="nm">'+esc(it.name)+'</div><div class="note">'+(S.sent[it.id]?'📤 נשלח ליועץ, ממתין לאישור':'⏳ ממתין לך — אפשר לסמן למעלה')+'</div></div>';}).join('')+'</div>';
-  }
   if(adv.length){
     adv=adv.filter(function(it){return !it.done;}).concat(adv.filter(function(it){return it.done;}));
     h+='<div class="card"><h2><span class="tag adv">🧑‍💼 בטיפול היועץ</span></h2>'+adv.map(function(it){
