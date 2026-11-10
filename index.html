@@ -21711,8 +21711,8 @@ function portalSnapshot(c) {
   var _ord = STAGES.map(function (s) { return s.id; }), _ci = _ord.indexOf(c.stage);
   stages.forEach(function (s) {
     if (_ord.indexOf(s.id) <= _ci || (c.tasks || []).some(function (t) { return t.stage === s.id; })) return;
-    var tpl = (state.settings.stageTasks || {})[s.id];
-    if (!(Array.isArray(tpl) && tpl.length)) tpl = (DEFAULT_DATA.settings.stageTasks || {})[s.id] || [];
+    // אותה רשימה שמופיעה במסך הגדרות הפורטל לשלב (תבנית + משימות שקיימות אצל לקוחות אחרים)
+    var tpl = portalSettingsRows(s.id).filter(function (r) { return r.kind === 'task'; }).map(function (r) { return r.label; });
     tpl.forEach(function (title, i) {
       var o = portalOwner({ stage: s.id, title: title }, true);
       if (o) s.items.push({ id: 'pv:' + s.id + ':' + i, name: title, owner: o, preview: true });
