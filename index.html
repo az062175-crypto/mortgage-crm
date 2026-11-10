@@ -1184,6 +1184,13 @@ const DEFAULT_DATA = {
   clients: [],
   settings: {
     dealTypes: ['יד שנייה', 'יד ראשונה', 'שיפוצים', 'מחיר למשתכן', 'כל מטרה', 'מיחזור', 'מיחזור + שיפוץ', 'מיחזור + הרחבה', 'מיחזור + כל מטרה', 'גרירה + כסף חדש', 'הרחבה', 'מיחזור + תוספת', 'היפוך לווים', 'גישור', 'בניה עצמי', 'מיחזור + גרירה'],
+    machirLmAppraiserCap: 2100000,
+    machirLmLtvPct: 75,
+    machirLmMinEquity: 100000,
+    // Progress-weight per deal type: how much each of the 4 buckets contributes to the client's overall %.
+    // Buckets: approval = ליד+לקוח+הגשה+אישור; appraisal = שמאות; seller = בטחונות מוכר+חתימות; bank = בטחונות בנק.
+    // Each row must sum to 100.
+    progressWeights: {},
     sourceCategories: ['פרסום', 'שת"פ', 'לקוח חוזר', 'הפניה מלקוח בעבר'],
     banksList: ['הפועלים', 'לאומי', 'מזרחי טפחות', 'דיסקונט', 'הבינלאומי הראשון לישראל', 'אגוד', 'ירושלים', 'מרכנתיל'],
     accompanimentBanksList: ['הפועלים', 'מזרחי', 'הבינלאומי', 'דיסקונט', 'מרכנתיל', 'ירושלים', 'מנורה', 'הפניקס', 'רובי קפיטל', 'ברקת'],
@@ -2535,7 +2542,14 @@ function ltvDenom(c) {
   const useAppraiser = c.requiresAppraisal !== false && appraiser > 0;
   if (!useAppraiser) return contract;
   const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
-  const anyContract = purposes.some(p => CONTRACT_PRICE_PURPOSES.has(p));
+  // מחיר למשתכן — denominator is appraiser capped at machirLmAppraiserCap, NOT contract.
+  // Contract is a subsidized price; regulator allows LTV against appraiser (up to the cap).
+  if (purposes.includes('מחיר למשתכן')) {
+    const CAP = Number((state.settings && state.settings.machirLmAppraiserCap)) || 2100000;
+    return Math.min(appraiser, CAP);
+  }
+  // יד שנייה / יד ראשונה — standard contract-cap rule: min(contract, appraiser)
+  const anyContract = purposes.some(p => CONTRACT_PRICE_PURPOSES.has(p) && p !== 'מחיר למשתכן');
   if (anyContract) return Math.min(appraiser, contract || appraiser);
   // Non-contract deal — appraisal overrides the customer estimate entirely
   return appraiser;
@@ -2586,21 +2600,29 @@ function checkRegulatorAndWarn(c) {
   const contract = Number(c.propertyValue) || 0;
   const appraiser = Number(c.appraiserValue) || 0;
   const currentLoan = Number(c.loanAmount) || 0;
-  // מחיר למשתכן has special rules: LTV limit 75% of appraiser + own equity of at least 100,000
+  // מחיר למשתכן — 3 limits combined:
+  //  1. appraiser value is CAPPED at machirLmAppraiserCap (regulator) — effective שומה = min(real appraiser, cap)
+  //  2. max loan by LTV = effective שומה × machirLmLtvPct%
+  //  3. min equity = contract − machirLmMinEquity (buyer must put at least that from own equity)
+  // final max loan = min(limit 2, limit 3)
   if (isMachirLm) {
     if (!appraiser || !contract || !currentLoan) return;
-    const MACHIR_LM_LTV = 75;
-    const MIN_EQUITY = 100000;
-    const maxByLtv = Math.floor((appraiser * MACHIR_LM_LTV / 100) / 1000) * 1000;
-    const maxByEquity = Math.max(0, contract - MIN_EQUITY);
+    const CAP = Number(state.settings.machirLmAppraiserCap) || 2100000;
+    const LTV = Number(state.settings.machirLmLtvPct) || 75;
+    const MIN_EQ = Number(state.settings.machirLmMinEquity) || 100000;
+    const grant = c.machirLmHasGrant ? (Number(c.machirLmGrantAmount) || 0) : 0;
+    const effectiveAppraiser = Math.min(appraiser, CAP);
+    const maxByLtv = Math.floor((effectiveAppraiser * LTV / 100) / 1000) * 1000;
+    // Grant counts as equity but is paid from the mortgage — so it raises the equity ceiling by the grant amount
+    const maxByEquity = Math.max(0, (contract - MIN_EQ) + grant);
     const maxLoan = Math.min(maxByLtv, maxByEquity);
-    const ltvPct = Math.round((currentLoan / appraiser) * 1000) / 10;
-    const breachLtv = ltvPct > MACHIR_LM_LTV;
+    const ltvPct = Math.round((currentLoan / effectiveAppraiser) * 1000) / 10;
+    const breachLtv = currentLoan > maxByLtv;
     const breachEquity = currentLoan > maxByEquity;
     if (!breachLtv && !breachEquity) return;
     const violations = [];
-    if (breachLtv) violations.push(`<div style="margin-bottom:4px">• אחוז מימון (${ltvPct}%) מעל 75% משווי השמאות</div>`);
-    if (breachEquity) violations.push(`<div>• הון עצמי נדרש: לפחות ${fmtMoney(MIN_EQUITY)} — הבקשה משאירה רק ${fmtMoney(contract - currentLoan)}</div>`);
+    if (breachLtv) violations.push(`<div style="margin-bottom:4px">• אחוז מימון (${ltvPct}%) מעל ${LTV}% משווי השמאות${appraiser > CAP ? ' (מוגבל ל-' + fmtMoney(CAP) + ')' : ''}</div>`);
+    if (breachEquity) violations.push(`<div>• הון עצמי נדרש: לפחות ${fmtMoney(MIN_EQ)}${grant > 0 ? ' (מענק של ' + fmtMoney(grant) + ' נספר כהון עצמי)' : ''} — הבקשה משאירה רק ${fmtMoney(contract - currentLoan + grant)}</div>`);
     const diff = currentLoan - maxLoan;
     showCenterAlert(
       `⚠️ חריגה מהרגולציה — מחיר למשתכן`,
@@ -2608,10 +2630,10 @@ function checkRegulatorAndWarn(c) {
        <div style="margin:16px auto;padding:12px 16px;background:#f0fdf4;border:2px solid #22c55e;border-radius:10px;max-width:400px">
          <div style="color:#166534;font-weight:700;font-size:13px;margin-bottom:6px">💡 סכום מקסימלי מותר להגשה:</div>
          <div style="color:#166534;font-weight:800;font-size:22px">${fmtMoney(maxLoan)}</div>
-         <div style="color:#166534;font-size:11px;margin-top:6px">מגבלת LTV 75% משווי שמאות: ${fmtMoney(maxByLtv)}<br>הון עצמי 100,000 (חוזה − 100,000): ${fmtMoney(maxByEquity)}</div>
+         <div style="color:#166534;font-size:11px;margin-top:6px">מגבלת LTV ${LTV}% משווי שמאות${appraiser > CAP ? ' (מוגבל ל-' + fmtMoney(CAP) + ')' : ''}: ${fmtMoney(maxByLtv)}<br>הון עצמי ${fmtMoney(MIN_EQ)} (חוזה − ${fmtMoney(MIN_EQ)}${grant > 0 ? ' + מענק ' + fmtMoney(grant) : ''}): ${fmtMoney(maxByEquity)}</div>
          ${diff > 0 ? `<div style="color:#7f1d1d;font-size:12px;margin-top:6px">להורדה: <strong>${fmtMoney(diff)}</strong> מהסכום הנוכחי (${fmtMoney(currentLoan)})</div>` : ''}
        </div>
-       <div style="font-size:12px;color:var(--muted);margin-top:4px">מחיר חוזה: ${fmtMoney(contract)} · שווי שמאות: ${fmtMoney(appraiser)}</div>`,
+       <div style="font-size:12px;color:var(--muted);margin-top:4px">מחיר חוזה: ${fmtMoney(contract)} · שווי שמאות: ${fmtMoney(appraiser)}${appraiser > CAP ? ' (מעל התקרה — נחשב ' + fmtMoney(CAP) + ')' : ''}${grant > 0 ? ' · מענק: ' + fmtMoney(grant) : ''}</div>`,
       { clientId: c.id, focusField: 'fLoanAmt', suggestedAmount: maxLoan }
     );
     return;
@@ -4793,6 +4815,7 @@ function renderClientsList() {
           <tr>
             <th style="width:44px"></th>
             <th>שם</th>
+            <th style="width:150px">התקדמות</th>
             <th>ת.ז</th>
             <th>טלפון</th>
             <th>מטרה</th>
@@ -4808,9 +4831,18 @@ function renderClientsList() {
             const reqPending = c.requirements.filter(r => r.status === 'pending').length;
             const reqProvided = c.requirements.filter(r => r.status === 'provided').length;
             const banker = c.bankerId ? state.settings.bankers.find(b => b.id === c.bankerId) : null;
+            // Progress: use the same weighted portalProgress used inside the client file (20/20/30/30)
+            const progressPct = (typeof portalProgress === 'function') ? portalProgress(c).pct : 0;
+            const barColor = progressPct >= 85 ? '#16a34a' : progressPct >= 50 ? '#f59e0b' : progressPct >= 25 ? '#8b5cf6' : '#3b82f6';
             return `<tr onclick="openClient('${c.id}')">
               <td onclick="event.stopPropagation();openCustomTaskModal('${c.id}')" title="הוסף משימה" style="text-align:center;cursor:pointer"><span style="display:inline-block;width:28px;height:28px;line-height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:16px">+</span></td>
               <td><strong>${escapeHtml(c.name)}</strong></td>
+              <td style="direction:rtl">
+                <div style="position:relative;width:90px;background:#e5e7eb;border-radius:999px;height:14px;overflow:hidden;margin-inline-end:auto;margin-inline-start:0">
+                  <div style="width:${progressPct}%;background:${barColor};height:100%;transition:width 0.3s"></div>
+                  <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${progressPct >= 50 ? '#fff' : '#334155'};text-shadow:${progressPct >= 50 ? '0 1px 2px rgba(0,0,0,0.25)' : 'none'}">${progressPct}%</span>
+                </div>
+              </td>
               <td>${escapeHtml(c.idNumber||'—')}</td>
               <td>${escapeHtml(c.phone||'—')}</td>
               <td>${escapeHtml(c.purpose||'—')}</td>
@@ -5907,6 +5939,8 @@ function renderClientDetail() {
 function renderTasksHtml(c, stage) {
   const currentIdx = stageIndex(stage);
   const tasks = c.tasks.filter(t => {
+    // Custom tasks added via "+" button appear only in the manual tasks panel — hide from stage sections
+    if (t.custom) return false;
     // In the appraisal stage — hide the "appraiser value" floating task from the main task list.
     if (stage === 'appraisal' && t.floating && t.source === 'appraisal-value-check') return false;
     // Post-send tasks appear separately AFTER the "sent to appraiser" panel (only within appraisal stage)
@@ -8601,11 +8635,15 @@ function submitAppraiserValue(clientId, taskId) {
   const amount = Number(document.getElementById('avAmount').value) || 0;
   if (amount <= 0) { alert('הזן סכום'); return; }
   const target = c.propertyValue || 0;
-  const label = propertyValueLabel(c);
-  // Warn if appraiser value is higher than contract price — the effective value for financing is capped at contract
-  if (target > 0 && amount > target) {
+  const _purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
+  const _isMachirLm = _purposes.includes('מחיר למשתכן');
+  // Warn for יד שנייה / יד ראשונה: contract caps LTV → show the warning the old way.
+  // Skip warning for מחיר למשתכן: regulator caps at the dedicated appraiser-cap (2.1M by default), not contract.
+  // Skip warning for estimate-based purposes (שיפוצים / כל מטרה / הרחבה / …): appraiser REPLACES client estimate.
+  const _isContractPurposeStrict = !_isMachirLm && _purposes.some(p => CONTRACT_PRICE_PURPOSES.has(p));
+  if (_isContractPurposeStrict && target > 0 && amount > target) {
     const diff = amount - target;
-    const msg = `⚠️ שווי השמאי (${fmtMoney(amount)}) גבוה מ${label} (${fmtMoney(target)}) ב־${fmtMoney(diff)}.\n\n` +
+    const msg = `⚠️ שווי השמאי (${fmtMoney(amount)}) גבוה ממחיר החוזה (${fmtMoney(target)}) ב־${fmtMoney(diff)}.\n\n` +
       `לחישוב אחוז המימון — המערכת תשתמש במחיר החוזה (${fmtMoney(target)}) כתקרה, גם אם השמאי נתן יותר.\n\n` +
       `לשמור את הסכום?`;
     if (!confirm(msg)) return;
@@ -12218,6 +12256,17 @@ function openNewClientModal(editClient, warningMessage) {
           <input id="fAppraiserVal" type="text" inputmode="numeric" oninput="onMoneyInput(this,updateFinPct)" placeholder="לדוגמה: שווי שוק לפי הערכת שמאי" style="border:1px solid #67e8f9">
           <div style="font-size:11px;color:#0e7490;margin-top:4px">אחוז המימון לרגולציה יחושב לפי שווי השמאות (הגבוה יותר)</div>
         </div>
+        <div id="fMachirLmGrantRow" class="form-group" style="display:none;background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:8px 12px">
+          <label style="display:flex;align-items:center;gap:8px;color:#78350f;font-weight:700;cursor:pointer">
+            <input type="checkbox" id="fMachirLmHasGrant" onchange="onMachirLmGrantToggle()" style="width:16px;height:16px;accent-color:#f59e0b">
+            🎁 יש מענק
+          </label>
+          <div id="fMachirLmGrantAmountRow" style="display:none;margin-top:8px">
+            <label style="color:#78350f;font-weight:700">סכום המענק (₪)</label>
+            <input id="fMachirLmGrantAmount" type="text" inputmode="numeric" oninput="onMoneyInput(this,updateFinPct)" placeholder="לדוגמה: 40,000" style="border:1px solid #fbbf24">
+            <div style="font-size:11px;color:#78350f;margin-top:4px">המענק נחשב להון עצמי ומגדיל את תקרת המשכנתא בגובה הסכום. ב-LTV נספר כחלק מהמשכנתא.</div>
+          </div>
+        </div>
         <div class="form-group">
           <label>סכום מבוקש (₪)</label>
           <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
@@ -12499,6 +12548,12 @@ function openNewClientModal(editClient, warningMessage) {
     }
     const _fApprInp = document.getElementById('fAppraiserVal');
     if (_fApprInp) _fApprInp.value = c.appraiserValue ? Number(c.appraiserValue).toLocaleString('he-IL') + ' ₪' : '';
+    const _fGrantCb = document.getElementById('fMachirLmHasGrant');
+    const _fGrantAmtInp = document.getElementById('fMachirLmGrantAmount');
+    const _fGrantAmtRow = document.getElementById('fMachirLmGrantAmountRow');
+    if (_fGrantCb) _fGrantCb.checked = !!c.machirLmHasGrant;
+    if (_fGrantAmtInp) _fGrantAmtInp.value = c.machirLmGrantAmount ? Number(c.machirLmGrantAmount).toLocaleString('he-IL') + ' ₪' : '';
+    if (_fGrantAmtRow) _fGrantAmtRow.style.display = c.machirLmHasGrant ? '' : 'none';
     document.getElementById('fLoanAmt').value = c.loanAmount ? Number(c.loanAmount).toLocaleString('he-IL') + ' ₪' : '';
     // Sync percentage display with loaded amount — use appraiser value for מחיר למשתכן
     // Combined LTV (new + existing mortgage) — this is what regulator and downstream logic use
@@ -12748,6 +12803,9 @@ function updatePurposeLabel() {
   // Show appraiser-value field only for מחיר למשתכן
   const apprRow = document.getElementById('fAppraiserValRow');
   if (apprRow) apprRow.style.display = vals.includes('מחיר למשתכן') ? '' : 'none';
+  // Show grant row only for מחיר למשתכן
+  const grantRow = document.getElementById('fMachirLmGrantRow');
+  if (grantRow) grantRow.style.display = vals.includes('מחיר למשתכן') ? '' : 'none';
   // Show existing-mortgage panel for purposes where the client already has a mortgage on the property
   const emWrap = document.getElementById('fExistingMortgageWrap');
   if (emWrap) {
@@ -14529,6 +14587,17 @@ function _formDenomForLtv() {
   return { denom: contract, label: 'מחיר חוזה/שווי נכס', isMachir: false, contract, appraiser };
 }
 
+function onMachirLmGrantToggle() {
+  const cb = document.getElementById('fMachirLmHasGrant');
+  const row = document.getElementById('fMachirLmGrantAmountRow');
+  if (row) row.style.display = (cb && cb.checked) ? '' : 'none';
+  if (cb && !cb.checked) {
+    const inp = document.getElementById('fMachirLmGrantAmount');
+    if (inp) inp.value = '';
+  }
+  if (typeof updateFinPct === 'function') updateFinPct();
+}
+
 function updateFinPct() {
   const { denom, label, isMachir, contract } = _formDenomForLtv();
   const l = parseFormattedNum(document.getElementById('fLoanAmt').value);
@@ -14568,9 +14637,16 @@ function updateFinPct() {
     extra += `</div>`;
   }
   if (isMachir && contract > 0) {
-    const equityLeft = contract - l;
-    const equityOk = equityLeft >= 100000;
-    extra += `<div style="font-size:12px;margin-top:4px;color:${equityOk?'#16a34a':'#dc2626'}">הון עצמי (חוזה − הלוואה): <strong>${fmtMoney(equityLeft)}</strong> ${equityOk?'✓':'⚠️ נדרש ≥100,000'}</div>`;
+    const MIN_EQ = Number((state.settings && state.settings.machirLmMinEquity)) || 100000;
+    const _grantCb = document.getElementById('fMachirLmHasGrant');
+    const _grant = (_grantCb && _grantCb.checked)
+      ? (parseFormattedNum((document.getElementById('fMachirLmGrantAmount')||{}).value || '') || 0)
+      : 0;
+    const equityFromPocket = contract - l;
+    const equityTotal = equityFromPocket + _grant;
+    const equityOk = equityTotal >= MIN_EQ;
+    const grantNote = _grant > 0 ? ` (${fmtMoney(equityFromPocket)} מכיס + מענק ${fmtMoney(_grant)})` : '';
+    extra += `<div style="font-size:12px;margin-top:4px;color:${equityOk?'#16a34a':'#dc2626'}">הון עצמי: <strong>${fmtMoney(equityTotal)}</strong>${grantNote} ${equityOk?'✓':'⚠️ נדרש ≥'+fmtMoney(MIN_EQ)}</div>`;
   }
   // Regulator LTV check — inline warning if combined LTV exceeds limit for selected apartment type
   const aptType = (document.querySelector('input[name="fApartmentType"]:checked') || {}).value || '';
@@ -14802,6 +14878,9 @@ function submitNewClient() {
       if (_editing && _editing.appraiserValue) return Number(_editing.appraiserValue);
       return undefined;
     })(),
+    machirLmHasGrant: purposes.includes('מחיר למשתכן') && !!(document.getElementById('fMachirLmHasGrant') && document.getElementById('fMachirLmHasGrant').checked),
+    machirLmGrantAmount: (purposes.includes('מחיר למשתכן') && document.getElementById('fMachirLmHasGrant') && document.getElementById('fMachirLmHasGrant').checked)
+      ? (parseFormattedNum((document.getElementById('fMachirLmGrantAmount')||{}).value || '') || 0) : 0,
     loanAmount: loanAmt,
     existingMortgage: parseFormattedNum((document.getElementById('fExistingMortgage')||{}).value || '') || 0,
     existingMortgageBank: ((document.getElementById('fExistingMortgageBank')||{}).value || '').trim(),
@@ -19127,6 +19206,8 @@ function renderSettings() {
     { id: 'clientsFolder', label: '📁 תיקיית לקוחות (Drive)', icon: '📁' },
     { id: 'snapshots', label: '🛟 גיבויים אוטומטיים', icon: '🛟' },
     { id: 'accompanimentBanks', label: '🏦 בנקים מלווים', icon: '🏦' },
+    { id: 'machirLm', label: '🏠 נוהל מחיר למשתכן', icon: '🏠' },
+    { id: 'progressWeights', label: '⚖️ חלוקת משקל למשימות', icon: '⚖️' },
   ];
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:flex-start">
@@ -19269,7 +19350,159 @@ function renderSettingsSection(id) {
   if (id === 'dealDocs') return renderDealDocsSection();
   if (id === 'stageTasks') return renderStageTasksSection();
   if (id === 'stageReqs') return renderStageReqsSection();
+  if (id === 'machirLm') return renderMachirLmSection();
+  if (id === 'progressWeights') return renderProgressWeightsSection();
   return '<div class="panel">בחר סעיף מהתפריט</div>';
+}
+
+function renderProgressWeightsSection() {
+  const dealTypes = (state.settings.dealTypes || []).slice();
+  const weights = state.settings.progressWeights = state.settings.progressWeights || {};
+  const def = _defaultProgressWeights();
+  // Ensure every deal type has a saved row — default 20/20/30/30
+  dealTypes.forEach(dt => { if (!weights[dt]) weights[dt] = Object.assign({}, def); });
+  const keyOf = dt => dt.replace(/[^a-zA-Z0-9֐-׿]/g, '_');
+  return `
+    <div class="panel">
+      <h2 class="panel-title">⚖️ חלוקת משקל למשימות — לפי סוג עסקה</h2>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7">
+        לכל סוג עסקה, 4 הקבוצות שמרכיבות את עוגת ההתקדמות של הלקוח:<br>
+        <strong>• אישור</strong> = ליד + לקוח + הגשה + אישור &nbsp; <strong>• שמאות</strong> = שמאות &nbsp; <strong>• בטחונות מוכר</strong> = בטחונות מוכר + חתימות &nbsp; <strong>• בטחונות בנק</strong> = בטחונות בנק<br>
+        ערוך שדה — השדה הבא מתעדכן אוטומטית כדי שהסה"כ ישאר <strong>100%</strong>. אם הלקוח רשום לכמה סוגי עסקה — נלקח הראשון.
+      </div>
+      <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:#f1f5f9">
+            <th style="padding:8px;text-align:right">סוג עסקה</th>
+            <th style="padding:8px;text-align:center;width:90px">אישור</th>
+            <th style="padding:8px;text-align:center;width:90px">שמאות</th>
+            <th style="padding:8px;text-align:center;width:120px">בטחונות מוכר</th>
+            <th style="padding:8px;text-align:center;width:120px">בטחונות בנק</th>
+            <th style="padding:8px;text-align:center;width:70px">סה"כ</th>
+            <th style="padding:8px;text-align:center;width:70px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${dealTypes.map(dt => {
+            const w = weights[dt];
+            const k = keyOf(dt);
+            const total = (Number(w.approval)||0) + (Number(w.appraisal)||0) + (Number(w.seller)||0) + (Number(w.bank)||0);
+            const okColor = Math.round(total) === 100 ? '#16a34a' : '#dc2626';
+            return `
+              <tr style="border-top:1px solid var(--border)">
+                <td style="padding:6px 8px;font-weight:600">${escapeHtml(dt)}</td>
+                <td style="padding:4px"><input type="number" id="pw_${k}_approval" value="${w.approval}" min="0" max="100" step="1" style="width:100%;text-align:center;padding:5px;border:1px solid var(--border);border-radius:6px" onchange="onProgressWeightChange('${escapeAttr(dt)}','approval',this.value)"></td>
+                <td style="padding:4px"><input type="number" id="pw_${k}_appraisal" value="${w.appraisal}" min="0" max="100" step="1" style="width:100%;text-align:center;padding:5px;border:1px solid var(--border);border-radius:6px" onchange="onProgressWeightChange('${escapeAttr(dt)}','appraisal',this.value)"></td>
+                <td style="padding:4px"><input type="number" id="pw_${k}_seller" value="${w.seller}" min="0" max="100" step="1" style="width:100%;text-align:center;padding:5px;border:1px solid var(--border);border-radius:6px" onchange="onProgressWeightChange('${escapeAttr(dt)}','seller',this.value)"></td>
+                <td style="padding:4px"><input type="number" id="pw_${k}_bank" value="${w.bank}" min="0" max="100" step="1" style="width:100%;text-align:center;padding:5px;border:1px solid var(--border);border-radius:6px" onchange="onProgressWeightChange('${escapeAttr(dt)}','bank',this.value)"></td>
+                <td id="pw_${k}_total" style="padding:4px;text-align:center;font-weight:800;color:${okColor}">${total}%</td>
+                <td style="padding:4px;text-align:center"><button class="btn secondary small" style="padding:3px 8px;font-size:11px" onclick="resetProgressWeight('${escapeAttr(dt)}')" title="איפוס ל-20/20/30/30">איפוס</button></td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+      <div style="margin-top:14px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:#1e40af;line-height:1.6">
+        💡 <strong>דוגמה:</strong> שדה "אישור" התחיל ב-20. אתה משנה ל-30 → השדה "שמאות" יורד אוטומטית ב-10. התקרה היא תמיד 100%.
+      </div>
+    </div>`;
+}
+
+function onProgressWeightChange(dealType, field, rawValue) {
+  const keys = ['approval','appraisal','seller','bank'];
+  state.settings.progressWeights = state.settings.progressWeights || {};
+  const w = state.settings.progressWeights[dealType] = state.settings.progressWeights[dealType] || Object.assign({}, _defaultProgressWeights());
+  const newVal = Math.max(0, Math.min(100, Math.round(Number(rawValue) || 0)));
+  const oldVal = Number(w[field]) || 0;
+  const delta = newVal - oldVal;
+  w[field] = newVal;
+  if (delta === 0) { save(); renderActiveSettingsSection(); return; }
+  // Distribute (-delta) to other fields starting with the NEXT one (cascading, like loan composition)
+  const changedIdx = keys.indexOf(field);
+  let remaining = -delta; // if field increased → remaining is negative (need to subtract from others)
+  for (let step = 1; step <= keys.length - 1 && remaining !== 0; step++) {
+    const idx = (changedIdx + step) % keys.length;
+    const key = keys[idx];
+    const curr = Number(w[key]) || 0;
+    if (remaining > 0) {
+      // Need to add (field decreased)
+      const space = 100 - curr;
+      const add = Math.min(space, remaining);
+      w[key] = curr + add;
+      remaining -= add;
+    } else {
+      // Need to subtract (field increased)
+      const take = Math.min(curr, -remaining);
+      w[key] = curr - take;
+      remaining += take;
+    }
+  }
+  // If all other fields were clipped and we still have remaining, roll back the changed field
+  if (remaining !== 0) w[field] = Math.max(0, Math.min(100, w[field] + remaining));
+  save();
+  renderActiveSettingsSection();
+}
+
+function resetProgressWeight(dealType) {
+  state.settings.progressWeights = state.settings.progressWeights || {};
+  state.settings.progressWeights[dealType] = Object.assign({}, _defaultProgressWeights());
+  save();
+  renderActiveSettingsSection();
+}
+
+function renderMachirLmSection() {
+  const cap = Number(state.settings.machirLmAppraiserCap) || 2100000;
+  const ltv = Number(state.settings.machirLmLtvPct) || 75;
+  const minEq = Number(state.settings.machirLmMinEquity) || 100000;
+  const maxExample = Math.floor(cap * ltv / 100);
+  return `
+    <div class="panel">
+      <h2 class="panel-title">🏠 נוהל מחיר למשתכן</h2>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+        3 הגבלות שפועלות יחד:<br>
+        <strong>1.</strong> תקרת שווי שמאי לצורך חישוב — אם השמאי נתן יותר, זה נחתך לתקרה הזו.<br>
+        <strong>2.</strong> אחוז מימון מקסימלי מהשומה המוגבלת.<br>
+        <strong>3.</strong> הון עצמי מינימלי שהלקוח חייב לשלם מכיסו.<br>
+        מקסימום משכנתא = min(שומה מוגבלת × אחוז, חוזה − הון עצמי).
+      </div>
+      <div style="display:grid;grid-template-columns:1fr;gap:12px;max-width:520px">
+        <div class="form-group">
+          <label><strong>תקרת שווי שמאי (₪)</strong></label>
+          <input type="number" min="0" step="10000" value="${cap}" onchange="updateMachirLmSetting('machirLmAppraiserCap',this.value)" style="width:100%;font-size:15px">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">ברירת מחדל: 2,100,000 ₪</div>
+        </div>
+        <div class="form-group">
+          <label><strong>אחוז מימון מקסימלי (%)</strong></label>
+          <input type="number" min="0" max="100" step="1" value="${ltv}" onchange="updateMachirLmSetting('machirLmLtvPct',this.value)" style="width:100%;font-size:15px">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">ברירת מחדל: 75%</div>
+        </div>
+        <div class="form-group">
+          <label><strong>הון עצמי מינימלי (₪)</strong></label>
+          <input type="number" min="0" step="10000" value="${minEq}" onchange="updateMachirLmSetting('machirLmMinEquity',this.value)" style="width:100%;font-size:15px">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">ברירת מחדל: 100,000 ₪ — הלקוח חייב לשלם לפחות את הסכום הזה מכיסו</div>
+        </div>
+      </div>
+      <div style="margin-top:18px;padding:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;max-width:520px">
+        <div style="font-weight:700;color:#166534;margin-bottom:6px">💡 דוגמה עם ההגדרות הנוכחיות</div>
+        <div style="font-size:13px;color:#166534;line-height:1.7">
+          שומה מוגבלת × ${ltv}% = <strong>${fmtMoney(maxExample)}</strong> (המקסימום המוחלט)<br>
+          לדוגמה: חוזה 1,600,000 ₪, שמאי 2,500,000 ₪<br>
+          → שומה חתוכה ל-${fmtMoney(cap)} → ${ltv}% = <strong>${fmtMoney(maxExample)}</strong><br>
+          → הון עצמי: 1,600,000 − ${fmtMoney(minEq)} = <strong>${fmtMoney(1600000 - minEq)}</strong><br>
+          → <strong>מקסימום משכנתא: ${fmtMoney(Math.min(maxExample, 1600000 - minEq))}</strong>
+        </div>
+      </div>
+    </div>`;
+}
+
+function updateMachirLmSetting(key, val) {
+  const n = Number(val);
+  if (isNaN(n) || n < 0) return;
+  state.settings[key] = n;
+  save();
+  renderActiveSettingsSection();
 }
 
 const CONTACT_CATEGORIES = ['איש קשר', 'סוכן ביטוח', 'שמאי', 'בנקאי', 'עורך דין', 'קבלן', 'רואה חשבון', 'מפקח בנייה', 'יועץ מס', 'ספק שירות', 'אחר'];
@@ -21312,8 +21545,18 @@ function portalGreetName(c, fallback) {
   if (fn || fam) return (fn + ' ' + fam).trim();
   return String(fallback || '').trim();
 }
-// התקדמות כללית: אישור (ליד+לקוח+הגשה+אישור) 20%, שמאות 20%, בטחונות מוכר (בטחונות מוכר+חתימות) 30%,
-// ושאר המשימות עד שלב הביצוע (בטחונות בנק) 30%. ביצוע וארכיון לא נמדדים.
+// התקדמות כללית: אישור (ליד+לקוח+הגשה+אישור), שמאות, בטחונות מוכר (בטחונות מוכר+חתימות), בטחונות בנק.
+// משקל כל קבוצה מוגדר לפי סוג העסקה הראשון בהגדרה "חלוקת משקל למשימות". ביצוע וארכיון לא נמדדים.
+function _defaultProgressWeights() { return { approval: 20, appraisal: 20, seller: 30, bank: 30 }; }
+function _weightsForClient(c) {
+  var def = _defaultProgressWeights();
+  var all = (state.settings && state.settings.progressWeights) || {};
+  var purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
+  var first = purposes[0];
+  var w = first && all[first] ? all[first] : def;
+  // Fill missing fields from default (safety)
+  return { approval: Number(w.approval) || def.approval, appraisal: Number(w.appraisal) || def.appraisal, seller: Number(w.seller) || def.seller, bank: Number(w.bank) || def.bank };
+}
 function portalProgress(c) {
   var agg = {}, open = {};
   function bump(st, done, name) {
@@ -21324,11 +21567,12 @@ function portalProgress(c) {
   // "האישור לא מקובל" היא משימת מילוט פסיבית ולא משימה לפי הנוהל — לא נספרת
   (c.tasks || []).forEach(function (t) { if (String(t.title || '').indexOf('האישור לא מקובל') === 0) return; bump(t.stage, t.status === 'done' || !!t.done, t.title); });
   var ids = STAGES.map(function (x) { return x.id; }), cur = ids.indexOf(c.stage), later = c.stage === 'archive' || c.stage === 'execution';
+  var wgt = _weightsForClient(c);
   var groups = [
-    { label: 'אישור', sub: 'ליד, לקוח, הגשה, אישור', w: 20, st: ['lead', 'client', 'submission', 'approval'] },
-    { label: 'שמאות', sub: 'שמאות', w: 20, st: ['appraisal'] },
-    { label: 'בטחונות מוכר', sub: 'בטחונות מוכר, חתימות', w: 30, st: ['seller', 'signature'] },
-    { label: 'שאר המשימות', sub: 'בטחונות בנק', w: 30, st: ['bank'] }
+    { label: 'אישור', sub: 'ליד, לקוח, הגשה, אישור', w: wgt.approval, st: ['lead', 'client', 'submission', 'approval'] },
+    { label: 'שמאות', sub: 'שמאות', w: wgt.appraisal, st: ['appraisal'] },
+    { label: 'בטחונות מוכר', sub: 'בטחונות מוכר, חתימות', w: wgt.seller, st: ['seller', 'signature'] },
+    { label: 'בטחונות בנק', sub: 'בטחונות בנק', w: wgt.bank, st: ['bank'] }
   ];
   var openList = [];
   var segs = groups.map(function (g) {
@@ -21393,7 +21637,9 @@ function portalFieldSpecs(c) {
   var out = [], dd = c.dealDetails || {};
   var P = function (key, group, title, from, label, type, path, fb) { out.push({ key: key, group: group, title: title, from: from, label: label, type: type, path: path, fb: fb || null }); };
   (c.borrowers || []).forEach(function (b, i) {
-    var g = 'b' + i, t = 'פרטי הלווה' + (String(b.name || '').trim() ? ' — ' + String(b.name).trim().split(/\s+/)[0] : '');
+    // השם בתיק הוא "משפחה פרטי" — מציגים את השם הפרטי (כדי להבדיל בין בעל לאשה), ותפקיד: האשה / הבעל / הלווה
+    var full = String(b.name || '').trim(), fn = String(b.firstName || '').trim() || full.split(/\s+/).slice(1).join(' ') || full;
+    var g = 'b' + i, t = (b.role === 'אשה' ? 'פרטי האשה' : b.role === 'בעל' ? 'פרטי הבעל' : 'פרטי הלווה') + (fn ? ' — ' + fn : '');
     P('phone:' + i, g, t, 'submission', 'נייד', 'tel', 'borrowers.' + i + '.phone', i === 0 ? 'phone' : null);
     P('f:b' + i + ':email', g, t, 'submission', 'אימייל', 'email', 'borrowers.' + i + '.email', i === 0 ? 'email' : null);
   });
