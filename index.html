@@ -21534,8 +21534,7 @@ function portalOwner(item, isTask) {
   if (portalRemoved(portalKey(item, isTask))) return null;
   var v = m[portalKey(item, isTask)];
   if (v === 'client' || v === 'advisor' || v === 'hidden') return v === 'hidden' ? null : v;
-  // משימות שלא הוגדרו: מוצגות ללקוח כ"בטיפול היועץ" (אפשר להסיר ✕ / "לא מוצג" בהגדרות הפורטל). פנימיות נשארות מוסתרות.
-  if (isTask) { var tt = String(item.title || ''); return (/^הוגש ל:/.test(tt) || tt.indexOf('תזכורת מהצ\'אט:') === 0) ? null : 'advisor'; }
+  if (isTask) return null; // משימה מוצגת ללקוח רק אם סימנת אותה ידנית בהגדרות הפורטל
   return item.stage === 'client' ? 'client' : 'advisor';
 }
 
@@ -21684,6 +21683,20 @@ function portalForms(c) {
   });
   return groups;
 }
+// משימות עתידיות של התיק לפי סוג העסקה: בטחונות בנק (רישום×עסקה), בטחונות מוכר (עסקה), חתימות (בסיס + רישום×עסקה)
+function portalFutureTitles(c, stageId) {
+  var out = [], purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []), regType = c.registrationType, st = state.settings || {};
+  var add = function (t) { if (t && out.indexOf(t) < 0) out.push(t); };
+  try {
+    if (stageId === 'bank' && regType) { var bm = (st.bankTasksByRegAndDeal || BANK_TASKS_BY_REG_AND_DEAL)[regType] || {}; purposes.forEach(function (p) { (bm[p] || []).forEach(add); }); }
+    if (stageId === 'seller') { var sm = st.sellerTasksByDeal || SELLER_TASKS_BY_DEAL; purposes.forEach(function (p) { (sm[p] || []).forEach(add); }); }
+    if (stageId === 'signature') {
+      (SIGNATURE_BASE_TASKS || []).forEach(add);
+      if (regType) { var gm = (st.signatureTasksByRegAndDeal || SIGNATURE_TASKS_BY_REG_AND_DEAL)[regType] || {}; purposes.forEach(function (p) { (gm[p] || []).forEach(add); }); }
+    }
+  } catch (e) {}
+  return out;
+}
 function portalSnapshot(c) {
   if (c.portalDisabled) return { v: 1, disabled: true }; // קישור מבוטל: לא נשמר בשרת שום מידע על הלקוח
   var stages = STAGES.filter(function (s) { return s.id !== 'archive'; })
@@ -21711,8 +21724,8 @@ function portalSnapshot(c) {
   var _ord = STAGES.map(function (s) { return s.id; }), _ci = _ord.indexOf(c.stage);
   stages.forEach(function (s) {
     if (_ord.indexOf(s.id) <= _ci || (c.tasks || []).some(function (t) { return t.stage === s.id; })) return;
-    // אותה רשימה שמופיעה במסך הגדרות הפורטל לשלב (תבנית + משימות שקיימות אצל לקוחות אחרים)
-    var tpl = portalSettingsRows(s.id).filter(function (r) { return r.kind === 'task'; }).map(function (r) { return r.label; });
+    // רק משימות שקשורות לעסקה של הלקוח (לפי סוג העסקה והרישום, כמו בלשונית "משימות — עד סוף התיק")
+    var tpl = portalFutureTitles(c, s.id);
     tpl.forEach(function (title, i) {
       var o = portalOwner({ stage: s.id, title: title }, true);
       if (o) s.items.push({ id: 'pv:' + s.id + ':' + i, name: title, owner: o, preview: true });
@@ -21985,7 +21998,7 @@ function renderPortalSettingsSection() {
   function eff(r) {
     var v = cur[r.key];
     if (v) return v;
-    return r.kind === 'task' ? 'advisor' : (st === 'client' ? 'client' : 'advisor');
+    return r.kind === 'task' ? 'hidden' : (st === 'client' ? 'client' : 'advisor');
   }
   var seg = function (i, val, active, label) {
     return '<button onclick="portalSetOwner(' + i + ',\'' + val + '\')" style="padding:4px 10px;border:1px solid var(--border);cursor:pointer;font-size:12px;font-weight:' + (active ? 700 : 500) + ';background:' + (active ? (val === 'client' ? '#2563eb' : val === 'advisor' ? '#f59e0b' : '#64748b') : '#fff') + ';color:' + (active ? '#fff' : 'var(--text)') + '">' + label + '</button>';
@@ -22000,7 +22013,7 @@ function renderPortalSettingsSection() {
        '<button title="הסר מהרשימה (המשימה ב-CRM לא נמחקת)" onclick="portalRemoveRow(' + i + ')" style="border:none;background:none;cursor:pointer;color:#dc2626;font-size:15px">✕</button></div>';
   });
   return '<div class="panel"><h2 class="panel-title">🔗 פורטל לקוח — מה קשור אליו</h2>' +
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">לכל שלב ולכל סוג עסקה: סמן אם המסמך/המשימה באחריות <b>הלקוח</b> או <b>אצלי</b>. הלקוח רואה את שניהם, מסומנים בנפרד. משימות שלא סימנת מוצגות ללקוח כ"בטיפול היועץ"; כדי להסתיר משימה בחר "לא מוצג".</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">לכל שלב ולכל סוג עסקה: סמן אם המסמך/המשימה באחריות <b>הלקוח</b> או <b>אצלי</b>. הלקוח רואה את שניהם, מסומנים בנפרד. משימות מוצגות ללקוח רק אם סימנת אותן.</div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + tabs.map(function (s) {
       return '<button onclick="PORTAL.stage=\'' + s.id + '\';renderActiveSettingsSection()" style="padding:6px 12px;border-radius:999px;border:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:' + (s.id === st ? 700 : 500) + ';background:' + (s.id === st ? s.color : '#fff') + ';color:' + (s.id === st ? '#fff' : 'var(--text)') + '">' + s.label + '</button>'; }).join('') + '</div>' +
     '<input placeholder="חיפוש מסמך…" value="' + escapeAttr(PORTAL.filter) + '" oninput="PORTAL.filter=this.value;portalRerenderRows()" style="width:100%;margin-bottom:6px">' +
