@@ -147,7 +147,8 @@ function render(){
   h+='<div class="card"><h2>'+esc(sel.label)+(selIdx===curIdx?' <span class="tag me">השלב הנוכחי</span>':'')+'</h2>';
   if(selIdx<curIdx&&!items.length)h+='<div class="empty">שלב זה הושלם ✓</div>';
   else if(!items.length&&!pv.length)h+='<div class="empty">אין כרגע דברים פתוחים בשלב הזה.</div>';
-  if(sel.id==='appraisal'&&d.summary&&d.summary.appraised)h+='<div class="appr">✅ ב"ה אושר השמאות בסך '+money(d.summary.appraised)+'</div>';
+  if(sel.id==='appraisal')h+=apprHtml(d.summary);
+  if(sel.id==='approval')h+=approvalsHtml(d.summary);
   h+='</div>';
   var mineDone=mine.filter(function(it){return it.done;});
   if(mineDone.length)h+='<div class="card"><h2><span class="tag me">👤 ממך</span></h2>'+mineDone.map(function(it){return '<div class="sr"><span>'+esc(it.name)+'</span><b>✓ בוצע</b></div>';}).join('')+'</div>';
@@ -230,6 +231,15 @@ function legendHtml(p){
     return '<div style="font-size:12px;line-height:1.3"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+colors[i%4]+';margin-inline-end:5px"></span><b>'+esc(g.label)+'</b> <span style="color:var(--ok);font-weight:700">'+Math.round(g.w*g.f)+'/'+g.w+'%</span><div style="color:var(--muted);font-size:11px">'+esc(g.sub)+'</div></div>';}).join('')+'</div></div>';
 }
 function money(n){return Number(n).toLocaleString('he-IL')+' ₪';}
+function approvalsHtml(s){
+  if(!s||!s.approvals||!s.approvals.length)return '';
+  return s.approvals.map(function(a){
+    return '<div class="appr">✅ קיים אישור עקרוני'+(a.bank?' מבנק '+esc(a.bank):'')+(a.amount?' על סך '+money(a.amount):'')+'</div>';}).join('');
+}
+function apprHtml(s){
+  if(!s||!s.appraised)return '';
+  return '<div class="appr">✅ ב"ה אושר השמאות בסך '+money(s.appraised)+(s.appraiserName?' על ידי '+esc(s.appraiserName):'')+'</div>';
+}
 function summaryHtml(s){
   if(!s)return '';
   var rows=[];
@@ -240,9 +250,7 @@ function summaryHtml(s){
   if(s.banks&&s.banks.length)rows.push(['הוגש לבנק',s.banks.join(', ')]);
   var h='';
   if(rows.length)h+='<div class="card sum">'+rows.map(function(r){return '<div class="sr"><span>'+esc(r[0])+'</span><b>'+esc(r[1])+'</b></div>';}).join('')+'</div>';
-  if(s.approvals&&s.approvals.length)h+=s.approvals.map(function(a){
-    return '<div class="appr">✅ קיים אישור עקרוני'+(a.bank?' מבנק '+esc(a.bank):'')+(a.amount?' על סך '+money(a.amount):'')+'</div>';}).join('');
-  if(s.appraised)h+='<div class="appr">✅ ב"ה אושר השמאות בסך '+money(s.appraised)+'</div>';
+  h+=approvalsHtml(s)+apprHtml(s);
   return h;
 }
 function formFieldsHtml(g,pre){

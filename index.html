@@ -21731,6 +21731,8 @@ function portalSnapshot(c) {
     pct: pct,
     banks: subBanks,
     appraised: Number(c.appraiserValue) || 0,
+    // שם השמאי שאליו נשלח התיק (האחרון ברשימה)
+    appraiserName: (function () { try { var ids = c.sentToAppraiserIds || []; var a = (state.settings.appraisers || []).find(function (x) { return x.id === ids[ids.length - 1]; }); return a ? String(a.name || '') : ''; } catch (e) { return ''; } })(),
     // שורת שווי מתחת ל"סוג העסקה": מחיר חוזה (עסקאות חוזה); הערכת לקוח רק כל עוד אין שווי שמאי. שווי השמאי עצמו מוצג בבאנר "אושר השמאות"
     valueRow: (function () { try { var ct = Number(c.propertyValue) || 0, ap = Number(c.appraiserValue) || 0; if (!(ct > 0)) return null; if (propertyValueLabel(c) === 'מחיר חוזה') return { label: 'מחיר חוזה', amount: ct }; if (ap > 0 && c.requiresAppraisal !== false) return null; return { label: propertyValueLabel(c), amount: ct }; } catch (e) { return null; } })(),
     // כשמחיר החוזה שונה משווי השמאי (והשמאי הוא הקובע) — מוצגים שניהם
