@@ -122,7 +122,7 @@ function render(){
   var openMine=allMine.filter(isOpen).length;
   var anyMine=allMine.length; // מה שהושלם עובר לקופסה מקופלת "✓ הושלמו" למטה (כמו המסמכים)
   var showList=S.openTop&&anyMine;
-  if(pItems.length)h+='<details class="card fillbox" style="width:100%;box-sizing:border-box;padding:10px 14px'+(fillOpen?';border:2px solid #ef4444;background:#fef2f2':'')+'"'+(S.fillOpen?' open':'')+' ontoggle="S.fillOpen=this.open"><summary style="cursor:pointer;font-weight:700;font-size:14px">📝 השלמת פרטים'+(fillOpen?' <span style="display:inline-block;margin-inline-start:4px;min-width:16px;padding:0 5px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:11px;text-align:center">'+fillOpen+'</span>':' ✓')+'</summary><div style="margin-top:8px">'+pItems.map(function(x){return itemHtml(x.it,x.stage);}).join('')+'</div></details>';
+  if(pItems.length)h+='<div class="card top"'+(fillOpen?' style="border:2px solid #ef4444;background:#fef2f2"':'')+'><h2><span class="tag me">📝 השלמת פרטים</span>'+(fillOpen?'<button class="cnt2" onclick="toggleFill()" title="לחץ להצגת הרשימה">'+fillOpen+(S.fillOpen?' ▴':' ▾')+'</button>':'<button class="cnt2 sentc" onclick="toggleFill()">'+(S.fillOpen?'▴':'▾')+'</button>')+'</h2>'+(S.fillOpen?pItems.map(function(x){return itemHtml(x.it,x.stage);}).join(''):'<div class="empty">'+(fillOpen?'יש '+fillOpen+' פרטים שמחכים להשלמה. לחץ על המספר האדום כדי לראות אותם.':'כל הפרטים נשלחו וממתינים לאישור היועץ. לחץ על החץ כדי לראות.')+'</div>')+'</div>';
   h+='<div class="card top"'+(openMine?' style="border:2px solid #ef4444;background:#fef2f2"':'')+'><h2><span class="tag me">👤 מה נדרש ממך</span>'+
     (openMine?'<button class="cnt2" onclick="toggleTop()" title="לחץ להצגת הרשימה">'+openMine+(showList?' ▴':' ▾')+'</button>':
       (anyMine?'<button class="cnt2 sentc" onclick="toggleTop()">'+(showList?'▴':'▾')+'</button>':''))+'</h2>'+
@@ -310,6 +310,7 @@ async function sendPhone(id,pre){
 }
 function pick(id){S.sel=id;render();}
 function toggleTop(){S.openTop=!S.openTop;render();}
+function toggleFill(){S.fillOpen=!S.fillOpen;render();}
 
 async function mark(id,val){
   if(S.busy)return;S.busy=true;
