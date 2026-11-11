@@ -116,11 +116,13 @@ function render(){
     var x={it:{id:'grp:'+g.id,name:g.title,form:g,done:allDone},stage:stLabel(g.from),sid:g.from};
     if(allDone)doneMine.push(x);else if(counts)pItems.push(x);
   });
-  allMine=allMine.concat(pItems);
+  // השלמת פרטים (טלפונים/טפסים) לא נכנסת ל"מה נדרש ממך" ולא נספרת שם: משבצת קטנה נפרדת מימין
   var isOpen=function(x){return x.it.form?x.it.form.fields.some(function(f){return !f.done&&!S.sent[f.key];}):!S.sent[x.it.id];};
+  var fillOpen=pItems.filter(isOpen).length;
   var openMine=allMine.filter(isOpen).length;
   var anyMine=allMine.length; // מה שהושלם עובר לקופסה מקופלת "✓ הושלמו" למטה (כמו המסמכים)
   var showList=S.openTop&&anyMine;
+  if(pItems.length)h+='<details class="card fillbox" style="width:fit-content;max-width:100%;padding:8px 12px;margin-inline-end:auto"'+(S.fillOpen?' open':'')+' ontoggle="S.fillOpen=this.open"><summary style="cursor:pointer;font-weight:700;font-size:14px">📝 השלמת פרטים'+(fillOpen?' <span style="display:inline-block;margin-inline-start:4px;min-width:16px;padding:0 5px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:11px;text-align:center">'+fillOpen+'</span>':' ✓')+'</summary><div style="margin-top:8px;min-width:260px">'+pItems.map(function(x){return itemHtml(x.it,x.stage);}).join('')+'</div></details>';
   h+='<div class="card top"><h2><span class="tag me">👤 מה נדרש ממך</span>'+
     (openMine?'<button class="cnt2" onclick="toggleTop()" title="לחץ להצגת הרשימה">'+openMine+(showList?' ▴':' ▾')+'</button>':
       (anyMine?'<button class="cnt2 sentc" onclick="toggleTop()">'+(showList?'▴':'▾')+'</button>':''))+'</h2>'+
@@ -131,7 +133,6 @@ function render(){
   h+='<div class="steps">'+stages.map(function(s,i){
     var st=stageState(i,curIdx);
     var open=(s.items||[]).filter(function(it){return it.owner==='client'&&!it.preview&&!it.done&&!S.sent[it.id];}).length;
-    pItems.forEach(function(x){if(x.sid===s.id&&isOpen(x))open++;});
     var style=st==='current'?' style="background:'+esc(s.color)+'"':'';
     return '<button class="step '+st+(s.id===sel.id?' sel':'')+'"'+style+' onclick="pick(\''+esc(s.id)+'\')">'+(st==='done'?'✓ ':'')+esc(s.label)+(open?'<span class="cnt">'+open+'</span>':'')+'</button>';
   }).join('')+'</div>';
