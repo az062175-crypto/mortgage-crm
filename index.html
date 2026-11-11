@@ -2745,7 +2745,12 @@ function seedStageContent(client, stage) {
   const defaultTasks = (Array.isArray(configured) && configured.length > 0)
     ? configured
     : (DEFAULT_DATA.settings.stageTasks[stage] || []);
-  defaultTasks.forEach(title => {
+  // משימות לפי סוג עסקה (לשוניות השלבים בהגדרות), נוספות על משימות ברירת המחדל
+  const _byDeal = (state.settings.stageTasksByDeal || {})[stage] || {};
+  const _dealPurposes = (client.purposes && client.purposes.length) ? client.purposes : (client.purpose ? [client.purpose] : []);
+  const _dealTasks = [];
+  _dealPurposes.forEach(p => (_byDeal[p] || []).forEach(t => { if (!_dealTasks.includes(t)) _dealTasks.push(t); }));
+  defaultTasks.concat(_dealTasks.filter(t => !defaultTasks.includes(t))).forEach(title => {
     if (!client.tasks.some(t => t.stage === stage && t.title === title)) {
       // Auto-mark "ניידים של הלווים" as done if all borrowers have phones
       let autoDone = false;
@@ -19187,9 +19192,15 @@ function renderSettings() {
     { id: 'portal', label: '🔗 פורטל לקוח — מה קשור אליו', icon: '🔗' },
     { id: 'portalLinks', label: '🟢 קישורי לקוחות — מי פעיל', icon: '🟢' },
     { id: 'stageTasks', label: '✅ משימות ברירת מחדל', icon: '✅' },
+    { id: 'stageTab_lead', label: '📞 משימות ליד', icon: '📞' },
+    { id: 'stageTab_client', label: '🧑‍💼 משימות לקוח', icon: '🧑‍💼' },
+    { id: 'stageTab_submission', label: '📝 משימות הגשה', icon: '📝' },
+    { id: 'stageTab_appraisal', label: '🏠 משימות שמאות', icon: '🏠' },
+    { id: 'stageTab_approval', label: '✅ משימות אישור', icon: '✅' },
     { id: 'bankTasks', label: '🏦 משימות בטחונות בנק', icon: '🏦' },
     { id: 'sellerTasks', label: '🤝 משימות בטחונות מוכר', icon: '🤝' },
     { id: 'signatureTasks', label: '✍️ משימות חתימות', icon: '✍️' },
+    { id: 'stageTab_execution', label: '🚀 משימות ביצוע', icon: '🚀' },
     { id: 'executionSummary', label: '📧 תבנית סיכום ללקוח', icon: '📧' },
     { id: 'shtarEmail', label: '📧 תבנית מייל רישום שטרות', icon: '📧' },
     { id: 'appraiserEmail', label: '📧 תבנית מייל לשמאי', icon: '📧' },
@@ -19349,6 +19360,7 @@ function renderSettingsSection(id) {
   if (id === 'incomeTypes') return renderIncomeTypesSection();
   if (id === 'dealDocs') return renderDealDocsSection();
   if (id === 'stageTasks') return renderStageTasksSection();
+  if (id.indexOf('stageTab_') === 0) return renderStageTabSection(id.slice(9));
   if (id === 'stageReqs') return renderStageReqsSection();
   if (id === 'machirLm') return renderMachirLmSection();
   if (id === 'progressWeights') return renderProgressWeightsSection();
@@ -20127,6 +20139,52 @@ function renderStageTasksSection() { return `
       </div>
     `).join('')}
   </div>`; }
+
+// לשונית שלב: משימות לכל העסקאות + חלוקה לפי סוג עסקה
+function renderStageTabSection(stageId) {
+  const s = STAGES.find(x => x.id === stageId) || { label: stageId, color: '#334155' };
+  const all = (state.settings.stageTasks || {})[stageId] || [];
+  const byDeal = ((state.settings.stageTasksByDeal || {})[stageId]) || {};
+  const box = (title, list, rmCall, inputId, addCall, color) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="font-weight:700;color:${color};margin-bottom:8px;font-size:15px">${title}</div>
+      ${list.length ? `<ul class="settings-list">${list.map((t, i) => `
+        <li class="settings-item"><span style="font-size:13px">${escapeHtml(t)}</span>
+          <button class="icon-btn" onclick="${rmCall(i)}" title="מחק">✕</button>
+        </li>`).join('')}</ul>` : '<div style="color:var(--muted);font-size:12px;padding:6px 0">— אין משימות —</div>'}
+      <div class="add-row" style="margin-top:8px">
+        <input id="${inputId}" placeholder="הוסף משימה חדשה" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        <button class="btn small" onclick="${addCall}">+ הוסף</button>
+      </div>
+    </div>`;
+  return `<div class="panel">
+    <h2 class="panel-title">משימות בשלב "${escapeHtml(s.label)}"</h2>
+    <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px 14px;border-radius:8px;font-size:12px;color:#1e3a8a;margin-bottom:14px">
+      💡 המשימות נוצרות אוטומטית כשלקוח נכנס לשלב. "כל סוגי העסקאות" חל על כולם, ומתחת מוסיפים משימות לסוג עסקה מסוים (נוספות על הכלליות).
+    </div>
+    ${box('📁 כל סוגי העסקאות', all, i => `removeStageTask('${stageId}',${i})`, 'newStageTask_' + stageId, `addStageTask('${stageId}')`, s.color)}
+    ${(state.settings.dealTypes || []).map(deal => {
+      const k = escapeAttr(deal), id = 'newStageDealTask_' + stageId + '_' + k.replace(/[^א-תa-zA-Z0-9]/g, '_');
+      return box('📁 ' + escapeHtml(deal), byDeal[deal] || [], i => `removeStageDealTask('${stageId}','${k}',${i})`, id, `addStageDealTask('${stageId}','${k}')`, 'var(--accent)');
+    }).join('')}
+  </div>`;
+}
+function addStageDealTask(stageId, deal) {
+  const inp = document.getElementById('newStageDealTask_' + stageId + '_' + deal.replace(/[^א-תa-zA-Z0-9]/g, '_'));
+  const val = (inp && inp.value || '').trim();
+  if (!val) return;
+  const st = state.settings;
+  st.stageTasksByDeal = st.stageTasksByDeal || {};
+  st.stageTasksByDeal[stageId] = st.stageTasksByDeal[stageId] || {};
+  (st.stageTasksByDeal[stageId][deal] = st.stageTasksByDeal[stageId][deal] || []).push(val);
+  save(); renderSettings();
+}
+function removeStageDealTask(stageId, deal, idx) {
+  const l = ((state.settings.stageTasksByDeal || {})[stageId] || {})[deal];
+  if (!l) return;
+  l.splice(idx, 1);
+  save(); renderSettings();
+}
 
 function renderStageReqsSection() { return `
   <div class="panel">
@@ -21688,6 +21746,8 @@ function portalFutureTitles(c, stageId) {
   var out = [], purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []), regType = c.registrationType, st = state.settings || {};
   var add = function (t) { if (t && out.indexOf(t) < 0) out.push(t); };
   try {
+    var sd = (st.stageTasksByDeal || {})[stageId] || {};
+    purposes.forEach(function (p) { (sd[p] || []).forEach(add); });
     if (stageId === 'bank' && regType) { var bm = (st.bankTasksByRegAndDeal || BANK_TASKS_BY_REG_AND_DEAL)[regType] || {}; purposes.forEach(function (p) { (bm[p] || []).forEach(add); }); }
     if (stageId === 'seller') { var sm = st.sellerTasksByDeal || SELLER_TASKS_BY_DEAL; purposes.forEach(function (p) { (sm[p] || []).forEach(add); }); }
     if (stageId === 'signature') {
@@ -21984,6 +22044,8 @@ function portalSettingsRows(stageId) {
     Object.keys(ap).forEach(function (reg) { Object.keys(ap[reg] || {}).forEach(function (dt) { (ap[reg][dt] || []).forEach(function (n) { add(portalBase(n), portalBase(n), 'doc'); }); }); });
   }
   ((state.settings.stageTasks || {})[stageId] || []).forEach(function (n) { add('task::' + portalBase(n), portalBase(n), 'task'); });
+  var _sdl = ((state.settings.stageTasksByDeal || {})[stageId]) || {};
+  Object.keys(_sdl).forEach(function (dt) { (_sdl[dt] || []).forEach(function (n) { add('task::' + portalBase(n), portalBase(n), 'task'); }); });
   state.clients.forEach(function (c) {
     (c.requirements || []).forEach(function (r) { if (r.stage === stageId) add(portalKey(r, false), portalBase(r.name), 'doc', r.dealType || ''); });
     (c.tasks || []).forEach(function (t) { if (t.stage === stageId && t.title && String(t.title).indexOf('הוגש ל:') !== 0) add('task::' + portalBase(t.title), portalBase(t.title), 'task'); });
