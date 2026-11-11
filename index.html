@@ -20143,9 +20143,30 @@ function renderStageTasksSection() { return `
 // לשונית שלב: משימות לכל העסקאות + חלוקה לפי סוג עסקה
 function renderStageTabSection(stageId) {
   const s = STAGES.find(x => x.id === stageId) || { label: stageId, color: '#334155' };
-  const all = (state.settings.stageTasks || {})[stageId] || [];
+  state.settings.stageTasks = state.settings.stageTasks || {};
+  // רשימה ריקה = המערכת משתמשת בברירת המחדל; מציגים אותה כדי שאפשר יהיה לערוך
+  if (!(state.settings.stageTasks[stageId] || []).length && (DEFAULT_DATA.settings.stageTasks[stageId] || []).length) {
+    state.settings.stageTasks[stageId] = DEFAULT_DATA.settings.stageTasks[stageId].slice();
+  }
+  const all = state.settings.stageTasks[stageId] || [];
   const byDeal = ((state.settings.stageTasksByDeal || {})[stageId]) || {};
-  const box = (title, list, rmCall, inputId, addCall, color) => `
+  const regLabels = { 'tabu-ownership': 'טאבו בעלות', 'tabu-warning': 'הערת אזהרה', 'minhal': 'מינהל' };
+  // משימות שהמערכת יוצרת בעצמה (בקוד / בלשוניות אחרות): להצגה בלבד
+  const builtinAll = {
+    appraisal: ['הפניה לשמאי', 'כמה אושר שווי ע"פ השמאי'],
+    approval: ['נשלח לבחינה (צפה, בכל תיק)'],
+    execution: ['לקוחות חתמו', 'בוצע סך', 'שליחת מייל סיכום ללקוח', 'העברה לארכיון', 'הזמנת שטרי משכנתא (רק בטאבו בעלות)', 'הזמנת כתב התחייבות (רק במינהל)']
+  }[stageId] || [];
+  const builtinDeal = deal => {
+    if (stageId !== 'appraisal') return [];
+    const ap = state.settings.appraisalTasksByReg || {}, out = [];
+    Object.keys(ap).forEach(reg => ((ap[reg] || {})[deal] || []).forEach(n => out.push(n + ' — ' + (regLabels[reg] || reg))));
+    return out;
+  };
+  const ro = (list, note) => list.length ? `<div style="margin-top:10px;padding:8px 10px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">🔒 ${note}</div>
+      <ul style="margin:0;padding-inline-start:20px;font-size:13px;line-height:1.7">${list.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul></div>` : '';
+  const box = (title, list, rmCall, inputId, addCall, color, extra) => `
     <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
       <div style="font-weight:700;color:${color};margin-bottom:8px;font-size:15px">${title}</div>
       ${list.length ? `<ul class="settings-list">${list.map((t, i) => `
@@ -20155,17 +20176,17 @@ function renderStageTabSection(stageId) {
       <div class="add-row" style="margin-top:8px">
         <input id="${inputId}" placeholder="הוסף משימה חדשה" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
         <button class="btn small" onclick="${addCall}">+ הוסף</button>
-      </div>
+      </div>${extra || ''}
     </div>`;
   return `<div class="panel">
     <h2 class="panel-title">משימות בשלב "${escapeHtml(s.label)}"</h2>
     <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px 14px;border-radius:8px;font-size:12px;color:#1e3a8a;margin-bottom:14px">
       💡 המשימות נוצרות אוטומטית כשלקוח נכנס לשלב. "כל סוגי העסקאות" חל על כולם, ומתחת מוסיפים משימות לסוג עסקה מסוים (נוספות על הכלליות).
     </div>
-    ${box('📁 כל סוגי העסקאות', all, i => `removeStageTask('${stageId}',${i})`, 'newStageTask_' + stageId, `addStageTask('${stageId}')`, s.color)}
+    ${box('📁 כל סוגי העסקאות', all, i => `removeStageTask('${stageId}',${i})`, 'newStageTask_' + stageId, `addStageTask('${stageId}')`, s.color, ro(builtinAll, 'נוצרות אוטומטית על ידי המערכת, לא ניתנות לעריכה כאן'))}
     ${(state.settings.dealTypes || []).map(deal => {
       const k = escapeAttr(deal), id = 'newStageDealTask_' + stageId + '_' + k.replace(/[^א-תa-zA-Z0-9]/g, '_');
-      return box('📁 ' + escapeHtml(deal), byDeal[deal] || [], i => `removeStageDealTask('${stageId}','${k}',${i})`, id, `addStageDealTask('${stageId}','${k}')`, 'var(--accent)');
+      return box('📁 ' + escapeHtml(deal), byDeal[deal] || [], i => `removeStageDealTask('${stageId}','${k}',${i})`, id, `addStageDealTask('${stageId}','${k}')`, 'var(--accent)', ro(builtinDeal(deal), 'לפי הנוהל (שמאות לפי סוג רישום), נערכות בלשונית "דרישות שמאי לפי עסקה"'));
     }).join('')}
   </div>`;
 }
