@@ -21692,6 +21692,7 @@ function portalFutureTitles(c, stageId) {
     if (stageId === 'seller') { var sm = st.sellerTasksByDeal || SELLER_TASKS_BY_DEAL; purposes.forEach(function (p) { (sm[p] || []).forEach(add); }); }
     if (stageId === 'signature') {
       (SIGNATURE_BASE_TASKS || []).forEach(add);
+      add('הקמת הרשאה'); // נוצרת בכל תיק בשלב חתימות (seedStageContent), בלי קשר לסוג העסקה
       if (regType) { var gm = (st.signatureTasksByRegAndDeal || SIGNATURE_TASKS_BY_REG_AND_DEAL)[regType] || {}; purposes.forEach(function (p) { (gm[p] || []).forEach(add); }); }
     }
   } catch (e) {}
