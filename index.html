@@ -21784,6 +21784,7 @@ function portalSnapshot(c) {
   var stages = STAGES.filter(function (s) { return s.id !== 'archive'; })
     .map(function (s) { return { id: s.id, label: s.label, color: s.color, items: [] }; });
   var by = {}; stages.forEach(function (s) { by[s.id] = s; });
+  var _stOrd = STAGES.map(function (s) { return s.id; }), _stIdx = function (id) { return _stOrd.indexOf(id); };
   var doneCount = 0, done = [];
   (c.requirements || []).forEach(function (r) {
     if (r.status === 'provided') {
@@ -21793,14 +21794,15 @@ function portalSnapshot(c) {
     }
     if (r.status !== 'pending' || !by[r.stage]) return;
     var o = portalOwner(r, false);
-    if (o) by[r.stage].items.push({ id: r.id, name: r.name, owner: o });
+    if (o) by[r.stage].items.push(Object.assign({ id: r.id, name: r.name, owner: o }, _stIdx(r.stage) > _stIdx(c.stage) ? { preview: true } : {}));
   });
   (c.tasks || []).forEach(function (t) {
     if (!by[t.stage]) return;
     var o = portalOwner({ stage: t.stage, title: t.title }, true);
     // משימה שבוצעה (של הלקוח או של היועץ): נשארת ברשימת השלב עם ✓ בוצע, למשל "חתימה דיגיטלית על שטרות"
     if (t.status === 'done' || t.done) { if (o) by[t.stage].items.push({ id: t.id, name: t.title, owner: o, done: true }); return; }
-    if (o) by[t.stage].items.push({ id: t.id, name: t.title, owner: o });
+    // תיק שהוחזר אחורה: משימה פתוחה משלב שהתיק עוד לא נמצא בו היא מידע בלבד ("יתחיל בשלב זה"), לא דורשת פעולה עכשיו
+    if (o) by[t.stage].items.push(Object.assign({ id: t.id, name: t.title, owner: o }, _stIdx(t.stage) > _stIdx(c.stage) ? { preview: true } : {}));
   });
   // שלבים שהתיק עוד לא הגיע אליהם: משימות התבנית מוצגות ללקוח כמידע בלבד ("יתחיל בשלב זה") לפי הסימון בהגדרות הפורטל
   var _ord = STAGES.map(function (s) { return s.id; }), _ci = _ord.indexOf(c.stage);
