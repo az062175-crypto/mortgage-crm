@@ -21955,6 +21955,30 @@ function portalApplyPhones(sentByToken) {
   return any;
 }
 
+// בעריכת לקוח: סימן קטן ליד שדה שהלקוח מילא בעצמו דרך הקישור (לפי c.portalFilled)
+function portalMarkFilledFields(c) {
+  var pf = c && c.portalFilled; if (!pf) return;
+  var pre = { secondHand: 'sh_', firstHand: 'fh_', mchirLm: 'ml_' };
+  portalFieldSpecs(c).forEach(function (s) {
+    if (!pf[s.key]) return;
+    var p = s.path.split('.'), id = null;
+    if (p[0] === 'borrowers') id = (p[2] === 'phone' ? 'fPhone' : 'fEmail') + (p[1] === '1' ? '2' : '');
+    else if (p[1] === 'tenant') id = 'fTenant' + p[2].charAt(0).toUpperCase() + p[2].slice(1);
+    else if (pre[p[1]]) id = pre[p[1]] + p[2];
+    var el = id && document.getElementById(id), lb = el && el.closest('.form-group') && el.closest('.form-group').querySelector('label');
+    if (!lb || lb.querySelector('.portal-by')) return;
+    lb.insertAdjacentHTML('beforeend', ' <span class="portal-by" title="מולא על ידי הלקוח דרך הקישור" style="font-size:11px;background:#dbeafe;color:#1e40af;border-radius:999px;padding:0 6px;font-weight:700">👤 הלקוח</span>');
+  });
+}
+(function () {
+  var orig = openNewClientModal;
+  openNewClientModal = function (ec) {
+    var r = orig.apply(this, arguments);
+    if (ec) setTimeout(function () { try { portalMarkFilledFields(ec); } catch (e) {} }, 0);
+    return r;
+  };
+})();
+
 function portalReqBadge(c, r) {
   var s = c.portalToken && PORTAL.sent[c.portalToken];
   if (!s || !s[r.id] || r.status !== 'pending') return '';
