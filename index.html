@@ -7704,6 +7704,7 @@ function _recomputeExecTaskStatus(c, t) {
   }
   // Keep client-level total for backward-compat consumers
   c.executedAmount = totalExec;
+  ensureExecSignTask(c, (c.tasks || []).find(x => x.stage === 'execution' && x.title === 'חתימה על מסמכי ביצוע' && (x.status === 'done' || x.done)));
 }
 
 function addExecutionRow(clientId, taskId) {
@@ -7783,6 +7784,7 @@ function setExecutedAmount(clientId, taskId, val) {
   // Update client-level total executed
   const allExec = (c.tasks || []).filter(x => x.stage === 'execution' && x.hasAmount).reduce((sum, x) => sum + (Number(x.executedAmount) || 0), 0);
   c.executedAmount = allExec;
+  ensureExecSignTask(c, (c.tasks || []).find(x => x.stage === 'execution' && x.title === 'חתימה על מסמכי ביצוע' && (x.status === 'done' || x.done)));
 
   // Safety net — as long as the TOTAL executed is still below the approved amount AND no active
   // execution task exists to collect the next tranche, seed another "בוצע סך... (יתרה)" task for
@@ -8544,6 +8546,7 @@ function setTaskStatus(clientId, taskId, status) {
       // continue to normal render below
     }
   }
+  if (status === 'done') ensureExecSignTask(c, t);
   const advanced = autoAdvanceIfStageComplete(c);
   save();
   // Done-celebration — brief visual confirmation then move the task to the bottom.
@@ -8567,6 +8570,21 @@ function setTaskStatus(clientId, taskId, status) {
   const tabLeadsEl = document.getElementById('tabLeads');
   const leadsVisible = tabLeadsEl && tabLeadsEl.style.display !== 'none';
   if (currentTab === 'leads' || leadsVisible || c.stage === 'lead') renderLeadsTab();
+}
+
+// "חתימה על מסמכי ביצוע": בוצעה רק חלק מהתיק (סך הביצועים קטן מהאישור) -> קמה מיד משימה נוספת, עד לביצוע כל התיק
+function ensureExecSignTask(c, t) {
+  if (!t || t.stage !== 'execution' || t.title !== 'חתימה על מסמכי ביצוע') return;
+  const acc = (c.approvals || []).slice().reverse().find(a => a.accepted);
+  const approved = acc ? (Number(acc.amount) || 0) : 0;
+  const executed = (c.tasks || []).filter(x => x.stage === 'execution' && x.hasAmount).reduce((s, x) => {
+    const ex = Array.isArray(x.executions) ? x.executions.reduce((a, e) => a + (Number(e.amount) || 0), 0) : 0;
+    return s + (ex || Number(x.executedAmount) || 0);
+  }, 0);
+  if (!(approved > 0 && executed < approved)) return;
+  if (c.tasks.some(x => x.stage === 'execution' && x.title === t.title && (x.status || 'active') !== 'done')) return;
+  c.tasks.push({ id: uid(), stage: 'execution', title: t.title, status: 'active', done: false, doneAt: null,
+    createdAt: now(), history: [{ status: 'active', at: now(), note: 'בוצע רק חלק מהתיק — משימה חדשה עד לביצוע מלא' }] });
 }
 
 // Floating "✓ בוצע!" toast — flashes briefly when a task is marked done, so the user sees
