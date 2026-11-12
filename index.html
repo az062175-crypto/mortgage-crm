@@ -4532,7 +4532,52 @@ function renderDashboard() {
 // Date-range + stats panel shown above the clients table when the user drills down to the
 // execution stage (either on its own or alongside archive). Scope = year + month filter.
 // window._execStatsFilter persists the selected year/month across renders.
-if (typeof window._execStatsFilter === 'undefined') window._execStatsFilter = { year: 'all', month: 'all' };
+if (typeof window._execStatsFilter === 'undefined') window._execStatsFilter = { year: 'all', months: [] };
+// Back-compat: migrate the old single-month field to a months array
+if (window._execStatsFilter && typeof window._execStatsFilter.month !== 'undefined') {
+  if (!Array.isArray(window._execStatsFilter.months)) {
+    const m = window._execStatsFilter.month;
+    window._execStatsFilter.months = (m && m !== 'all') ? [Number(m)] : [];
+  }
+  delete window._execStatsFilter.month;
+}
+if (!Array.isArray(window._execStatsFilter.months)) window._execStatsFilter.months = [];
+window._execStatsMonthsOpen = window._execStatsMonthsOpen || false;
+function _toggleExecStatsMonth(m) {
+  const arr = window._execStatsFilter.months || [];
+  const i = arr.indexOf(m);
+  if (i === -1) arr.push(m); else arr.splice(i, 1);
+  window._execStatsFilter.months = arr;
+  (currentTab === 'dashboard' ? renderDashboard() : renderClientsList());
+  // Re-open the popover after re-render
+  window._execStatsMonthsOpen = true;
+  setTimeout(() => {
+    const pop = document.getElementById('execStatsMonthsPop');
+    if (pop) pop.style.display = 'block';
+  }, 0);
+}
+function _clearExecStatsMonths() {
+  window._execStatsFilter.months = [];
+  (currentTab === 'dashboard' ? renderDashboard() : renderClientsList());
+  window._execStatsMonthsOpen = true;
+  setTimeout(() => { const pop = document.getElementById('execStatsMonthsPop'); if (pop) pop.style.display = 'block'; }, 0);
+}
+function _toggleExecStatsMonthsPop() {
+  const pop = document.getElementById('execStatsMonthsPop');
+  if (!pop) return;
+  const open = pop.style.display === 'block';
+  pop.style.display = open ? 'none' : 'block';
+  window._execStatsMonthsOpen = !open;
+}
+document.addEventListener('click', (e) => {
+  const pop = document.getElementById('execStatsMonthsPop');
+  const btn = document.getElementById('execStatsMonthsBtn');
+  if (!pop || !btn) return;
+  if (pop.style.display === 'block' && !pop.contains(e.target) && !btn.contains(e.target)) {
+    pop.style.display = 'none';
+    window._execStatsMonthsOpen = false;
+  }
+});
 function _executionStatsPanelHtml(filteredClients, stagesFilter) {
   // Show whenever the user drills down ONLY on execution / archive (or both)
   const showStages = ['execution', 'archive'];
@@ -4544,13 +4589,14 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
   // their current stage (they may have been archived after execution).
   const executedClients = (state.clients || []).filter(c => (c.stageHistory || []).some(h => h.stage === 'execution'));
   const periodFilter = window._execStatsFilter;
+  const monthsSel = Array.isArray(periodFilter.months) ? periodFilter.months : [];
   const inPeriod = (iso) => {
     if (!iso) return false;
-    if (periodFilter.year === 'all' && periodFilter.month === 'all') return true;
+    if (periodFilter.year === 'all' && monthsSel.length === 0) return true;
     const d = new Date(iso);
     if (isNaN(d)) return false;
     if (periodFilter.year !== 'all' && d.getFullYear() !== Number(periodFilter.year)) return false;
-    if (periodFilter.month !== 'all' && (d.getMonth() + 1) !== Number(periodFilter.month)) return false;
+    if (monthsSel.length > 0 && !monthsSel.includes(d.getMonth() + 1)) return false;
     return true;
   };
   const inScope = executedClients.filter(c => {
@@ -4587,7 +4633,18 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
     const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : ['לא מוגדר']);
     purposes.forEach(p => { byPurpose[p] = (byPurpose[p] || 0) + 1; });
     const acc = (c.approvals || []).find(a => a.accepted);
-    const bankName = (acc && (acc.bankName || acc.bank)) || '';
+    let bankName = (acc && (acc.bankName || acc.bank)) || '';
+    if (!bankName && c.bankerId) {
+      const b = (state.settings && state.settings.bankers || []).find(x => x.id === c.bankerId);
+      if (b) bankName = b.bank || '';
+    }
+    if (!bankName) {
+      const execTask = (c.tasks || []).find(t => t.stage === 'execution' && t.bankerId);
+      if (execTask) {
+        const b = (state.settings && state.settings.bankers || []).find(x => x.id === execTask.bankerId);
+        if (b) bankName = b.bank || '';
+      }
+    }
     if (bankName) {
       byBank[bankName] = byBank[bankName] || { count: 0, amount: 0 };
       byBank[bankName].count++;
@@ -4614,8 +4671,18 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
   if (!isFinite(minDays)) minDays = 0;
   const yearOptions = ['<option value="all"' + (periodFilter.year === 'all' ? ' selected' : '') + '>כל השנים</option>']
     .concat(years.map(y => '<option value="' + y + '"' + (String(periodFilter.year) === String(y) ? ' selected' : '') + '>' + y + '</option>')).join('');
-  const monthOptions = ['<option value="all"' + (periodFilter.month === 'all' ? ' selected' : '') + '>כל החודשים</option>']
-    .concat(monthNames.map((n, i) => '<option value="' + (i + 1) + '"' + (String(periodFilter.month) === String(i + 1) ? ' selected' : '') + '>' + n + '</option>')).join('');
+  const monthsBtnLabel = monthsSel.length === 0 ? 'כל החודשים'
+    : monthsSel.length === 1 ? monthNames[monthsSel[0] - 1]
+    : monthsSel.length <= 3 ? monthsSel.slice().sort((a,b)=>a-b).map(m => monthNames[m-1]).join(', ')
+    : monthsSel.length + ' חודשים';
+  const monthsCheckboxes = monthNames.map((n, i) => {
+    const m = i + 1;
+    const checked = monthsSel.includes(m) ? 'checked' : '';
+    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;font-size:12px;color:#166534;border-radius:4px" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background=''">
+      <input type="checkbox" ${checked} onchange="_toggleExecStatsMonth(${m})" style="cursor:pointer">
+      <span>${n}</span>
+    </label>`;
+  }).join('');
   const purposeBreakdown = Object.entries(byPurpose).sort((a, b) => b[1] - a[1]);
   const bankBreakdownExec = Object.entries(byBank).sort((a, b) => b[1].amount - a[1].amount);
   const sourceBreakdown = Object.entries(bySource).sort((a, b) => b[1] - a[1]);
@@ -4632,7 +4699,19 @@ function _executionStatsPanelHtml(filteredClients, stagesFilter) {
         <div style="display:flex;gap:6px;align-items:center">
           <label style="font-size:12px;color:#166534">תקופה:</label>
           <select onchange="window._execStatsFilter.year=this.value;(currentTab==='dashboard'?renderDashboard():renderClientsList())" style="padding:5px 8px;font-size:12px;border:1px solid #86efac;border-radius:6px;background:white">${yearOptions}</select>
-          <select onchange="window._execStatsFilter.month=this.value;(currentTab==='dashboard'?renderDashboard():renderClientsList())" style="padding:5px 8px;font-size:12px;border:1px solid #86efac;border-radius:6px;background:white">${monthOptions}</select>
+          <div style="position:relative;display:inline-block">
+            <button id="execStatsMonthsBtn" type="button" onclick="_toggleExecStatsMonthsPop()" style="padding:5px 10px;font-size:12px;border:1px solid #86efac;border-radius:6px;background:white;cursor:pointer;display:flex;align-items:center;gap:6px;min-width:120px;justify-content:space-between">
+              <span>${escapeHtml(monthsBtnLabel)}</span>
+              <span style="font-size:10px;color:#166534">▼</span>
+            </button>
+            <div id="execStatsMonthsPop" style="display:${window._execStatsMonthsOpen ? 'block' : 'none'};position:absolute;top:100%;right:0;margin-top:4px;background:white;border:1px solid #86efac;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:6px;z-index:1000;min-width:140px">
+              <div style="padding:4px 8px;border-bottom:1px solid #d1fae5;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:11px;color:var(--muted)">בחר חודשים</span>
+                ${monthsSel.length > 0 ? `<button type="button" onclick="_clearExecStatsMonths()" style="font-size:11px;color:#dc2626;background:none;border:none;cursor:pointer;padding:0">נקה</button>` : ''}
+              </div>
+              ${monthsCheckboxes}
+            </div>
+          </div>
         </div>
       </div>
       ${totalCount === 0 ? '<div style="padding:16px;text-align:center;color:#166534">אין תיקים שבוצעו בתקופה שנבחרה.</div>' : `
@@ -20878,11 +20957,15 @@ var SB_URL='https://pfimmngjgkgzjjhemjdy.supabase.co';
 var SB_KEY='sb_publishable_iOafusxiYK5ZBPqEb3IwOQ_jijlKgvO';
 var SB_AUTH='mortgage_crm_sb_auth_v1';
 var SB_TABLE='mortgage_crm_state';
+// === GUEST SYNC MODE — זמני, עד שסופרבייס יחזור מהאתחול התקוע. ===
+// מסתנכרן עם הטבלה רק עם המפתח הציבורי, בלי JWT של משתמש.
+// להפעיל: הפוך ל-true כשה-Auth של סופרבייס שבור ואנחנו רוצים לדלג על זה.
+var SB_GUEST_MODE = false;
 var SB={mode:'off',user:null,token:null,refresh:null,rowUpdated:null,saveTimer:null,ws:null,wsRetry:0,pending:false,hb:null};
 
 function sbHdrs(withAuth){
   var h={apikey:SB_KEY,'Content-Type':'application/json'};
-  if(withAuth&&SB.token)h.Authorization='Bearer '+SB.token;
+  if(withAuth && SB.token && !SB_GUEST_MODE) h.Authorization='Bearer '+SB.token;
   return h;
 }
 function sbLoadSession(){
@@ -20918,10 +21001,8 @@ async function sbRefresh(){
     // Token expired/revoked — mark session dead and alert the user explicitly rather than silently
     sbSaveSession(null);
     SB.mode = 'off';
-    sbBadge('err','פג תוקף — חובה להתחבר מחדש');
-    try { if (!window._sbRefreshFailAlerted) { window._sbRefreshFailAlerted = true;
-      alert('⚠️ פג תוקף החיבור לענן — נתונים חדשים לא נשמרים!\n\nלחץ/י על "☁ התחבר לענן" בפינה כדי להתחבר מחדש.');
-    } } catch(e){}
+    sbBadge('err','פג תוקף — עובד מקומית');
+    // הושתק זמנית בזמן התקלה בסופרבייס — האזהרה הקופצת הייתה מעצבנת ולא עזרה
     return null;
   }
   sbApplySession(body);return body;
@@ -21264,6 +21345,7 @@ function sbApplyRemoteState(obj){
 }
 
 function sbConnectRT(){
+  if(SB_GUEST_MODE)return;
   if(!SB.token||SB.mode!=='on')return;
   if(SB.ws){try{SB.ws.close()}catch(e){}}
   var url=SB_URL.replace('https://','wss://')+'/realtime/v1/websocket?apikey='+encodeURIComponent(SB_KEY)+'&vsn=1.0.0';
@@ -21411,7 +21493,30 @@ function sbForgotPassword(){
   });
 }
 
+async function sbStartGuest(){
+  SB.token = 'guest';
+  SB.user = {id: null, email: 'guest@local'};
+  SB.mode = 'on';
+  sbBadge('sync');
+  try {
+    var rg = await sbFetchState();
+    if (rg.state && Object.keys(rg.state).length > 0) {
+      SB.rowUpdated = rg.updated_at;
+      sbApplyRemoteState(rg.state);
+      renderKanban();
+      switchTab(currentTab || 'dashboard');
+      sbBadge('ok'); sbUpdateLast();
+    } else {
+      await sbPushState();
+    }
+    sbHeaderShow();
+  } catch(e) {
+    sbBadge('err', e.message);
+    SB.mode = 'off';
+  }
+}
 async function sbStart(source){
+  if (SB_GUEST_MODE) { return sbStartGuest(); }
   var sess=sbLoadSession();
   if(!sess){sbLoginOpen();return}
   if(sess.stale){var refreshed=await sbRefresh();if(!refreshed){sbLoginOpen();return}}
@@ -21445,7 +21550,7 @@ async function sbStart(source){
   }catch(e){
     sbBadge('err',e.message);
     SB.mode='off';
-    alert('החיבור לענן נכשל: '+e.message+'\n\nהמערכת עובדת מקומית עד שיתחדש החיבור.');
+    // הושתק זמנית בזמן התקלה בסופרבייס — בלי alert, רק סימן בסטטוס
   }
 }
 
@@ -21465,6 +21570,7 @@ save=function(){
 //  - If we have a saved session but SB.mode is somehow off, revive by refreshing the token.
 //  - On success: push any local changes + pull remote so both sides converge immediately.
 function _sbAutoHeal(){
+  if (SB_GUEST_MODE) return;
   if (SB.mode === 'on' && SB.token) return;
   if (_sbRecoverAttempt) return;
   var sess = typeof sbLoadSession === 'function' ? sbLoadSession() : null;
@@ -21510,6 +21616,7 @@ async function sbForcePushNow(){
     _toast('לא מחובר לענן — התחבר/י דרך הכפתור בתפריט', '#dc2626');
     return;
   }
+  // in guest mode there's no token to refresh — skip that step
   try {
     sbBadge('saving');
     // Refresh token if we're close to expiry (prevents a silent 401 chain of failed pushes)
@@ -21535,6 +21642,14 @@ async function sbForcePushNow(){
 function sbRefreshCloudBtn(){
   var b=document.getElementById('sb-cloud-btn');
   if(!b) return;
+  if (SB_GUEST_MODE) {
+    b.textContent = '☁ מסונכרן (זמני)';
+    b.title = 'מצב זמני: סנכרון בלי זיהוי משתמש, עד שסופרבייס יחזור. אם משהו לא עובד — טען מחדש.';
+    b.style.background = '#fef3c7';
+    b.style.color = '#854d0e';
+    b.onclick = function(){ alert('מצב סנכרון זמני פעיל.\n\nהנתונים מסתנכרנים עם הענן בלי התחברות משתמש, כי שרת ההתחברות של סופרבייס תקוע באתחול.\n\nכשהוא יחזור — אחזיר את ההתחברות הרגילה.'); };
+    return;
+  }
   var sess=sbLoadSession();
   var signedIn = !!(sess && !sess.stale && sess.s && sess.s.user);
   if(signedIn){
@@ -21592,10 +21707,13 @@ setTimeout(function(){
   sbApplySession = function(s){ var r = origApply(s); setTimeout(sbRefreshCloudBtn, 50); return r; };
   sbSaveSession = function(s){ var r = origSaveSess(s); setTimeout(sbRefreshCloudBtn, 50); return r; };
 
-  var sess=sbLoadSession();
-  if(sess && !sess.stale){ sbStart('boot'); }
-  else if(sess && sess.stale){ sbStart('boot'); }
-  // else: user can click the button when ready
+  if (SB_GUEST_MODE) { sbStart('boot'); }
+  else {
+    var sess=sbLoadSession();
+    if(sess && !sess.stale){ sbStart('boot'); }
+    else if(sess && sess.stale){ sbStart('boot'); }
+    // else: user can click the button when ready
+  }
 },200);
 
 </script>
