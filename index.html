@@ -6933,8 +6933,8 @@ function _getShtarTemplate() {
   const t = (state.settings && state.settings.shtarMishkantaEmailTemplate) || {};
   return {
     subject: (t.subject && t.subject.trim()) || DEFAULT_SHTAR_EMAIL_TEMPLATE.subject,
-    // Divider lines: always stretched to a full line width (plain-text email can't do a real <hr>)
-    body: ((typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_SHTAR_EMAIL_TEMPLATE.body).replace(/[─━]{8,}/g, '─'.repeat(70))
+    // Divider lines: '_' is 1 char in a URL ('─' is 9 after encoding and pushed the Gmail link over its length limit → 400)
+    body: ((typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_SHTAR_EMAIL_TEMPLATE.body).replace(/[─━_]{8,}/g, '_'.repeat(80))
   };
 }
 
