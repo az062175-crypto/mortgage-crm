@@ -5645,7 +5645,7 @@ function renderClientDetail() {
         <div>
           <h1 class="client-name" style="display:flex;align-items:center;gap:10px">
             <button onclick="openCustomTaskModal('${c.id}')" title="הוסף משימה ללקוח" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:18px;border:none;cursor:pointer;line-height:1">+</button>
-            <span>${escapeHtml(c.name)}</span>
+            <a href="#" onclick="event.preventDefault();openEditModal('${c.id}')" title="עריכת לקוח" style="color:inherit;text-decoration:none;border-bottom:2px dotted var(--accent);cursor:pointer">${escapeHtml(c.name)}</a>
             ${(() => {
               const hasPath = !!clientFolderPath(c);
               const title = hasPath ? 'העתק נתיב התיקיה · לחיצה ימנית לעריכה' : 'הגדר תיקיית הלקוח';
@@ -5697,7 +5697,6 @@ function renderClientDetail() {
             <button class="btn secondary small" onclick="openMissingFieldsPopup('${c.id}')" title="הצג את כל השדות שעדיין לא מולאו — מילוי מהיר בלי לפתוח עריכה" style="background:#fef3c7;border-color:#fbbf24;color:#78350f">❓ מה חסר?${(() => { const n = getMissingClientFields(c).length; return n ? ' <span style="background:#dc2626;color:#fff;border-radius:999px;padding:0 6px;font-size:11px">'+n+'</span>' : ''; })()}</button>
             <button class="btn secondary small" onclick="openOpenItemsPopup('${c.id}')" title="הצג את כל המשימות והמסמכים הפתוחים בתיק" style="background:#dbeafe;border-color:#3b82f6;color:#1e40af">📋 מה פתוח?${(() => { const n = getOpenItemsCount(c); return n ? ' <span style="background:#dc2626;color:#fff;border-radius:999px;padding:0 6px;font-size:11px">'+n+'</span>' : ''; })()}</button>
             <button class="btn secondary small" onclick="refreshClientTasks('${c.id}')" title="רענן משימות אוטומטיות לפי סוג עסקה + רישום נוכחי (לא מוחק משימות שסימנת ✓ או שהוספת ידנית)">🔄 רענן משימות</button>
-            <button class="btn secondary small" onclick="openEditModal('${c.id}')">✎ ערוך לקוח</button>
             <button class="btn secondary small" onclick="openIncomesEditor('${c.id}')" title="ערוך הכנסות חודשיות של הלווים והערבים" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3">💰 ערוך הכנסות</button>
             <button class="btn secondary small" onclick="printClientForMeeting('${c.id}')" title="הכן דף מסודר להדפסה / PDF לפגישה" style="background:#f0fdf4;border-color:#22c55e;color:#166534">🖨️ הכן לפגישה</button>
             <button class="btn secondary small" onclick="openBankLetter('${c.id}')" title="הכן מכתב מסודר לבנקאי — להדפסה או לשליחה במייל" style="background:#eff6ff;border-color:#3b82f6;color:#1e40af">📨 מכתב לבנק</button>
