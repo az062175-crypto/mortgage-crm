@@ -4,52 +4,71 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
-<title>מעקב תיק משכנתא</title>
+<title>מעקב תיק משכנתא · יצחק כהן</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#f1f5f9;--panel:#fff;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;--accent:#2563eb;--ok:#16a34a;--warn:#d97706}
+  :root{--brand:#6e1d1d;--brand2:#8f3a2f;--bg:#f6f1ea;--panel:#fffdf9;--text:#2b1d1a;--muted:#7a6a62;--border:#ebe2d6;--accent:#6e1d1d;--ok:#2f7a46;--warn:#b7791f;--soft:#f7ece8}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;line-height:1.5}
-  .wrap{max-width:720px;margin:0 auto;padding:16px}
-  h1{font-size:20px;margin:8px 0 2px}
+  body{margin:0;color:var(--text);font-family:"Assistant",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;line-height:1.55;
+    background:var(--bg) url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20120%2070%27%3E%3Cg%20opacity%3D%270.05%27%3E%3Cpath%20d%3D%27M4%2066%20L60%2012%20L116%2066%27%20fill%3D%27none%27%20stroke%3D%27%236e1d1d%27%20stroke-width%3D%279%27%2F%3E%3Cpolygon%20points%3D%2780%2C31%2080%2C4%2094%2C4%2094%2C45%27%20fill%3D%27%236e1d1d%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") no-repeat fixed left -60px bottom -40px / 520px auto}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(246,241,234,0) 260px)}
+  .brandbar{max-width:720px;margin:0 auto;padding:18px 16px 0;display:flex;align-items:flex-end;gap:12px}
+  .brandbar svg{width:58px;height:auto;flex:0 0 auto}
+  .brandbar .bn{font-size:22px;font-weight:800;color:var(--brand);line-height:1.1}
+  .brandbar .bt{font-size:14px;color:var(--muted)}
+  .brandline{max-width:688px;margin:10px auto 0;height:1px;background:linear-gradient(90deg,transparent,var(--brand) 20%,var(--brand) 80%,transparent);opacity:.35}
+  .wrap{max-width:720px;margin:0 auto;padding:12px 16px 16px}
+  h1{font-size:21px;margin:8px 0 2px;color:var(--brand)}
   .sub{color:var(--muted);font-size:14px;margin-bottom:14px}
-  .steps{display:flex;gap:3px;overflow:visible;padding:4px 0 10px}
-  .step{flex:1 1 0;min-width:0;border:2px solid var(--border);background:var(--panel);border-radius:12px;padding:6px 1px;font-size:10px;line-height:1.15;text-align:center;font-weight:600;color:var(--muted);cursor:pointer;white-space:normal;word-break:break-word;font-family:inherit}
-  .step.done{color:var(--ok);border-color:#bbf7d0;background:#f0fdf4}
-  .step.current{color:#fff;border-color:transparent}
-  .step.sel{outline:3px solid #bfdbfe;outline-offset:1px}
-  .step .cnt{display:block;width:fit-content;margin:2px auto 0;min-width:14px;padding:0 4px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:10px}
-  .step.current .cnt{background:rgba(255,255,255,.9)}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:10px}
-  .card h2{font-size:16px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
-  .tag{font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px}
-  .tag.me{background:#dbeafe;color:#1e40af}
-  .tag.adv{background:#ffedd5;color:#9a3412}
-  .item{border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:8px}
+  .steps{display:flex;gap:4px;overflow:visible;padding:4px 0 10px}
+  .step{flex:1 1 0;min-width:0;border:1px solid var(--border);background:var(--panel);border-radius:12px;padding:7px 1px;font-size:10.5px;line-height:1.15;text-align:center;font-weight:700;color:var(--muted);cursor:pointer;white-space:normal;word-break:break-word;font-family:inherit;transition:transform .12s}
+  .step:hover{transform:translateY(-1px)}
+  .step.done{color:var(--ok);border-color:#cfe3d4;background:#f1f7f2}
+  .step.current{color:#fff;border-color:transparent;background:var(--brand)!important;box-shadow:0 4px 12px rgba(110,29,29,.25)}
+  .step.sel{outline:2px solid var(--brand);outline-offset:2px}
+  .step .cnt{display:block;width:fit-content;margin:2px auto 0;min-width:14px;padding:0 4px;border-radius:999px;background:#f6dcd7;color:var(--brand);font-size:10px}
+  .step.current .cnt{background:rgba(255,255,255,.92)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px 18px;margin-top:12px;box-shadow:0 1px 2px rgba(60,30,20,.04),0 6px 18px rgba(60,30,20,.05)}
+  .card h2{font-size:16px;margin:0 0 10px;display:flex;align-items:center;gap:8px;color:var(--text)}
+  .tag{font-size:12.5px;font-weight:700;padding:3px 11px;border-radius:999px}
+  .tag.me{background:var(--soft);color:var(--brand)}
+  .tag.adv{background:#f3ead9;color:#7a5520}
+  .item{border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:8px;background:#fff}
   .item .nm{font-weight:600}
-  .item.sent{background:#fffbeb;border-color:#fde68a}
-  .note{font-size:13px;color:#92400e;margin-top:6px}
+  .item.sent{background:#fdf8ec;border-color:#efdcae}
+  .note{font-size:13px;color:#8a5a12;margin-top:6px}
   .act{margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  button.link{background:none;border:none;color:var(--accent);font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline}
-  button.send{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
-  .card.sum{padding:8px 16px}
-  .sr{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:15px}
+  button.link{background:none;border:none;color:var(--brand);font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline}
+  button.send{background:var(--brand);color:#fff;border:none;border-radius:10px;padding:9px 16px;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+  button.send:hover{background:var(--brand2)}
+  .card.sum{padding:6px 18px}
+  .sr{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);font-size:15px}
   .sr:last-child{border-bottom:none}
   .sr span{color:var(--muted)}
-  .appr{margin-top:10px;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:12px;padding:12px 14px;font-weight:700}
-  .card.top{border:2px solid #bfdbfe}
-  .cnt2{background:#dc2626;color:#fff;border:none;border-radius:999px;font:inherit;font-size:14px;font-weight:700;min-width:28px;text-align:center;padding:3px 10px;cursor:pointer}
-  .cnt2.sentc{background:#d97706}
-  .chip{display:inline-block;font-size:11px;font-weight:700;background:#f1f5f9;color:var(--muted);border-radius:999px;padding:1px 8px;margin-inline-end:8px}
+  .appr{margin-top:12px;background:#f1f7f2;border:1px solid #cfe3d4;color:#255f37;border-radius:14px;padding:12px 16px;font-weight:700}
+  .card.top{border:1px solid var(--border);border-inline-start:4px solid var(--brand)}
+  .card.alert{background:#fdf4f2;border-color:#ecc9c2;border-inline-start:4px solid #b4302a}
+  .cnt2{background:#b4302a;color:#fff;border:none;border-radius:999px;font:inherit;font-size:14px;font-weight:700;min-width:30px;text-align:center;padding:3px 11px;cursor:pointer}
+  .cnt2.sentc{background:var(--warn)}
+  .chip{display:inline-block;font-size:11px;font-weight:700;background:#f1ebe3;color:var(--muted);border-radius:999px;padding:1px 8px;margin-inline-end:8px}
   .empty{color:var(--muted);font-size:14px;padding:6px 0}
-  .done-box{margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 12px}
-  .done-box summary{color:var(--ok);font-size:14px;font-weight:600;cursor:pointer}
+  .done-box{margin-top:12px;background:#f1f7f2;border:1px solid #cfe3d4;border-radius:14px;padding:11px 14px}
+  .done-box summary{color:var(--ok);font-size:14px;font-weight:700;cursor:pointer}
   .done-box .dg{font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 2px}
-  .done-box .di{font-size:14px;padding:2px 0;color:#166534}
+  .done-box .di{font-size:14px;padding:2px 0;color:#255f37}
   .center{text-align:center;padding:60px 16px;color:var(--muted)}
+  .bfoot{max-width:720px;margin:6px auto 28px;padding:0 16px}
+  .bfoot .in{border-top:1px solid rgba(110,29,29,.25);padding-top:12px;display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;font-size:13.5px;color:var(--muted)}
+  .bfoot a{color:var(--brand);text-decoration:none;font-weight:600;direction:ltr;unicode-bidi:embed}
+  .bfoot .ic{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;align-items:center;justify-content:center;font-size:11px;margin-inline-end:6px;vertical-align:middle}
 </style>
 </head>
 <body>
+<header class="brandbar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 70"><g opacity="1"><path d="M4 66 L60 12 L116 66" fill="none" stroke="#6e1d1d" stroke-width="9"/><polygon points="80,31 80,4 94,4 94,45" fill="#6e1d1d"/></g></svg><div><div class="bn">יצחק כהן</div><div class="bt">יועץ משכנתא ונדל"ן</div></div></header>
+<div class="brandline"></div>
 <div class="wrap" id="app"><div class="center">טוען…</div></div>
+<footer class="bfoot"><div class="in"><span><span class="ic">✆</span>נייד: <a href="tel:0528932640">052-8932640</a></span><span><span class="ic">☎</span>משרד: <a href="tel:035591712">03-5591712</a></span><span><span class="ic">✉</span><a href="mailto:a035591712@gmail.com">a035591712@gmail.com</a></span></div></footer>
 <div id="chatRoot"></div>
 <script>
 var SB_URL='https://pfimmngjgkgzjjhemjdy.supabase.co';
@@ -122,8 +141,8 @@ function render(){
   var openMine=allMine.filter(isOpen).length;
   var anyMine=allMine.length; // מה שהושלם עובר לקופסה מקופלת "✓ הושלמו" למטה (כמו המסמכים)
   var showList=S.openTop&&anyMine;
-  if(pItems.length)h+='<div class="card top"'+(fillOpen?' style="border:2px solid #ef4444;background:#fef2f2"':'')+'><h2><span class="tag me">📝 השלמת פרטים</span>'+(fillOpen?'<button class="cnt2" onclick="toggleFill()" title="לחץ להצגת הרשימה">'+fillOpen+(S.fillOpen?' ▴':' ▾')+'</button>':'<button class="cnt2 sentc" onclick="toggleFill()">'+(S.fillOpen?'▴':'▾')+'</button>')+'</h2>'+(S.fillOpen?pItems.map(function(x){return itemHtml(x.it,x.stage);}).join(''):'<div class="empty">'+(fillOpen?'יש '+fillOpen+' פרטים שמחכים להשלמה. לחץ על המספר האדום כדי לראות אותם.':'כל הפרטים נשלחו וממתינים לאישור היועץ. לחץ על החץ כדי לראות.')+'</div>')+'</div>';
-  h+='<div class="card top"'+(openMine?' style="border:2px solid #ef4444;background:#fef2f2"':'')+'><h2><span class="tag me">👤 מה נדרש ממך</span>'+
+  if(pItems.length)h+='<div class="card top'+(fillOpen?' alert':'')+'"'+'><h2><span class="tag me">📝 השלמת פרטים</span>'+(fillOpen?'<button class="cnt2" onclick="toggleFill()" title="לחץ להצגת הרשימה">'+fillOpen+(S.fillOpen?' ▴':' ▾')+'</button>':'<button class="cnt2 sentc" onclick="toggleFill()">'+(S.fillOpen?'▴':'▾')+'</button>')+'</h2>'+(S.fillOpen?pItems.map(function(x){return itemHtml(x.it,x.stage);}).join(''):'<div class="empty">'+(fillOpen?'יש '+fillOpen+' פרטים שמחכים להשלמה. לחץ על המספר האדום כדי לראות אותם.':'כל הפרטים נשלחו וממתינים לאישור היועץ. לחץ על החץ כדי לראות.')+'</div>')+'</div>';
+  h+='<div class="card top'+(openMine?' alert':'')+'"'+'><h2><span class="tag me">👤 מה נדרש ממך</span>'+
     (openMine?'<button class="cnt2" onclick="toggleTop()" title="לחץ להצגת הרשימה">'+openMine+(showList?' ▴':' ▾')+'</button>':
       (anyMine?'<button class="cnt2 sentc" onclick="toggleTop()">'+(showList?'▴':'▾')+'</button>':''))+'</h2>'+
     (!anyMine?'<div class="empty">אין כרגע שום דבר שנדרש ממך 🎉</div>':
@@ -152,7 +171,7 @@ function render(){
   if(sel.id==='approval')h+=approvalsHtml(d.summary);
   h+='</div>';
   var stRow=function(it){
-    var st=it.done?'<b style="color:var(--ok)">✓ בוצע</b>':(future?'<b style="color:var(--muted)">טרם התחיל</b>':(S.sent[it.id]?'<b>📤 נשלח ליועץ</b>':'<b style="color:#dc2626">⏳ ממתין</b>'));
+    var st=it.done?'<b style="color:var(--ok)">✓ בוצע</b>':(future?'<b style="color:var(--muted)">טרם התחיל</b>':(S.sent[it.id]?'<b>📤 נשלח ליועץ</b>':'<b style="color:var(--warn)">⏳ ממתין</b>'));
     return '<div class="sr"><span>'+esc(it.name)+'</span>'+st+'</div>';
   };
   var ownerCard=function(list,title,cls){
@@ -206,7 +225,7 @@ function render(){
 function greetByTime(){var h=new Date().getHours();if(h>=9&&h<11)return 'בוקר טוב';if(h>=11&&h<16)return 'צהריים טובים';if(h>=16&&h<19)return 'ערב טוב';return 'לילה טוב';}
 function donutHtml(p){
   if(!p||!p.segs)return '';
-  var colors=['#22c55e','#0ea5e9','#f97316','#8b5cf6'],start=0,bg='',fg='';
+  var colors=['#2f7a46','#6e1d1d','#c27c3a','#9a7b6a'],start=0,bg='',fg='';
   p.segs.forEach(function(g,i){
     var len=Math.max(0,g.w-1),off=25-start;
     bg+='<circle cx="21" cy="21" r="15.9155" fill="none" stroke="'+colors[i%4]+'" stroke-opacity=".2" stroke-width="6" stroke-dasharray="'+len+' '+(100-len)+'" stroke-dashoffset="'+off+'"/>';
@@ -217,7 +236,7 @@ function donutHtml(p){
 }
 function legendHtml(p){
   if(!p||!p.segs)return '';
-  var colors=['#22c55e','#0ea5e9','#f97316','#8b5cf6'];
+  var colors=['#2f7a46','#6e1d1d','#c27c3a','#9a7b6a'];
   return '<div class="card" style="padding:10px 12px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+p.segs.map(function(g,i){
     return '<div style="font-size:12px;line-height:1.3"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+colors[i%4]+';margin-inline-end:5px"></span><b>'+esc(g.label)+'</b> <span style="color:var(--ok);font-weight:700">'+Math.round(g.w*g.f)+'/'+g.w+'%</span><div style="color:var(--muted);font-size:11px">'+esc(g.sub)+'</div></div>';}).join('')+'</div></div>';
 }
@@ -336,24 +355,24 @@ function chDraw(scroll){
   var root=document.getElementById('chatRoot');if(!root||!S.data)return;
   chDock();
   var n=CH.open?0:chUnread();
-  var fab='<button onclick="chToggle()" aria-label="צ\'אט עם היועץ" style="position:fixed;bottom:16px;left:16px;z-index:50;width:56px;height:56px;border-radius:50%;border:none;background:#075e54;color:#fff;font-size:26px;box-shadow:0 4px 14px rgba(0,0,0,.3);cursor:pointer">💬'+(n?'<span style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border-radius:999px;font-size:12px;min-width:20px;height:20px;line-height:20px;font-weight:700">'+n+'</span>':'')+'</button>';
+  var fab='<button onclick="chToggle()" aria-label="צ\'אט עם היועץ" style="position:fixed;bottom:16px;left:16px;z-index:50;width:56px;height:56px;border-radius:50%;border:none;background:#6e1d1d;color:#fff;font-size:26px;box-shadow:0 4px 14px rgba(0,0,0,.3);cursor:pointer">💬'+(n?'<span style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border-radius:999px;font-size:12px;min-width:20px;height:20px;line-height:20px;font-weight:700">'+n+'</span>':'')+'</button>';
   if(!CH.open){root.innerHTML=fab;return;}
   var keep=document.getElementById('chInp'),draft=keep?keep.value:'';
   var hadFocus=!!keep&&document.activeElement===keep,ss=keep?keep.selectionStart:0,se=keep?keep.selectionEnd:0;
   var list=document.getElementById('chList'),atBottom=scroll||!list||list.scrollHeight-list.scrollTop-list.clientHeight<60;
   root.innerHTML='<div style="position:fixed;bottom:0;left:0;z-index:60;width:min(100vw,420px);height:min(80vh,580px);background:#efeae2;border-radius:14px 14px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.3);display:flex;flex-direction:column">'+
-    '<div style="background:#075e54;color:#fff;padding:10px 14px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center;font-weight:700"><span>💬 צ\'אט עם היועץ</span>'+(chWide()?'':'<span style="cursor:pointer;font-size:20px" onclick="chToggle()">✕</span>')+'</div>'+
+    '<div style="background:#6e1d1d;color:#fff;padding:10px 14px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center;font-weight:700"><span>💬 צ\'אט עם היועץ</span>'+'<span style="cursor:pointer;font-size:22px;line-height:1;padding:0 4px" title="הקטן את הצ\'אט" onclick="chToggle()">'+(chWide()?'—':'✕')+'</span>'+'</div>'+
     '<div id="chList" style="flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px">'+
     (CH.msgs.length?CH.msgs.map(function(m){var mine=m.sender==='client';
       if(m.sender==='system'){
         var orig=CH.msgs.find(function(x){return x.id===m.reply;});
         // תגובה על ההודעה (כמו "השב" בוואטסאפ): ציטוט ההודעה המקורית ומתחתיה הטקסט
         return '<div style="align-self:flex-end;max-width:82%;background:#fff;border-radius:10px;padding:4px 4px 6px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15px;word-break:break-word">'+
-          (orig?'<div style="background:rgba(7,94,84,.08);border-inline-start:4px solid #075e54;border-radius:6px;padding:4px 8px;margin-bottom:4px"><div style="font-size:12px;font-weight:700;color:#075e54">'+(orig.sender==='client'?'את/ה':'היועץ')+'</div><div style="font-size:13px;color:#54656f;white-space:pre-wrap">'+esc(String(orig.body).slice(0,90))+'</div></div>':'')+
+          (orig?'<div style="background:rgba(7,94,84,.08);border-inline-start:4px solid #6e1d1d;border-radius:6px;padding:4px 8px;margin-bottom:4px"><div style="font-size:12px;font-weight:700;color:#6e1d1d">'+(orig.sender==='client'?'את/ה':'היועץ')+'</div><div style="font-size:13px;color:#54656f;white-space:pre-wrap">'+esc(String(orig.body).slice(0,90))+'</div></div>':'')+
           '<div style="padding:0 6px;white-space:pre-wrap">'+(m.kind==='done'?'✔ ':m.kind==='reminder'?'⏰ ':'📌 ')+esc(m.body)+'</div><div style="font-size:11px;color:#667781;text-align:left;padding:0 6px;margin-top:2px">'+chTime(m.at)+'</div></div>';
       }
-      return '<div style="align-self:'+(mine?'flex-start':'flex-end')+';max-width:82%;background:'+(mine?'#d9fdd3':'#fff')+';border-radius:10px;padding:6px 10px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15px;white-space:pre-wrap;word-break:break-word">'+esc(m.body)+'<div style="font-size:11px;color:#667781;text-align:left;margin-top:2px">'+(m.react==='like'?'👍 ':m.react==='dislike'?'👎 ':'')+chTime(m.at)+'</div></div>';}).join(''):'<div style="text-align:center;color:#667781;font-size:14px;margin-top:30px">אפשר לכתוב ליועץ כאן.</div>')+'</div>'+
-    '<div style="background:#f0f2f5;padding:8px;display:flex;gap:6px;align-items:flex-end"><textarea id="chInp" rows="1" maxlength="1000" placeholder="הקלד הודעה…" style="flex:1;resize:none;border:none;border-radius:18px;padding:9px 14px;font:inherit;font-size:16px;max-height:100px" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();chSend();}"></textarea><button onclick="chSend()" style="background:#075e54;color:#fff;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer">➤</button></div></div>';
+      return '<div style="align-self:'+(mine?'flex-start':'flex-end')+';max-width:82%;background:'+(mine?'#f3e3df':'#fff')+';border-radius:10px;padding:6px 10px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15px;white-space:pre-wrap;word-break:break-word">'+esc(m.body)+'<div style="font-size:11px;color:#667781;text-align:left;margin-top:2px">'+(m.react==='like'?'👍 ':m.react==='dislike'?'👎 ':'')+chTime(m.at)+'</div></div>';}).join(''):'<div style="text-align:center;color:#667781;font-size:14px;margin-top:30px">אפשר לכתוב ליועץ כאן.</div>')+'</div>'+
+    '<div style="background:#f0f2f5;padding:8px;display:flex;gap:6px;align-items:flex-end"><textarea id="chInp" rows="1" maxlength="1000" placeholder="הקלד הודעה…" style="flex:1;resize:none;border:none;border-radius:18px;padding:9px 14px;font:inherit;font-size:16px;max-height:100px" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();chSend();}"></textarea><button onclick="chSend()" style="background:#6e1d1d;color:#fff;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer">➤</button></div></div>';
   var inp=document.getElementById('chInp');inp.value=draft;
   if(hadFocus){inp.focus();try{inp.setSelectionRange(ss,se);}catch(e){}}
   var l2=document.getElementById('chList');if(atBottom)l2.scrollTop=l2.scrollHeight;
@@ -369,7 +388,7 @@ async function chPoll(){
     if(changed||!document.getElementById('chatRoot').innerHTML)chDraw(false);
   }catch(e){}
 }
-function chToggle(){if(chWide())return;CH.open=!CH.open;if(CH.open)chMarkSeen();chDraw(true);}
+function chToggle(){CH.open=!CH.open;if(CH.open)chMarkSeen();chDraw(true);}
 async function chSend(){
   if(CH.busy)return;var inp=document.getElementById('chInp'),v=(inp&&inp.value||'').trim();if(!v)return;
   CH.busy=true;
