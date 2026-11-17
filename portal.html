@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root{--brand:#a04a3f;--brand2:#b8645a;--bg:#f6f1ea;--panel:#fffdf9;--text:#2b1d1a;--muted:#7a6a62;--border:#ebe2d6;--accent:#a04a3f;--ok:#2f7a46;--warn:#b7791f;--soft:#f7ece8}
+  :root{--brand:#c0695c;--brand2:#d4857a;--bg:#fcf9f5;--panel:#fffdf9;--text:#2b1d1a;--muted:#7a6a62;--border:#f1e9df;--accent:#c0695c;--ok:#2f7a46;--warn:#b7791f;--soft:#fdeeea}
   *{box-sizing:border-box}
   body{margin:0;color:var(--text);font-family:"Assistant",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;line-height:1.6;font-size:17px;
     background:var(--bg) url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20120%2070%27%3E%3Cg%20opacity%3D%270.05%27%3E%3Cpath%20d%3D%27M4%2066%20L60%2012%20L116%2066%27%20fill%3D%27none%27%20stroke%3D%27%236e1d1d%27%20stroke-width%3D%279%27%2F%3E%3Cpolygon%20points%3D%2780%2C31%2080%2C4%2094%2C4%2094%2C45%27%20fill%3D%27%236e1d1d%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") no-repeat fixed left -60px bottom -40px / 520px auto}
@@ -25,7 +25,7 @@
   .step{flex:1 1 0;min-width:0;border:1px solid var(--border);background:var(--panel);border-radius:12px;padding:9px 1px;font-size:12px;line-height:1.15;text-align:center;font-weight:700;color:var(--muted);cursor:pointer;white-space:normal;word-break:break-word;font-family:inherit;transition:transform .12s}
   .step:hover{transform:translateY(-1px)}
   .step.done{color:var(--ok);border-color:#cfe3d4;background:#f1f7f2}
-  .step.current{color:#fff;border-color:transparent;background:var(--brand)!important;box-shadow:0 4px 12px rgba(160,74,63,.25)}
+  .step.current{color:#fff;border-color:transparent;background:var(--brand)!important;box-shadow:0 4px 12px rgba(192,105,92,.3)}
   .step.sel{outline:2px solid var(--brand);outline-offset:2px}
   .step .cnt{display:block;width:fit-content;margin:2px auto 0;min-width:14px;padding:0 4px;border-radius:999px;background:#f6dcd7;color:var(--brand);font-size:10px}
   .step.current .cnt{background:rgba(255,255,255,.92)}
@@ -59,13 +59,25 @@
   .done-box .di{font-size:14px;padding:2px 0;color:#255f37}
   .center{text-align:center;padding:60px 16px;color:var(--muted)}
   .bfoot{max-width:720px;margin:6px auto 28px;padding:0 16px}
-  .bfoot .in{border-top:1px solid rgba(160,74,63,.25);padding-top:12px;display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;font-size:13.5px;color:var(--muted)}
+  .bfoot .in{border-top:1px solid rgba(192,105,92,.3);padding-top:12px;display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;font-size:13.5px;color:var(--muted)}
   .bfoot a{color:var(--brand);text-decoration:none;font-weight:600;direction:ltr;unicode-bidi:embed}
   .bfoot .ic{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;align-items:center;justify-content:center;font-size:11px;margin-inline-end:6px;vertical-align:middle}
+
+  .step.current{background:linear-gradient(135deg,#d4857a,#c0695c)!important}
+  .step{box-shadow:0 1px 3px rgba(120,70,50,.08)}
+  .card{border-radius:20px;box-shadow:0 2px 6px rgba(120,70,50,.05),0 12px 28px rgba(120,70,50,.07);border-color:#f3ebe1}
+  .card h2{letter-spacing:.1px}
+  .item{border-radius:14px;box-shadow:0 1px 2px rgba(120,70,50,.05);border-color:#f1e9df}
+  .item.sent{background:#fffaf0}
+  button.send{background:linear-gradient(135deg,#d4857a,#c0695c);box-shadow:0 3px 8px rgba(192,105,92,.3)}
+  .tag.me{background:#fdeeea;color:#a9554a}
+  .tag.adv{background:#f8f0e0;color:#8a6428}
+  .appr,.done-box{background:#f3faf4;border-color:#d6ebda}
+  h1{background:linear-gradient(90deg,#c0695c,#d98f6a);-webkit-background-clip:text;background-clip:text;color:transparent}
 </style>
 </head>
 <body>
-<header class="brandbar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 70"><g opacity="1"><path d="M4 66 L60 12 L116 66" fill="none" stroke="#a04a3f" stroke-width="9"/><polygon points="80,31 80,4 94,4 94,45" fill="#a04a3f"/></g></svg><div><div class="bn">יצחק כהן</div><div class="bt">יועץ משכנתא ונדל"ן</div></div></header>
+<header class="brandbar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 70"><g opacity="1"><path d="M4 66 L60 12 L116 66" fill="none" stroke="#c0695c" stroke-width="9"/><polygon points="80,31 80,4 94,4 94,45" fill="#c0695c"/></g></svg><div><div class="bn">יצחק כהן</div><div class="bt">יועץ משכנתא ונדל"ן</div></div></header>
 <div class="brandline"></div>
 <div class="wrap" id="app"><div class="center">טוען…</div></div>
 <footer class="bfoot"><div class="in"><span><span class="ic">✆</span>נייד: <a href="tel:0528932640">052-8932640</a></span><span><span class="ic">☎</span>משרד: <a href="tel:035591712">03-5591712</a></span><span><span class="ic">✉</span><a href="mailto:a035591712@gmail.com">a035591712@gmail.com</a></span></div></footer>
@@ -225,7 +237,7 @@ function render(){
 function greetByTime(){var h=new Date().getHours();if(h>=9&&h<11)return 'בוקר טוב';if(h>=11&&h<16)return 'צהריים טובים';if(h>=16&&h<19)return 'ערב טוב';return 'לילה טוב';}
 function donutHtml(p){
   if(!p||!p.segs)return '';
-  var colors=['#2f7a46','#a04a3f','#c27c3a','#9a7b6a'],start=0,bg='',fg='';
+  var colors=['#2f7a46','#c0695c','#c27c3a','#9a7b6a'],start=0,bg='',fg='';
   p.segs.forEach(function(g,i){
     var len=Math.max(0,g.w-1),off=25-start;
     bg+='<circle cx="21" cy="21" r="15.9155" fill="none" stroke="'+colors[i%4]+'" stroke-opacity=".2" stroke-width="6" stroke-dasharray="'+len+' '+(100-len)+'" stroke-dashoffset="'+off+'"/>';
@@ -236,7 +248,7 @@ function donutHtml(p){
 }
 function legendHtml(p){
   if(!p||!p.segs)return '';
-  var colors=['#2f7a46','#a04a3f','#c27c3a','#9a7b6a'];
+  var colors=['#2f7a46','#c0695c','#c27c3a','#9a7b6a'];
   return '<div class="card" style="padding:10px 12px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+p.segs.map(function(g,i){
     return '<div style="font-size:12px;line-height:1.3"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+colors[i%4]+';margin-inline-end:5px"></span><b>'+esc(g.label)+'</b> <span style="color:var(--ok);font-weight:700">'+Math.round(g.w*g.f)+'/'+g.w+'%</span><div style="color:var(--muted);font-size:11px">'+esc(g.sub)+'</div></div>';}).join('')+'</div></div>';
 }
@@ -355,24 +367,24 @@ function chDraw(scroll){
   var root=document.getElementById('chatRoot');if(!root||!S.data)return;
   chDock();
   var n=CH.open?0:chUnread();
-  var fab='<button onclick="chToggle()" aria-label="צ\'אט עם היועץ" style="position:fixed;bottom:16px;left:16px;z-index:50;width:56px;height:56px;border-radius:50%;border:none;background:#a04a3f;color:#fff;font-size:26px;box-shadow:0 4px 14px rgba(0,0,0,.3);cursor:pointer">💬'+(n?'<span style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border-radius:999px;font-size:12px;min-width:20px;height:20px;line-height:20px;font-weight:700">'+n+'</span>':'')+'</button>';
+  var fab='<button onclick="chToggle()" aria-label="צ\'אט עם היועץ" style="position:fixed;bottom:16px;left:16px;z-index:50;width:56px;height:56px;border-radius:50%;border:none;background:#c0695c;color:#fff;font-size:26px;box-shadow:0 4px 14px rgba(0,0,0,.3);cursor:pointer">💬'+(n?'<span style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border-radius:999px;font-size:12px;min-width:20px;height:20px;line-height:20px;font-weight:700">'+n+'</span>':'')+'</button>';
   if(!CH.open){root.innerHTML=fab;return;}
   var keep=document.getElementById('chInp'),draft=keep?keep.value:'';
   var hadFocus=!!keep&&document.activeElement===keep,ss=keep?keep.selectionStart:0,se=keep?keep.selectionEnd:0;
   var list=document.getElementById('chList'),atBottom=scroll||!list||list.scrollHeight-list.scrollTop-list.clientHeight<60;
   root.innerHTML='<div style="position:fixed;bottom:0;left:0;z-index:60;width:min(100vw,420px);height:min(80vh,580px);background:#efeae2;border-radius:14px 14px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.3);display:flex;flex-direction:column">'+
-    '<div style="background:#a04a3f;color:#fff;padding:10px 14px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center;font-weight:700"><span>💬 צ\'אט עם היועץ</span>'+'<span style="cursor:pointer;font-size:22px;line-height:1;padding:0 4px" title="הקטן את הצ\'אט" onclick="chToggle()">'+(chWide()?'—':'✕')+'</span>'+'</div>'+
+    '<div style="background:#c0695c;color:#fff;padding:10px 14px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center;font-weight:700"><span>💬 צ\'אט עם היועץ</span>'+'<span style="cursor:pointer;font-size:22px;line-height:1;padding:0 4px" title="הקטן את הצ\'אט" onclick="chToggle()">'+(chWide()?'—':'✕')+'</span>'+'</div>'+
     '<div id="chList" style="flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px">'+
     (CH.msgs.length?CH.msgs.map(function(m){var mine=m.sender==='client';
       if(m.sender==='system'){
         var orig=CH.msgs.find(function(x){return x.id===m.reply;});
         // תגובה על ההודעה (כמו "השב" בוואטסאפ): ציטוט ההודעה המקורית ומתחתיה הטקסט
         return '<div style="align-self:flex-end;max-width:82%;background:#fff;border-radius:10px;padding:4px 4px 6px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15px;word-break:break-word">'+
-          (orig?'<div style="background:rgba(7,94,84,.08);border-inline-start:4px solid #a04a3f;border-radius:6px;padding:4px 8px;margin-bottom:4px"><div style="font-size:12px;font-weight:700;color:#a04a3f">'+(orig.sender==='client'?'את/ה':'היועץ')+'</div><div style="font-size:13px;color:#54656f;white-space:pre-wrap">'+esc(String(orig.body).slice(0,90))+'</div></div>':'')+
+          (orig?'<div style="background:rgba(7,94,84,.08);border-inline-start:4px solid #c0695c;border-radius:6px;padding:4px 8px;margin-bottom:4px"><div style="font-size:12px;font-weight:700;color:#c0695c">'+(orig.sender==='client'?'את/ה':'היועץ')+'</div><div style="font-size:13px;color:#54656f;white-space:pre-wrap">'+esc(String(orig.body).slice(0,90))+'</div></div>':'')+
           '<div style="padding:0 6px;white-space:pre-wrap">'+(m.kind==='done'?'✔ ':m.kind==='reminder'?'⏰ ':'📌 ')+esc(m.body)+'</div><div style="font-size:11px;color:#667781;text-align:left;padding:0 6px;margin-top:2px">'+chTime(m.at)+'</div></div>';
       }
       return '<div style="align-self:'+(mine?'flex-start':'flex-end')+';max-width:82%;background:'+(mine?'#f3e3df':'#fff')+';border-radius:10px;padding:6px 10px;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:15px;white-space:pre-wrap;word-break:break-word">'+esc(m.body)+'<div style="font-size:11px;color:#667781;text-align:left;margin-top:2px">'+(m.react==='like'?'👍 ':m.react==='dislike'?'👎 ':'')+chTime(m.at)+'</div></div>';}).join(''):'<div style="text-align:center;color:#667781;font-size:14px;margin-top:30px">אפשר לכתוב ליועץ כאן.</div>')+'</div>'+
-    '<div style="background:#f0f2f5;padding:8px;display:flex;gap:6px;align-items:flex-end"><textarea id="chInp" rows="1" maxlength="1000" placeholder="הקלד הודעה…" style="flex:1;resize:none;border:none;border-radius:18px;padding:9px 14px;font:inherit;font-size:16px;max-height:100px" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();chSend();}"></textarea><button onclick="chSend()" style="background:#a04a3f;color:#fff;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer">➤</button></div></div>';
+    '<div style="background:#f0f2f5;padding:8px;display:flex;gap:6px;align-items:flex-end"><textarea id="chInp" rows="1" maxlength="1000" placeholder="הקלד הודעה…" style="flex:1;resize:none;border:none;border-radius:18px;padding:9px 14px;font:inherit;font-size:16px;max-height:100px" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();chSend();}"></textarea><button onclick="chSend()" style="background:#c0695c;color:#fff;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer">➤</button></div></div>';
   var inp=document.getElementById('chInp');inp.value=draft;
   if(hadFocus){inp.focus();try{inp.setSelectionRange(ss,se);}catch(e){}}
   var l2=document.getElementById('chList');if(atBottom)l2.scrollTop=l2.scrollHeight;
