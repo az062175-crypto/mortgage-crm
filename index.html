@@ -2422,7 +2422,7 @@ function migrateClient(c) {
   // Backfill: seed/migrate the mortgage-deed workflow for clients that already passed the seller stage
   try {
     const _purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
-    const _needsShtar = c.registrationType === 'tabu-ownership' && _purposes.some(p => ['שיפוצים','הרחבה','כל מטרה','גישור'].includes(p));
+    const _needsShtar = clientNeedsShtar(c, _purposes);
     const _reachedSeller = c.stage === 'seller' || (c.stageHistory || []).some(h => ['seller','signature','execution','archive'].includes(h.stage));
     if (_needsShtar && _reachedSeller && typeof seedSellerStageTasks === 'function') {
       seedSellerStageTasks(c);
@@ -12144,6 +12144,115 @@ function closeModal() {
   try { if (typeof _flushPendingRemoteState === 'function') _flushPendingRemoteState(); } catch (e) {}
 }
 
+// ============================
+// Searchable selects — every <select> with many options inside a dialog becomes a type-to-search box.
+// The original <select> stays in the DOM (hidden), so .value / onchange / existing code keep working.
+// ============================
+(function () {
+  const MIN_OPTIONS = 4;
+  const enhanced = new Set();
+  let openList = null;
+
+  function closeList() {
+    if (openList) { openList.remove(); openList = null; }
+  }
+  function labelOf(sel) {
+    const o = sel.options[sel.selectedIndex];
+    return o ? o.textContent.trim() : '';
+  }
+  function enhance(sel) {
+    if (sel.dataset.ss || sel.multiple || sel.dataset.nosearch !== undefined || sel.options.length < MIN_OPTIONS) return;
+    sel.dataset.ss = '1';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;display:block;width:' + (sel.style.width || '100%') + ';max-width:100%;';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.autocomplete = 'off';
+    inp.placeholder = '🔍 הקלד לחיפוש…';
+    inp.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;background:white;cursor:pointer;';
+    wrap.appendChild(inp);
+    sel.parentNode.insertBefore(wrap, sel);
+    sel.style.display = 'none';
+    const sync = () => { if (document.activeElement !== inp) inp.value = labelOf(sel); };
+    sync();
+    enhanced.add({ sel, sync });
+
+    let items = [], active = -1, list = null;
+    const choose = (opt) => {
+      sel.value = opt.value;
+      inp.value = opt.textContent.trim();
+      closeList(); list = null;
+      sel.dispatchEvent(new Event('input', { bubbles: true }));
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      inp.blur();
+    };
+    const render = (q) => {
+      q = (q || '').trim().toLowerCase();
+      closeList();
+      list = document.createElement('div');
+      const r = inp.getBoundingClientRect();
+      const below = window.innerHeight - r.bottom;
+      const h = Math.min(260, Math.max(120, below > 160 ? below - 12 : r.top - 12));
+      list.style.cssText = 'position:fixed;z-index:100000;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow-y:auto;direction:rtl;font-size:14px;'
+        + 'left:' + r.left + 'px;width:' + r.width + 'px;max-height:' + h + 'px;'
+        + (below > 160 ? 'top:' + (r.bottom + 2) + 'px;' : 'bottom:' + (window.innerHeight - r.top + 2) + 'px;');
+      items = [];
+      Array.from(sel.options).forEach(o => {
+        if (o.disabled) return;
+        const t = o.textContent.trim();
+        if (q && t.toLowerCase().indexOf(q) === -1) return;
+        const d = document.createElement('div');
+        d.textContent = t || '—';
+        d.style.cssText = 'padding:7px 12px;cursor:pointer;' + (o.value === sel.value ? 'font-weight:700;' : '');
+        d.onmousedown = (e) => { e.preventDefault(); choose(o); };
+        d.onmouseenter = () => setActive(items.indexOf(d));
+        d._opt = o;
+        list.appendChild(d); items.push(d);
+      });
+      if (!items.length) {
+        const d = document.createElement('div');
+        d.textContent = 'לא נמצאו תוצאות';
+        d.style.cssText = 'padding:8px 12px;color:#888;';
+        list.appendChild(d);
+      }
+      document.body.appendChild(list);
+      openList = list;
+      setActive(items.length && q ? 0 : -1);
+    };
+    const setActive = (i) => {
+      active = i;
+      items.forEach((d, k) => { d.style.background = k === i ? '#dbeafe' : ''; });
+      if (items[i]) items[i].scrollIntoView({ block: 'nearest' });
+    };
+    inp.addEventListener('focus', () => { inp.select(); render(''); });
+    inp.addEventListener('click', () => { if (!openList) render(''); });
+    inp.addEventListener('input', () => render(inp.value));
+    inp.addEventListener('blur', () => { closeList(); list = null; inp.value = labelOf(sel); });
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (!openList) render(inp.value === labelOf(sel) ? '' : inp.value); setActive(Math.min(items.length - 1, active + 1)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(0, active - 1)); }
+      else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (items[active]) choose(items[active]._opt); }
+      else if (e.key === 'Escape') { e.stopPropagation(); closeList(); inp.value = labelOf(sel); inp.blur(); }
+    });
+  }
+  function scan() {
+    const mc = document.getElementById('modalContent');
+    if (mc) mc.querySelectorAll('select').forEach(enhance);
+  }
+  function init() {
+    const mc = document.getElementById('modalContent');
+    if (!mc) return;
+    new MutationObserver(scan).observe(mc, { childList: true, subtree: true });
+    mc.addEventListener('scroll', closeList);
+    // Keep the visible text in step with values set by code after render
+    setInterval(() => {
+      enhanced.forEach(e => { if (!e.sel.isConnected) enhanced.delete(e); else e.sync(); });
+    }, 400);
+    scan();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+
 // True while a modal is open — the sync layer uses this to defer remote-state application
 // so an in-progress edit (typing an email, filling a form) isn't blown away by a pull.
 function _isModalOpen() {
@@ -15537,6 +15646,21 @@ const SELLER_TASKS_BY_DEAL = {
   'מחיר למשתכן': ['היתר בניה', 'אישור זכויות / נסח טאבו', 'מש"ח', 'דיווח מקוצר', 'דו"ח מצב דייר', 'מכתב החרגה']
 };
 
+// Mortgage-deed tasks: only for tabu-ownership + the deal types below.
+// Plain "מיחזור" qualifies only if NOT internal refinance, or if the client's bank is הבינלאומי / פאגי.
+const SHTAR_DEAL_TYPES = ['שיפוצים','כל מטרה','הרחבה','גישור','בניה עצמי','מיחזור + שיפוץ','מיחזור + הרחבה','מיחזור + כל מטרה','מיחזור + תוספת','מיחזור + גרירה'];
+function clientNeedsShtar(client, purposes) {
+  if (!client || client.registrationType !== 'tabu-ownership') return false;
+  if ((purposes || []).some(p => SHTAR_DEAL_TYPES.includes(p))) return true;
+  if ((purposes || []).includes('מיחזור')) {
+    if (client.refinanceType !== 'internal') return true;
+    const banker = client.bankerId ? ((state.settings && state.settings.bankers) || []).find(b => b.id === client.bankerId) : null;
+    const bank = (banker && banker.bank) || '';
+    return bank.indexOf('בינלאומי') !== -1 || bank.indexOf('פאג') !== -1;
+  }
+  return false;
+}
+
 function seedSellerStageTasks(client) {
   const purposes = (client.purposes && client.purposes.length) ? client.purposes : (client.purpose ? [client.purpose] : []);
   const seen = new Set();
@@ -15613,7 +15737,7 @@ function seedSellerStageTasks(client) {
     // Rename old "בוצע רישום בטאבו" → "שודר לטאבו?"
     if (t.source === 'shtar-mishkanta-seed' && t.title === 'בוצע רישום בטאבו') t.title = 'שודר לטאבו?';
   });
-  if (client.registrationType === 'tabu-ownership' && purposes.some(p => ['שיפוצים','הרחבה','כל מטרה','גישור'].includes(p))) {
+  if (clientNeedsShtar(client, purposes)) {
     SHTAR_TITLES.forEach(title => {
       if (!client.tasks.some(t => t.stage === 'seller' && t.title === title)) {
         client.tasks.push({ id: uid(), stage: 'seller', title, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], source: 'shtar-mishkanta-seed' });
