@@ -6471,11 +6471,11 @@ function openGmailCompose(clientId) {
   const appraiserId = (document.querySelector('input[name="sendAppraiser"]:checked') || {}).value;
   if (!appraiserId) { alert('בחר שמאי'); return; }
   const a = state.settings.appraisers.find(x => x.id === appraiserId);
-  if (!a.email) { alert('לשמאי אין אימייל. עדכן בהגדרות.'); return; }
+  if (!a.email) alert('לשמאי אין אימייל — הטיוטה תיפתח בלי נמען, תוסיף אותו ידנית.');
   const c = state.clients.find(x => x.id === clientId);
   const subject = document.getElementById('mailSubject').value;
   const body = document.getElementById('mailBody').value;
-  const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&to=' + encodeURIComponent(a.email) + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+  const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&to=' + encodeURIComponent(a.email||'') + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
   if (!Array.isArray(c.sentToAppraiserIds)) c.sentToAppraiserIds = [];
   if (!c.sentToAppraiserIds.includes(appraiserId)) c.sentToAppraiserIds.push(appraiserId);
   logCommunication(clientId, 'email', { to: a.email, subject, body, recipient: 'appraiser', appraiserName: a.name });
@@ -16552,7 +16552,7 @@ function _sendStageMissEmail(clientId, stageLabel) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
   const to = (document.getElementById('stageMissEmail').value || '').trim();
-  if (!to) { alert('נדרש להזין כתובת מייל של הלקוח'); return; }
+  if (!to) alert('חסר כתובת מייל — הטיוטה תיפתח בלי נמען, תוסיף אותו ידנית.');
   const body = (document.getElementById('stageMissPreview').value || '').trim();
   if (!body) { alert('ההודעה ריקה — סמנ/י לפחות פריט אחד'); return; }
   const subj = 'השלמת מסמכים לתיק המשכנתא — ' + _emailSubjectClient(c);
@@ -17216,9 +17216,9 @@ function sendAppraiserMessage(appraiserId, clientId, type) {
   const a = state.settings.appraisers.find(x => x.id === appraiserId);
   const msg = document.getElementById('amMsg').value;
   if (type === 'email') {
-    if (!a.email) { alert('אין אימייל לשמאי'); return; }
+    if (!a.email) alert('אין אימייל לשמאי — הטיוטה תיפתח בלי נמען, תוסיף אותו ידנית.');
     const subject = document.getElementById('amSubject').value;
-    const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&to=' + encodeURIComponent(a.email) + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg);
+    const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&to=' + encodeURIComponent(a.email||'') + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg);
     const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener';
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     logCommunication(clientId, 'email', { to: a.email, subject, body: msg, recipient: 'appraiser', appraiserName: a.name });
@@ -17298,9 +17298,9 @@ function sendBankerMessage(bankerId, clientId, type) {
   const c = state.clients.find(x => x.id === clientId);
   const msg = document.getElementById('bmMsg').value;
   if (type === 'email') {
-    if (!b.email) { alert('אין אימייל לבנקאי'); return; }
+    if (!b.email) alert('אין אימייל לבנקאי — הטיוטה תיפתח בלי נמען, תוסיף אותו ידנית.');
     const subject = document.getElementById('bmSubject').value;
-    const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&to=' + encodeURIComponent(b.email) + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg);
+    const url = 'https://mail.google.com/mail/?authuser=a035591712@gmail.com&view=cm&fs=1&to=' + encodeURIComponent(b.email||'') + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg);
     const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener';
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     logCommunication(clientId, 'email', { to: b.email, subject, body: msg, recipient: 'banker', bankerName: b.name });
