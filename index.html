@@ -234,7 +234,12 @@
     /* Hide the big "+ ליד חדש" / "+ לקוח חדש" buttons on mobile — merged into the ⋯ menu */
     .topbar .tab-btn-add { display: none; }
     /* Keep the "חיפוש" button visible in the topbar on mobile — user asked for it */
-    .topbar .topbar-search { display: inline-flex !important; padding: 6px 10px; font-size: 12px; min-height: 36px; }
+    .topbar .topbar-search { display: inline-flex !important; padding: 6px 10px; font-size: 12px; min-height: 36px; min-width: 0; flex: 0 1 150px; }
+    /* Floating buttons sit above the bottom nav instead of covering its first/last tabs */
+    #actToggle { bottom: 72px !important; }
+    #chatFab { bottom: 72px !important; }
+    #chatToasts { bottom: 134px !important; max-width: calc(100vw - 40px); }
+    .ctl-two-col { grid-template-columns: 1fr !important; }
     .topbar .btn { padding: 6px 10px; font-size: 12px; min-height: 36px; }
     .topbar .btn.small { padding: 4px 8px; font-size: 11px; min-height: 32px; }
     /* Cloud status badge — icon only, hide the "מחובר" / "לפני X דקות" text to save space */
@@ -600,7 +605,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-05 #AG</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-17 #AU</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -1209,6 +1214,7 @@ const DEFAULT_DATA = {
       { id: 'appraiser-visit', title: 'תיאום ביקור שמאי', subject: 'תיאום ביקור שמאי', body: 'שלום {name},\nהשמאי יצור עמך קשר לתיאום ביקור בקרוב.\nאנא היה זמין.\nתודה,\nיצחק' },
       { id: 'lead-intro', title: 'ליד — הכרות ראשונה', subject: 'היכרות ראשונה — ייעוץ משכנתא', body: 'שלום {name},\nזה יצחק, יועץ משכנתאות.\nקיבלתי את פנייתך ואשמח לקבוע שיחה קצרה להיכרות.\nמתי נוח לך?\nתודה,\nיצחק' },
       { id: 'lead-followup', title: 'ליד — פולואפ', subject: 'המשך הטיפול בבקשת המשכנתא', body: 'שלום {name},\nמזכיר את עצמי — יצחק, יועץ המשכנתאות שדיברנו.\nרציתי לבדוק אם התקדמת עם ההחלטה או שיש שאלות שאוכל לענות עליהן.\nתודה,\nיצחק' },
+      { id: 'docs-status', title: 'עדכון סטטוס מסמכים', subject: 'עדכון סטטוס מסמכים לתיק המשכנתא', body: 'שלום {name},\nמצרף עדכון סטטוס המסמכים לתיק:\n\n{docsStatus}\n\nאשמח לקבל את החסר בהקדם.\nתודה,\nיצחק' },
     ],
     emailTemplates: [
       { id: 'lead-intro-email', title: 'ליד — הכרות ראשונה', subject: 'היכרות ראשונה — ייעוץ משכנתא', body: 'שלום {name},\n\nזה יצחק, יועץ משכנתאות.\nקיבלתי את פנייתך ואשמח לקבוע שיחה קצרה להיכרות.\nמתי נוח לך?\n\nבברכה,\nיצחק' },
@@ -1378,6 +1384,13 @@ try {
       t.subject = _tplHeaders[t.id];
     }
   });
+  // Add the docs-status template to existing installs (once — if the owner deletes it, it stays deleted)
+  if (!state.settings._docsStatusTplAdded) {
+    if (!state.settings.whatsappTemplates.some(t => t.id === 'docs-status')) {
+      state.settings.whatsappTemplates.push(JSON.parse(JSON.stringify(DEFAULT_DATA.settings.whatsappTemplates.find(t => t.id === 'docs-status'))));
+    }
+    state.settings._docsStatusTplAdded = true;
+  }
   // Force-update sig-reminder to new version — unconditional overwrite
   {
     const _sigTpl = state.settings.whatsappTemplates.find(t => t.id === 'sig-reminder');
@@ -3208,6 +3221,7 @@ function permanentlyDelete(clientId) {
   const target = state.trash.find(x => x.id === clientId);
   const name = target ? (target.name || '—') : clientId;
   if (!confirm('למחוק לצמיתות את "' + name + '"? הפעולה בלתי הפיכה.')) return;
+  _markPurged([clientId]);
   state.trash = state.trash.filter(x => x.id !== clientId);
   const removed = beforeCount - state.trash.length;
   saveNow();
@@ -3219,6 +3233,7 @@ function permanentlyDelete(clientId) {
 function emptyTrash() {
   if (!Array.isArray(state.trash) || !state.trash.length) return;
   if (!confirm('לרוקן את הפח? כל ' + state.trash.length + ' התיקים יימחקו לצמיתות.')) return;
+  _markPurged(state.trash.map(c => c.id));
   state.trash = [];
   saveNow();
   renderTrashPanel();
@@ -3229,11 +3244,21 @@ function autoPurgeTrash() {
   if (!Array.isArray(state.trash) || !state.trash.length) return;
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const before = state.trash.length;
+  const expired = state.trash.filter(c => !(new Date(c._deletedAt || 0).getTime() > cutoff));
+  _markPurged(expired.map(c => c.id));
   state.trash = state.trash.filter(c => {
     const t = new Date(c._deletedAt || 0).getTime();
     return t > cutoff;
   });
   if (state.trash.length !== before) save();
+}
+
+// Tombstones for permanently-deleted clients. Without them, a device (or the cloud) that still
+// holds a copy re-adds the client on the next sync merge.
+function _markPurged(ids) {
+  if (!state.purged || typeof state.purged !== 'object' || Array.isArray(state.purged)) state.purged = {};
+  const t = now();
+  (ids || []).forEach(id => { if (id) state.purged[id] = t; });
 }
 
 function openTrashDialog() {
@@ -3857,7 +3882,7 @@ function renderControlBoard() {
         <div style="font-size:15px;line-height:1.6;color:#e2e8f0">${briefing}</div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div class="ctl-two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
 
         <!-- 1. עשה עכשיו -->
         <div class="panel" style="border:2px solid #dc2626">
@@ -4040,13 +4065,10 @@ function renderControlBoard() {
   `;
 }
 
-function renderDashboard() {
-  const el = document.getElementById('tabDashboard');
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  // Apply dashboard filter to a subset for stats
-  const filteredClients = state.clients.filter(c => {
+// The dashboard's filter scope. Tiles and the dialogs they open both read from here,
+// so a tile's count always equals the rows in its dialog.
+function _dashFilteredClients() {
+  return state.clients.filter(c => {
     if (dashFilter.year !== 'all') {
       const yr = c.leadAt ? new Date(c.leadAt).getFullYear() : (c.createdAt ? new Date(c.createdAt).getFullYear() : null);
       if (String(yr) !== dashFilter.year) return false;
@@ -4063,6 +4085,13 @@ function renderDashboard() {
     if (dashFilter.appraiserId && !((c.sentToAppraiserIds||[]).includes(dashFilter.appraiserId))) return false;
     return true;
   });
+}
+function renderDashboard() {
+  const el = document.getElementById('tabDashboard');
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const filteredClients = _dashFilteredClients();
   const total = filteredClients.length;
   const active = filteredClients.filter(c => c.stage !== 'archive' && c.stage !== 'execution').length;
   const closedThisMonth = filteredClients.filter(c => (c.stage === 'execution' || c.stage === 'archive') && c.stageHistory.some(h => (h.stage === 'execution') && new Date(h.enteredAt) >= monthStart)).length;
@@ -4152,7 +4181,10 @@ function renderDashboard() {
 
   // Top bankers by client count — from the first stage where a banker name was assigned
   const bankerCount = {};
-  state.clients.forEach(c => { if (c.bankerId) bankerCount[c.bankerId] = (bankerCount[c.bankerId] || 0) + 1; });
+  // Same rule as openBankerClientsDialog (_bankerCreditOf), so the count equals the dialog's rows.
+  state.clients.forEach(c => {
+    _bankerCreditOf(c).ids.forEach(id => { bankerCount[id] = (bankerCount[id] || 0) + 1; });
+  });
   const topBankers = Object.entries(bankerCount).sort((a,b) => b[1]-a[1]).slice(0, 5).map(([id, cnt]) => {
     const b = state.settings.bankers.find(x => x.id === id);
     return { id, name: b?b.name:'—', bank: b?b.bank:'', count: cnt };
@@ -4161,7 +4193,7 @@ function renderDashboard() {
   // Top appraisers by client count (from sentToAppraiserIds)
   const appraiserCount = {};
   state.clients.forEach(c => {
-    (c.sentToAppraiserIds || []).forEach(id => {
+    new Set(c.sentToAppraiserIds || []).forEach(id => {
       appraiserCount[id] = (appraiserCount[id] || 0) + 1;
     });
   });
@@ -5873,7 +5905,7 @@ function renderClientDetail() {
           </div>
           ${renderTasksHtml(c, c.stage)}
           <div class="add-row" style="margin-top:12px">
-            <input id="newTaskInput_${c.id}" placeholder="הוסף משימה חדשה לשלב זה" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit">
+            <input id="newTaskInput_${c.id}" placeholder="הוסף משימה חדשה לשלב זה" onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskFromInput('${c.id}')}" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit">
             <button class="btn small" onclick="addTaskFromInput('${c.id}')">+ הוסף</button>
           </div>
         </div>
@@ -5911,7 +5943,7 @@ function renderClientDetail() {
             }
             const notes = (c.leadNotes || []).slice().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
             // Only MANUAL tasks (added by user via "+" button or custom task modal) — skip auto-seeded stage tasks
-            const manualTasks = (c.tasks || []).filter(t => t.custom === true);
+            const manualTasks = (c.tasks || []).filter(t => t.custom === true && !t.stageAdded);
             const activeTasks = manualTasks.filter(t => (t.status||'active') !== 'done').sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
             const doneTasks = manualTasks.filter(t => (t.status||'active') === 'done').sort((a,b) => new Date(b.doneAt||b.createdAt) - new Date(a.doneAt||a.createdAt));
             const renderNoteRow = (n) => {
@@ -6023,8 +6055,8 @@ function renderClientDetail() {
 function renderTasksHtml(c, stage) {
   const currentIdx = stageIndex(stage);
   const tasks = c.tasks.filter(t => {
-    // Custom tasks added via "+" button appear only in the manual tasks panel — hide from stage sections
-    if (t.custom) return false;
+    // Custom tasks appear only in the manual tasks panel — except ones typed into this stage's own "add task" box
+    if (t.custom && !t.stageAdded) return false;
     // In the appraisal stage — hide the "appraiser value" floating task from the main task list.
     if (stage === 'appraisal' && t.floating && t.source === 'appraisal-value-check') return false;
     // Post-send tasks appear separately AFTER the "sent to appraiser" panel (only within appraisal stage)
@@ -7114,7 +7146,7 @@ function setTaskCustomDate(clientId, taskId, val) {
 function openTargetDateDialog(range) {
   const today = new Date(); today.setHours(0,0,0,0);
   const rows = [];
-  state.clients.forEach(c => {
+  _dashFilteredClients().forEach(c => {
     if (!c.targetDate) return;
     if (c.stage === 'execution' || c.stage === 'archive' || c.stage === 'lead') return;
     const target = new Date(c.targetDate + 'T00:00:00');
@@ -7166,7 +7198,7 @@ function openTargetDateDialog(range) {
 function openRemainingExecutionsDialog() {
   // List all clients that were partially executed (executed > 0 AND executed < approved)
   const rows = [];
-  state.clients.forEach(c => {
+  _dashFilteredClients().forEach(c => {
     const acc = (c.approvals || []).slice().reverse().find(a => a.accepted && Number(a.amount) > 0);
     if (!acc) return;
     const approved = Number(acc.amount) || 0;
@@ -7630,7 +7662,7 @@ function sendInsuranceWhatsApp(clientId, phone) {
   if (normalized.startsWith('0')) normalized = '972' + normalized.slice(1);
   const message = document.getElementById('insWaMessage').value;
   const url = 'https://wa.me/' + normalized + '?text=' + encodeURIComponent(message);
-  logCommunication(clientId, 'whatsapp', { messagePreview: (message||'').slice(0, 100) });
+  logCommunication(clientId, 'whatsapp', { body: (message||''), messagePreview: (message||'').slice(0, 100) });
   window.open(url, '_blank', 'noopener');
   closeModal();
 }
@@ -7752,7 +7784,7 @@ function sendZechiaWhatsApp(clientId) {
   if (normalized.startsWith('0')) normalized = '972' + normalized.slice(1);
   const message = document.getElementById('zechWaBody').value;
   const url = 'https://wa.me/' + normalized + '?text=' + encodeURIComponent(message);
-  logCommunication(clientId, 'whatsapp', { messagePreview: (message||'').slice(0, 100) });
+  logCommunication(clientId, 'whatsapp', { body: (message||''), messagePreview: (message||'').slice(0, 100) });
   window.open(url, '_blank', 'noopener');
   closeModal();
 }
@@ -9436,7 +9468,7 @@ function addTaskFromInput(clientId) {
   const val = input.value.trim();
   if (!val) return;
   const c = state.clients.find(x => x.id === clientId);
-  c.tasks.push({ id: uid(), stage: c.stage, title: val, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], custom: true });
+  c.tasks.push({ id: uid(), stage: c.stage, title: val, status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], custom: true, stageAdded: true });
   save(); renderClientDetail();
 }
 
@@ -10593,7 +10625,7 @@ function sendMissingDocsWhatsApp(clientId, isFollowUp) {
   c.missingDocsRequestChannel = 'whatsapp';
   c.missingDocsRequestCount = (c.missingDocsRequestCount || 0) + 1;
   if (isFollowUp) c.missingDocsFollowUpAt = now();
-  logCommunication(clientId, 'whatsapp', { to: phone, messagePreview: body.slice(0, 200), missingDocsRequest: true, followUp: !!isFollowUp });
+  logCommunication(clientId, 'whatsapp', { to: phone, body: body, messagePreview: body.slice(0, 200), missingDocsRequest: true, followUp: !!isFollowUp });
   save();
   window.open(url, '_blank', 'noopener');
   renderMissingDocsPopupBody(clientId);
@@ -16428,7 +16460,7 @@ function _sendStageMissWhatsApp(clientId) {
   window.open(url, '_blank');
   _markMissingDocsSent(c, 'whatsapp');
   if (typeof logCommunication === 'function') {
-    logCommunication(c.id, 'whatsapp', { to: phone, messagePreview: body.slice(0, 100), context: 'stage-missing' });
+    logCommunication(c.id, 'whatsapp', { to: phone, body: body, messagePreview: body.slice(0, 100), context: 'stage-missing' });
   }
   save();
   closeModal();
@@ -16807,7 +16839,7 @@ function seedDealDocsForPurposes(client) {
 
 // ========== Banker's Clients Dialog ==========
 function openDealTypeClientsDialog(dealType) {
-  const clients = state.clients.filter(c => {
+  const clients = _dashFilteredClients().filter(c => {
     if (c.stage === 'lead' || c.stage === 'execution' || c.stage === 'archive') return false;
     const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
     return purposes.includes(dealType);
@@ -16837,7 +16869,7 @@ function openDealTypeClientsDialog(dealType) {
 
 function openBankClientsDialog(bankName) {
   const bankerIds = state.settings.bankers.filter(b => b.bank === bankName).map(b => b.id);
-  const clients = state.clients.filter(c => c.bankerId && bankerIds.includes(c.bankerId) && c.stage !== 'lead' && c.stage !== 'execution' && c.stage !== 'archive');
+  const clients = _dashFilteredClients().filter(c => c.bankerId && bankerIds.includes(c.bankerId) && c.stage !== 'lead' && c.stage !== 'execution' && c.stage !== 'archive');
   const active = clients.filter(c => c.stage !== 'archive');
   const archived = clients.filter(c => c.stage === 'archive');
   const renderRow = (c) => {
@@ -16864,22 +16896,38 @@ function openBankClientsDialog(bankName) {
 // Executed-deals dialogs — called from the green execution stats panel.
 // Scope: anyone who ever reached execution, filtered by the panel's period (window._execStatsFilter).
 function _execPanelInScope() {
-  const pf = window._execStatsFilter || { year: 'all', month: 'all' };
+  const pf = window._execStatsFilter || { year: 'all', months: [] };
+  const monthsSel = Array.isArray(pf.months) ? pf.months : [];
   return (state.clients || []).filter(c => {
     const execEntry = (c.stageHistory || []).find(h => h.stage === 'execution');
     if (!execEntry || !execEntry.enteredAt) return false;
-    if (pf.year === 'all' && pf.month === 'all') return true;
+    if (pf.year === 'all' && monthsSel.length === 0) return true;
     const d = new Date(execEntry.enteredAt);
     if (isNaN(d)) return false;
     if (pf.year !== 'all' && d.getFullYear() !== Number(pf.year)) return false;
-    if (pf.month !== 'all' && (d.getMonth() + 1) !== Number(pf.month)) return false;
+    if (monthsSel.length > 0 && !monthsSel.includes(d.getMonth() + 1)) return false;
     return true;
   });
 }
-function _execDialogRow(c) {
+// Same bank / amount resolution the green stats panel uses, so a tile's count matches its dialog.
+function _execBankOf(c) {
   const acc = (c.approvals || []).find(a => a.accepted);
-  const bankName = (acc && (acc.bankName || acc.bank)) || '';
-  const amt = Number(c.executedAmount) || Number(acc && acc.amount) || 0;
+  let bankName = (acc && (acc.bankName || acc.bank)) || '';
+  const bankers = (state.settings && state.settings.bankers) || [];
+  if (!bankName && c.bankerId) { const b = bankers.find(x => x.id === c.bankerId); if (b) bankName = b.bank || ''; }
+  if (!bankName) {
+    const execTask = (c.tasks || []).find(t => t.stage === 'execution' && t.bankerId);
+    if (execTask) { const b = bankers.find(x => x.id === execTask.bankerId); if (b) bankName = b.bank || ''; }
+  }
+  return bankName;
+}
+function _execAmountOf(c) {
+  const acc = (c.approvals || []).find(a => a.accepted);
+  return Number(c.executedAmount) || Number(acc && acc.amount) || 0;
+}
+function _execDialogRow(c) {
+  const bankName = _execBankOf(c);
+  const amt = _execAmountOf(c);
   const purposes = (c.purposes && c.purposes.length) ? c.purposes.join(', ') : (c.purpose || '—');
   const stLbl = stageInfo(c.stage).label;
   return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="closeModal();openClient('${c.id}')">
@@ -16891,7 +16939,7 @@ function _execDialogRow(c) {
 }
 function openExecutedByPurposeDialog(dealType) {
   const all = _execPanelInScope().filter(c => {
-    const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
+    const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : ['לא מוגדר']);
     return purposes.includes(dealType);
   });
   const active = all.filter(c => c.stage !== 'archive');
@@ -16908,14 +16956,10 @@ function openExecutedByPurposeDialog(dealType) {
   `);
 }
 function openExecutedByBankDialog(bankName) {
-  const all = _execPanelInScope().filter(c => {
-    const acc = (c.approvals || []).find(a => a.accepted);
-    const bn = (acc && (acc.bankName || acc.bank)) || '';
-    return bn === bankName;
-  });
+  const all = _execPanelInScope().filter(c => _execBankOf(c) === bankName);
   const active = all.filter(c => c.stage !== 'archive');
   const archived = all.filter(c => c.stage === 'archive');
-  const totalAmt = all.reduce((s, c) => s + (Number(c.executedAmount) || 0), 0);
+  const totalAmt = all.reduce((s, c) => s + _execAmountOf(c), 0);
   document.getElementById('modalContent').style.maxWidth = '760px';
   showModal(`
     <h2 class="modal-title">🏦 ${escapeHtml(bankName)} — בוצעו</h2>
@@ -16928,17 +16972,31 @@ function openExecutedByBankDialog(bankName) {
   `);
 }
 
+// Which banker(s) a file is credited to, by the owner's order: the banker field wins
+// (it's the handling banker, and confirmApprovingBanker overwrites it with the final one after approval);
+// only a file with no banker set is credited to everyone it was submitted to.
+function _bankerCreditOf(c) {
+  if (c.bankerId) {
+    const isFinal = (c.approvals || []).some(a => a.accepted) || (c.stageHistory || []).some(h => h.stage === 'bank');
+    return { ids: [c.bankerId], kind: isFinal ? 'final' : 'handling' };
+  }
+  const sub = Array.isArray(c.submittedToBankerIds) ? [...new Set(c.submittedToBankerIds.filter(Boolean))] : [];
+  return { ids: sub, kind: 'submitted' };
+}
+
 function openBankerClientsDialog(bankerId) {
   const b = state.settings.bankers.find(x => x.id === bankerId);
   if (!b) return;
-  const all = state.clients.filter(c => c.bankerId === bankerId || (Array.isArray(c.submittedToBankerIds) && c.submittedToBankerIds.includes(bankerId)));
+  const all = state.clients.filter(c => _bankerCreditOf(c).ids.includes(bankerId));
+  const kindTag = { final: ['סופי', '#2563eb'], handling: ['מטפל', '#16a34a'], submitted: ['הוגש', '#64748b'] };
   const active = all.filter(c => c.stage !== 'archive');
   const archived = all.filter(c => c.stage === 'archive');
   const renderClientRow = (c) => {
     const missing = c.requirements.filter(r => r.status === 'pending').length;
+    const [tagLabel, tagColor] = kindTag[_bankerCreditOf(c).kind];
     return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px">
       <div style="flex:1;cursor:pointer" onclick="closeModal();openClient('${c.id}')">
-        <div style="font-weight:700">${escapeHtml(c.name)}</div>
+        <div style="font-weight:700">${escapeHtml(c.name)} <span style="background:${tagColor};color:white;padding:1px 7px;border-radius:6px;font-size:10px;font-weight:700">${tagLabel}</span></div>
         <div style="font-size:11px;color:var(--muted)">
           ${escapeHtml((c.purposes||[]).join(', ')||'—')} · ${stageInfo(c.stage).label}
           ${missing>0?' · <span style="color:var(--warning);font-weight:600">חסר '+missing+'</span>':''}
@@ -17048,7 +17106,7 @@ function sendAppraiserMessage(appraiserId, clientId, type) {
     const url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
     const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener';
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
-    logCommunication(clientId, 'whatsapp', { to: phone, messagePreview: (msg||'').slice(0, 200), recipient: 'appraiser', appraiserName: a.name });
+    logCommunication(clientId, 'whatsapp', { to: phone, body: (msg||''), messagePreview: (msg||'').slice(0, 200), recipient: 'appraiser', appraiserName: a.name });
   }
   closeModal();
 }
@@ -17130,7 +17188,7 @@ function sendBankerMessage(bankerId, clientId, type) {
     const url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
     const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener';
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
-    logCommunication(clientId, 'whatsapp', { to: phone, messagePreview: (msg||'').slice(0, 200), recipient: 'banker', bankerName: b.name });
+    logCommunication(clientId, 'whatsapp', { to: phone, body: (msg||''), messagePreview: (msg||'').slice(0, 200), recipient: 'banker', bankerName: b.name });
   }
   // Any outbound to banker resets the 5-day "waiting on banker" nag
   if (c) c.bankerFollowUpAt = now();
@@ -17234,6 +17292,20 @@ function makeDraggable(el, handle) {
 }
 
 // ========== WhatsApp Templates ==========
+// {docsStatus}: the full document list — received (✅) on top, then what's still missing (☐).
+// "Not required" docs are left out. The missing header keeps the "מסמכים חסרים" wording so
+// sending it still starts the missing-docs follow-up tracking.
+function _docsStatusText(c) {
+  const reqs = c.requirements || [];
+  const got = reqs.filter(r => r.status === 'provided');
+  const missing = reqs.filter(r => r.status === 'pending');
+  const parts = [];
+  if (got.length) parts.push(`▬▬▬ ✅ התקבלו (${got.length}) ▬▬▬\n` + got.map(r => '✅  ' + r.name).join('\n'));
+  if (missing.length) parts.push(`▬▬▬ ☐ מסמכים חסרים (${missing.length}) ▬▬▬\n` + missing.map(r => '☐  ' + r.name).join('\n'));
+  if (!missing.length && got.length) parts.push('🎉 כל המסמכים התקבלו');
+  return parts.length ? parts.join('\n\n') : '(אין מסמכים ברשימה)';
+}
+
 function fillTemplate(text, client) {
   const c = client;
   // Split missing requirements between borrowers and guarantors, cleanly grouped.
@@ -17273,6 +17345,7 @@ function fillTemplate(text, client) {
     .replace(/\{propertyAddress\}/g, c.propertyAddress || '')
     .replace(/\{stage\}/g, stageInfo(c.stage).label)
     .replace(/\{missingDocs\}/g, missing)
+    .replace(/\{docsStatus\}/g, () => _docsStatusText(c))
     .replace(/\{bankerName\}/g, banker ? (banker.name||'') : '')
     .replace(/\{bank\}/g, banker ? (banker.bank||'') : '')
     .replace(/\{branch\}/g, banker ? (banker.branch||'') : '')
@@ -17372,6 +17445,7 @@ function replaceTemplateVars(text, c) {
     .replace(/\{propertyAddress\}/g, c.propertyAddress || '')
     .replace(/\{stage\}/g, (STAGES.find(s => s.id === c.stage) || {}).label || '')
     .replace(/\{missingDocs\}/g, missing || '(אין)')
+    .replace(/\{docsStatus\}/g, () => _docsStatusText(c))
     .replace(/\{bankerName\}/g, banker ? banker.name : '')
     .replace(/\{bank\}/g, banker ? (banker.bank || '') : '')
     .replace(/\{branch\}/g, banker ? (banker.branch || '') : '')
@@ -17442,11 +17516,14 @@ function openCommLogViewer(clientId, commId) {
         <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px 14px;white-space:pre-wrap;font-size:13px;line-height:1.6;font-family:inherit;color:#0f172a;min-height:80px">${bodyText ? escapeHtml(bodyText) : '<em style="color:var(--muted)">התוכן לא נשמר (הודעה ישנה מלפני שהתחלנו לשמור את הגוף)</em>'}</div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:8px">
-        ${bodyText ? `<button class="btn secondary small" onclick="navigator.clipboard.writeText(${JSON.stringify(bodyText)}).then(()=>alert('הועתק'))">📋 העתק גוף</button>` : ''}
+        ${bodyText ? `<button class="btn secondary small" id="commLogCopyBtn">📋 העתק גוף</button>` : ''}
         <button class="btn secondary" onclick="document.getElementById('commLogViewerOverlay').remove()">סגור</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
+  // Bound in JS: the body has quotes and newlines that broke an inline onclick attribute
+  const copyBtn = document.getElementById('commLogCopyBtn');
+  if (copyBtn) copyBtn.onclick = () => navigator.clipboard.writeText(bodyText).then(() => { copyBtn.textContent = '✓ הועתק'; });
 }
 
 function logCommunication(clientId, type, meta) {
@@ -18015,7 +18092,7 @@ function sendWhatsApp(clientId) {
   // Detect missing-docs by content — mark for 24h nag
   const isMissingDocs = /מסמכים חסרים|ניירת להשלמה|רשימת מסמכים/.test(message || '');
   const isFollowUp = /תזכורת/.test(message || '');
-  logCommunication(clientId, 'whatsapp', { to: phone, messagePreview: (message||'').slice(0, 200), missingDocsRequest: isMissingDocs, followUp: isMissingDocs && isFollowUp });
+  logCommunication(clientId, 'whatsapp', { to: phone, body: (message||''), messagePreview: (message||'').slice(0, 200), missingDocsRequest: isMissingDocs, followUp: isMissingDocs && isFollowUp });
   if (isMissingDocs) {
     c.missingDocsRequestSentAt = now();
     c.missingDocsRequestChannel = 'whatsapp';
@@ -19070,7 +19147,7 @@ function renderExecutionSummaryTemplateSection() {
     <h2 class="panel-title">📧 תבנית מייל: "סיכום תיק ללקוח"</h2>
     <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px 14px;border-radius:8px;font-size:12px;color:#1e3a8a;margin-bottom:14px">
       💡 תבנית זו נטענת אוטומטית כשלוחצים על משימת "שליחת מייל סיכום ללקוח" בשלב ביצוע.
-      <br>משתני החלפה זמינים: <code>{name}</code>, <code>{phone}</code>, <code>{propertyAddress}</code>, <code>{purpose}</code>, <code>{missingDocs}</code>, <code>{bankerName}</code>, <code>{bank}</code>, <code>{branch}</code>
+      <br>משתני החלפה זמינים: <code>{name}</code>, <code>{phone}</code>, <code>{propertyAddress}</code>, <code>{purpose}</code>, <code>{missingDocs}</code>, <code>{docsStatus}</code>,<code>{bankerName}</code>, <code>{bank}</code>, <code>{branch}</code>
     </div>
     <div class="form-group">
       <label>גוף המייל (אם תשאיר ריק — יופיע ברירת מחדל)</label>
@@ -19410,7 +19487,7 @@ function renderSettingsSection(id) {
   if (id === 'whatsapp') return `
     <div class="panel">
       <h2 class="panel-title">💬 תבניות WhatsApp (${(state.settings.whatsappTemplates||[]).length})</h2>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">משתני החלפה זמינים: <code>{name}</code>, <code>{phone}</code>, <code>{propertyAddress}</code>, <code>{stage}</code>, <code>{missingDocs}</code>, <code>{bankerName}</code>, <code>{bank}</code>, <code>{branch}</code>, <code>{branchAddress}</code>, <code>{bankerFullBranch}</code></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">משתני החלפה זמינים: <code>{name}</code>, <code>{phone}</code>, <code>{propertyAddress}</code>, <code>{stage}</code>, <code>{missingDocs}</code>, <code>{docsStatus}</code>,<code>{bankerName}</code>, <code>{bank}</code>, <code>{branch}</code>, <code>{branchAddress}</code>, <code>{bankerFullBranch}</code></div>
       ${(state.settings.whatsappTemplates||[]).map((t, i) => {
         const canReset = ['req-docs','approved','sig-reminder','appraiser-visit'].includes(t.id);
         return `
@@ -19435,7 +19512,7 @@ function renderSettingsSection(id) {
       <div style="background:#eff6ff;border:1px solid #93c5fd;padding:8px 12px;border-radius:6px;font-size:12px;color:#1e3a8a;margin-bottom:10px">
         💡 כל תבנית מייל שיוצרים כאן נוצרת גם כתבנית וואטסאפ (מסומנת ב-📧). ניתן לערוך את שתיהן בנפרד בטאב "תבניות WhatsApp".
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">משתני החלפה זמינים: <code>{name}</code>, <code>{phone}</code>, <code>{propertyAddress}</code>, <code>{stage}</code>, <code>{missingDocs}</code>, <code>{bankerName}</code>, <code>{bank}</code>, <code>{branch}</code>, <code>{branchAddress}</code>, <code>{bankerFullBranch}</code>, <code>{purpose}</code></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">משתני החלפה זמינים: <code>{name}</code>, <code>{phone}</code>, <code>{propertyAddress}</code>, <code>{stage}</code>, <code>{missingDocs}</code>, <code>{docsStatus}</code>,<code>{bankerName}</code>, <code>{bank}</code>, <code>{branch}</code>, <code>{branchAddress}</code>, <code>{bankerFullBranch}</code>, <code>{purpose}</code></div>
       ${(state.settings.emailTemplates||[]).map((t, i) => `
         <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
           <div class="form-row">
@@ -20968,6 +21045,12 @@ function sbHdrs(withAuth){
   if(withAuth && SB.token && !SB_GUEST_MODE) h.Authorization='Bearer '+SB.token;
   return h;
 }
+// PGRST303 "JWT issued at future" = Supabase's data API is running on a stale clock (their incident,
+// not ours). A newer token only has a later iat, so refreshing makes it worse — keep the token and retry later.
+async function _sbIsClockReject(r){
+  if (!r || r.status !== 401) return false;
+  try { return /PGRST303|issued at future/i.test(await r.clone().text()); } catch(e) { return false; }
+}
 function sbLoadSession(){
   try{
     var raw=localStorage.getItem(SB_AUTH);if(!raw)return null;
@@ -21028,12 +21111,16 @@ async function sbFetchState(){
   var r=await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1&select=state,updated_at,updated_by',
     {headers:sbHdrs(true)});
   // Auto-refresh on 401 (expired token) and retry once
-  if(r.status===401){
+  if(r.status===401 && !(await _sbIsClockReject(r))){
     try { await sbRefresh(); } catch(e){}
     r=await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1&select=state,updated_at,updated_by',
       {headers:sbHdrs(true)});
   }
-  if(!r.ok)throw new Error('טעינה נכשלה ('+r.status+')');
+  if(!r.ok){
+    var _tt = '';
+    try { _tt = await r.text(); } catch(e){}
+    throw new Error('טעינה נכשלה ('+r.status+') '+_tt.slice(0,150));
+  }
   var rows=await r.json();
   if(!rows.length)return {state:null,updated_at:null};
   return {state:rows[0].state,updated_at:rows[0].updated_at,updated_by:rows[0].updated_by};
@@ -21042,7 +21129,7 @@ async function sbFetchState(){
 async function sbFetchMeta(){
   var u=SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.1&select=updated_at,updated_by';
   var r=await fetch(u,{headers:sbHdrs(true)});
-  if(r.status===401){ try{ await sbRefresh(); }catch(e){} r=await fetch(u,{headers:sbHdrs(true)}); }
+  if(r.status===401 && !(await _sbIsClockReject(r))){ try{ await sbRefresh(); }catch(e){} r=await fetch(u,{headers:sbHdrs(true)}); }
   if(!r.ok)return null;
   var rows=await r.json();
   return rows.length?rows[0]:null;
@@ -21065,6 +21152,7 @@ async function sbMergeFromServer(){
       // carries whatever local settings edits were made.
       if (Array.isArray(merged.clients)) state.clients = merged.clients;
       if (Array.isArray(merged.trash))   state.trash   = merged.trash;
+      if (merged.purged) state.purged = merged.purged;
     }
   } catch(e){ console.warn('[sync] merge-from-server failed:', e && e.message); }
 }
@@ -21096,7 +21184,7 @@ async function sbPushState(){
         method:'PATCH', headers:Object.assign(sbHdrs(true), {Prefer:'return=representation'}),
         body:body
       });
-      if (r.status === 401) {
+      if (r.status === 401 && !(await _sbIsClockReject(r))) {
         try { await sbRefresh(); } catch(e){}
         r = await fetch(url, {
           method:'PATCH', headers:Object.assign(sbHdrs(true), {Prefer:'return=representation'}),
@@ -21118,7 +21206,8 @@ async function sbPushState(){
     throw new Error('שמירה נכשלה — התנגשות סינכרון חוזרת (' + MAX_ATTEMPTS + ' ניסיונות)');
   } catch(e) {
     sbBadge('err', e.message);
-    setTimeout(function(){ sbQueueSave(); }, 5000);
+    var _clockRej = /PGRST303|issued at future/i.test(String(e && e.message || ''));
+    setTimeout(function(){ sbQueueSave(); }, _clockRej ? 20000 : 5000);
   } finally {
     SB._pushing = false;
     if (SB.pending) { SB.pending = false; setTimeout(function(){ sbPushState(); }, 50); }
@@ -21238,6 +21327,12 @@ function _buildMergedStateFromRemote(remote) {
     const remoteClients = Array.isArray(remote.clients) ? remote.clients : [];
     const localTrash = Array.isArray(state && state.trash) ? state.trash : [];
     const remoteTrash = Array.isArray(remote.trash) ? remote.trash : [];
+    // Permanent-delete tombstones from both sides — a purged id never comes back, alive or trashed.
+    const _pobj = o => (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+    const purged = Object.assign({}, _pobj(remote.purged));
+    const _lp = _pobj(state && state.purged);
+    Object.keys(_lp).forEach(id => { if (!purged[id] || _lp[id] > purged[id]) purged[id] = _lp[id]; });
+    merged.purged = purged;
     // Find the newest restore time per id across both alive copies — if newer than the delete time
     // of the trash entry, the restoration wins and the client stays alive on both devices.
     const latestRestoreAtById = {};
@@ -21250,7 +21345,7 @@ function _buildMergedStateFromRemote(remote) {
     // Also keep the "winning" trash entry (freshest _deletedAt) so re-trashing wins over an older restore.
     const trashWinningById = {};
     [...remoteTrash, ...localTrash].forEach(t => {
-      if (!t || !t.id) return;
+      if (!t || !t.id || purged[t.id]) return;
       const dt = _tsDelete(t);
       const curr = trashWinningById[t.id];
       if (!curr || dt > _tsDelete(curr)) trashWinningById[t.id] = t;
@@ -21264,9 +21359,9 @@ function _buildMergedStateFromRemote(remote) {
     // Build map of clients by id — same-id clients get deep-merged so no history (emails, tasks,
     // approvals, stage history, etc.) is dropped from either side.
     const map = {};
-    remoteClients.forEach(rc => { if (rc && rc.id && !effectivelyTrashedIds.has(rc.id)) map[rc.id] = rc; });
+    remoteClients.forEach(rc => { if (rc && rc.id && !purged[rc.id] && !effectivelyTrashedIds.has(rc.id)) map[rc.id] = rc; });
     localClients.forEach(lc => {
-      if (!lc || !lc.id) return;
+      if (!lc || !lc.id || purged[lc.id]) return;
       if (effectivelyTrashedIds.has(lc.id)) return;
       const existing = map[lc.id];
       if (!existing) { map[lc.id] = lc; return; }
@@ -21378,7 +21473,6 @@ function sbConnectRT(){
 function sbBadge(st,msg){
   var dot=document.getElementById('sb-dot');
   var lbl=document.getElementById('sb-t');
-  if(!dot||!lbl)return;
   var map={
     'off':{c:'#94a3b8',t:'לא מחובר'},
     'sync':{c:'#f59e0b',t:'מסתנכרן...'},
@@ -21388,8 +21482,126 @@ function sbBadge(st,msg){
     'err':{c:'#ef4444',t:'שגיאה: '+(msg||'')}
   };
   var m=map[st]||map.off;
-  dot.style.background=m.c;
-  lbl.textContent=m.t;
+  if(dot) dot.style.background=m.c;
+  if(lbl) lbl.textContent=m.t;
+  // Persist last state + error msg for the diagnostic dialog
+  try { window._sbLastState = st; if (st === 'err') window._sbLastErr = msg || ''; else if (st === 'ok') window._sbLastErr = ''; } catch(e){}
+  // Also reflect state on the topbar cloud button
+  try {
+    var btn = document.getElementById('sb-cloud-btn');
+    if (btn && st !== 'off') {
+      var btnMap = {
+        'saving':   { bg:'#fef3c7', color:'#78350f', text:'☁ שומר...' },
+        'sync':     { bg:'#fef3c7', color:'#78350f', text:'☁ מסתנכרן...' },
+        'pending':  { bg:'#fef3c7', color:'#78350f', text:'☁ ממתין...' },
+        'ok':       { bg:'#dcfce7', color:'#166534', text:'☁ נשמר ✓' },
+        'err':      { bg:'#fee2e2', color:'#991b1b', text:'☁ שגיאה — לחץ לפרטים' }
+      };
+      var bm = btnMap[st];
+      if (bm) {
+        btn.textContent = bm.text;
+        btn.style.background = bm.bg;
+        btn.style.color = bm.color;
+        btn.title = m.t + (msg ? ' — ' + msg : '');
+        if (st === 'err') { btn.onclick = function(){ sbOpenDiagnostic(); }; }
+        // After 'ok' — revert to "מחובר" display after 3 seconds
+        if (st === 'ok') {
+          clearTimeout(window._sbBtnRevertTimer);
+          window._sbBtnRevertTimer = setTimeout(function(){
+            try { sbRefreshCloudBtn(); } catch(e){}
+          }, 3000);
+        }
+      }
+    }
+  } catch(e){}
+}
+
+// Decode JWT payload (middle segment) to inspect iat/exp vs local clock
+function _sbDecodeJwt(tok){
+  try {
+    if (!tok || typeof tok !== 'string') return null;
+    var parts = tok.split('.');
+    if (parts.length < 2) return null;
+    var b64 = parts[1].replace(/-/g,'+').replace(/_/g,'/');
+    while (b64.length % 4) b64 += '=';
+    var json = atob(b64);
+    return JSON.parse(decodeURIComponent(escape(json)));
+  } catch(e) { return null; }
+}
+
+// Diagnostic dialog shown when user clicks the "שגיאה" cloud button
+function sbOpenDiagnostic(){
+  try {
+    var errMsg = window._sbLastErr || 'לא ידוע';
+    var localClients = (state && state.clients) ? state.clients.length : 0;
+    var localTrash = (state && state.trash) ? state.trash.length : 0;
+    var lastEdit = (state && state._lastEditedAt) ? new Date(state._lastEditedAt).toLocaleString('he-IL') : '—';
+    var lastBy = (state && state._lastEditor) || '—';
+    var rowUpd = (typeof SB !== 'undefined' && SB.rowUpdated) ? new Date(SB.rowUpdated).toLocaleString('he-IL') : '—';
+    var pendingFlag = (typeof SB !== 'undefined' && SB.pending) ? 'כן' : 'לא';
+
+    // --- Clock-skew detection: decode current session token and compare iat to local clock
+    var tok = (typeof SB !== 'undefined' && SB.token) ? SB.token : null;
+    var payload = tok ? _sbDecodeJwt(tok) : null;
+    var nowSec = Math.floor(Date.now()/1000);
+    var skewHtml = '';
+    var isJwtFutureErr = /issued at future|PGRST303/i.test(String(errMsg));
+    if (payload) {
+      var iat = payload.iat || 0;
+      var exp = payload.exp || 0;
+      var skew = iat - nowSec; // positive = token issued in the future vs this machine
+      var iatStr = iat ? new Date(iat*1000).toLocaleString('he-IL') : '—';
+      var expStr = exp ? new Date(exp*1000).toLocaleString('he-IL') : '—';
+      var skewLabel = skew > 60 ? ('⚠ ' + skew + ' שניות בעתיד') : (skew < -60 ? (Math.abs(skew) + ' שניות בעבר') : 'תקין (' + skew + ' שניות)');
+      var skewColor = Math.abs(skew) > 60 ? '#991b1b' : '#166534';
+      skewHtml =
+        '<div style="margin-top:10px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;line-height:1.7">' +
+          '<div style="font-weight:700;margin-bottom:4px">🔎 בדיקת טוקן סנכרון</div>' +
+          '<div><b>iat (זמן הנפקת הטוקן):</b> ' + escapeHtml(iatStr) + '</div>' +
+          '<div><b>exp (תפוגה):</b> ' + escapeHtml(expStr) + '</div>' +
+          '<div><b>שעה במחשב:</b> ' + new Date().toLocaleString('he-IL') + '</div>' +
+          '<div style="color:' + skewColor + ';font-weight:700;margin-top:4px"><b>פער:</b> ' + skewLabel + '</div>' +
+        '</div>';
+    }
+
+    // Advice block when JWT is from the future (the "JWT issued at future" case)
+    var adviceHtml = '';
+    if (isJwtFutureErr || (payload && (payload.iat||0) - nowSec > 60)) {
+      adviceHtml =
+        '<div style="margin-top:12px;padding:10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;font-size:12px;color:#78350f;line-height:1.7">' +
+          '<b>מה קורה:</b> תקלה בצד Supabase — השעון הפנימי של שרת הנתונים שלהם תקוע, ולכן הוא דוחה התחברויות תקינות. זה לא המחשב שלך ולא הסיסמה.<br>' +
+          '<b>מה לעשות:</b> ב-Supabase: Project Settings → General → Restart project. עד אז הכל נשמר במכשיר הזה, והמערכת מנסה שוב לבד כל 20 שניות.<br>' +
+          'אין צורך להתנתק ולהתחבר — זה לא עוזר.' +
+        '</div>';
+    }
+
+    var html = '<h2 class="modal-title">☁ אבחון סנכרון</h2>' +
+      '<div style="background:#fee2e2;border:1px solid #fca5a5;padding:10px;border-radius:8px;margin-bottom:12px;color:#991b1b;font-size:13px"><b>שגיאה אחרונה:</b><br>' + escapeHtml(errMsg) + '</div>' +
+      '<div style="font-size:13px;line-height:1.8">' +
+        '<div><b>לקוחות מקומיים:</b> ' + localClients + '</div>' +
+        '<div><b>בפח:</b> ' + localTrash + '</div>' +
+        '<div><b>שמירה ממתינה:</b> ' + pendingFlag + '</div>' +
+        '<div><b>עריכה אחרונה:</b> ' + escapeHtml(lastEdit) + '</div>' +
+        '<div><b>על ידי:</b> ' + escapeHtml(lastBy) + '</div>' +
+        '<div><b>גרסת ענן:</b> ' + escapeHtml(rowUpd) + '</div>' +
+      '</div>' +
+      skewHtml +
+      adviceHtml +
+      '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">' +
+        '<button class="btn" style="background:#2563eb;color:#fff;flex:1;min-width:140px" onclick="sbRetryNow()">⟳ נסה לסנכרן עכשיו</button>' +
+        '<button class="btn secondary" style="flex:1;min-width:140px" onclick="closeModal();openTrashDialog()">🗑️ פתח פח מיחזור</button>' +
+      '</div>' +
+      '<div style="margin-top:10px;font-size:11px;color:#64748b">הנתונים המקומיים לא נמחקים — הם נשמרים בדפדפן ובפח 30 יום. התנתקות לא מוחקת כלום.</div>';
+    showModal(html);
+  } catch(e){ alert('לא הצלחתי לפתוח אבחון: '+e.message); }
+}
+function sbRetryNow(){
+  try {
+    if (typeof sbForcePushNow === 'function') { sbForcePushNow(); }
+    else if (typeof sbPushState === 'function') { sbPushState(); }
+    setTimeout(function(){ try { if (typeof sbPullState === 'function') sbPullState(); } catch(e){} }, 1200);
+    closeModal();
+  } catch(e){ alert('ניסיון נכשל: '+e.message); }
 }
 function sbHeaderShow(){
   var el=document.getElementById('sb-header');if(!el)return;

@@ -138,31 +138,35 @@ function render(){
   }).join('')+'</div>';
 
   var selIdx=stages.indexOf(sel);
-  var allItems=sel.items||[];
-  var pv=allItems.filter(function(it){return it.preview;}); // משימות שיתחילו כשהתיק יגיע לשלב (מידע בלבד)
-  var items=allItems.filter(function(it){return !it.preview;});
+  var items=sel.items||[];
   // אם כבר בוצע חלק (יש שורות בטבלת הביצוע) — המשימה "בוצע סך" לא מוצגת, הטבלה מחליפה אותה
   if(d.execs&&d.execs.some(function(x){return x.rows&&x.rows.length;}))items=items.filter(function(it){return String(it.name||'').indexOf('בוצע סך')!==0;});
-  var mine=items.filter(function(it){return it.owner==='client';});
+  // מסמכים שהיועץ כבר אישר בשלב הזה נכנסים לרשימת הלקוח עם ✓ בוצע
+  var docsDone=(d.done||[]).filter(function(x){return x.stage===sel.label;}).map(function(x){return {name:x.name,owner:'client',done:true};});
+  var mine=items.filter(function(it){return it.owner==='client';}).concat(docsDone);
   var adv=items.filter(function(it){return it.owner!=='client';});
-  h+='<div class="card"><h2>'+esc(sel.label)+(selIdx===curIdx?' <span class="tag me">השלב הנוכחי</span>':'')+'</h2>';
-  if(selIdx<curIdx&&!items.length)h+='<div class="empty">שלב זה הושלם ✓</div>';
-  else if(!items.length&&!pv.length)h+='<div class="empty">אין כרגע דברים פתוחים בשלב הזה.</div>';
+  var future=selIdx>curIdx;
+  h+='<div class="card"><h2>'+esc(sel.label)+(selIdx===curIdx?' <span class="tag me">השלב הנוכחי</span>':(selIdx<curIdx?' <span class="tag" style="background:#dcfce7;color:#166534">✓ שלב שעברנו</span>':''))+'</h2>';
+  if(future)h+='<div class="appr" style="background:#fff7ed;border-color:#fed7aa;color:#9a3412">⏳ עדיין לא הגענו לשלב הזה. המשימות כאן לידיעה בלבד.</div>';
   if(sel.id==='appraisal')h+=apprHtml(d.summary);
   if(sel.id==='approval')h+=approvalsHtml(d.summary);
   h+='</div>';
-  var mineDone=mine.filter(function(it){return it.done;});
-  if(mineDone.length)h+='<div class="card"><h2><span class="tag me">👤 ממך</span></h2>'+mineDone.map(function(it){return '<div class="sr"><span>'+esc(it.name)+'</span><b>✓ בוצע</b></div>';}).join('')+'</div>';
-  if(pv.length)h+='<div class="card"><h2><span class="tag adv">📅 יתחיל בשלב זה</span></h2><div class="sub" style="margin:0 0 6px">אלה המשימות שיפתחו כשהתיק יגיע לשלב. כרגע אין מה לעשות.</div>'+pv.map(function(it){return '<div class="sr"><span>'+esc(it.name)+'</span><b>'+(it.owner==='client'?'ממך':'היועץ')+'</b></div>';}).join('')+'</div>';
+  var stRow=function(it){
+    var st=it.done?'<b style="color:var(--ok)">✓ בוצע</b>':(future?'<b style="color:var(--muted)">טרם התחיל</b>':(S.sent[it.id]?'<b>📤 נשלח ליועץ</b>':'<b style="color:#dc2626">⏳ ממתין</b>'));
+    return '<div class="sr"><span>'+esc(it.name)+'</span>'+st+'</div>';
+  };
+  var ownerCard=function(list,title,cls){
+    list=list.filter(function(it){return !it.done;}).concat(list.filter(function(it){return it.done;}));
+    return '<div class="card"><h2><span class="tag '+cls+'">'+title+'</span></h2>'+(list.length?list.map(stRow).join(''):'<div class="empty">אין משימות בשלב הזה.</div>')+'</div>';
+  };
+  h+=ownerCard(mine,'👤 בטיפול הלקוח','me');
+  h+=ownerCard(adv,'🧑‍💼 בטיפול היועץ','adv');
 
   if(sel.id==='appraisal'&&d.appr){
     var ap=d.appr,rw=function(l,v){return '<div class="sr"><span>'+esc(l)+'</span><b>'+v+'</b></div>';};
     var stx=function(x){return x==='done'?'✓ בוצע':'⏳ ממתין';};
     h+='<div class="card sum"><h2><span class="tag me">🏠 פרטי השמאות</span></h2>';
     if(ap.contact)h+=rw('איש קשר לתיאום ביקור',esc((ap.contact.name?ap.contact.name+' · ':'')+ap.contact.phone));
-    else if(S.sent[ap.contactKey])h+=rw('איש קשר לתיאום ביקור','📤 נשלח ליועץ: '+esc(S.sent[ap.contactKey]));
-    else if(ap.tenant)h+='<div class="item"><div class="nm">חסר טלפון של השוכר לתיאום ביקור השמאי. אפשר למלא בכרטיס "פרטי השוכר" בשלב ההגשה.</div></div>';
-    else h+='<div class="item"><div class="nm">חסר איש קשר לתיאום ביקור השמאי. אפשר להזין כאן מספר טלפון:</div><div class="act" style="display:flex;gap:6px"><input id="ph_'+esc(ap.contactKey)+'" type="tel" inputmode="tel" dir="ltr" placeholder="05X-XXXXXXX" style="flex:1;min-width:0;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:16px;font-family:inherit"><button class="send" onclick="sendPhone(\''+esc(ap.contactKey)+'\')">שלח</button></div></div>';
     if(ap.visit)h+=rw('תואם ביקור?',stx(ap.visit));
     if(ap.pay)h+=rw('הועבר תשלום?',stx(ap.pay));
     if(ap.ready)h+=rw('שמאות מוכנה?',stx(ap.ready));
@@ -180,21 +184,7 @@ function render(){
         (x.expected?'<div class="sr"><span>'+(over?'חריגה מהאישור':(rem<=0?'בוצע במלואו':'יתרה שטרם בוצעה'))+'</span><b>'+(over||rem<=0?'✓':money(rem))+'</b></div>':'')+'</div>';
     });
   }
-  if(sel.id==='submission'&&d.phones&&d.phones.length){
-    h+='<div class="card"><h2><span class="tag me">📱 מספרי נייד</span></h2><div class="sub" style="margin:0 0 8px">חסר לנו מספר נייד. אפשר להזין כאן, וזה יישמר בתיק אצל היועץ.</div>'+d.phones.filter(function(p){return !p.done;}).concat(d.phones.filter(function(p){return p.done;})).map(function(p){
-      if(p.done)return '<div class="sr"><span>'+esc(p.name||'לווה')+'</span><b>✓ בוצע</b></div>';
-      if(S.sent[p.id])return '<div class="item sent"><div class="nm">'+esc(p.name||'לווה')+' — '+esc(S.sent[p.id])+'</div><div class="note">📤 נשלח ליועץ</div></div>';
-      return '<div class="item"><div class="nm">'+esc(p.name||'לווה')+'</div><div class="act" style="display:flex;gap:6px"><input id="ph_'+esc(p.id)+'" type="tel" inputmode="tel" dir="ltr" placeholder="05X-XXXXXXX" style="flex:1;min-width:0;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:16px;font-family:inherit"><button class="send" onclick="sendPhone(\''+esc(p.id)+'\')">שלח</button></div></div>';}).join('')+'</div>';
-  }
-  forms.forEach(function(g){
-    var fi=fIdx(g.from),open=g.fields.some(function(f){return !f.done&&!S.sent[f.key];});
-    if(!g.fields.every(function(f){return f.done;})&&(selIdx===fi||(selIdx>fi&&open)))h+='<div class="card"><h2><span class="tag me">📝 '+esc(g.title)+'</span></h2>'+formFieldsHtml(g,'fs_')+'</div>';
-  });
-  if(adv.length){
-    adv=adv.filter(function(it){return !it.done;}).concat(adv.filter(function(it){return it.done;}));
-    h+='<div class="card"><h2><span class="tag adv">🧑‍💼 בטיפול היועץ</span></h2>'+adv.map(function(it){
-      return it.done?'<div class="sr"><span>'+esc(it.name)+'</span><b>✓ בוצע</b></div>':'<div class="item"><div class="nm">'+esc(it.name)+'</div></div>';}).join('')+'</div>';
-  }
+  // טלפונים וטפסים (השלמת פרטים) מוצגים רק במשבצת "השלמת פרטים" למעלה
   if(d.doneCount){
     var done=d.done||[],groups={};
     done.forEach(function(x){(groups[x.stage]=groups[x.stage]||[]).push(x.name);});
