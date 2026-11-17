@@ -6934,7 +6934,7 @@ function _getShtarTemplate() {
   return {
     subject: (t.subject && t.subject.trim()) || DEFAULT_SHTAR_EMAIL_TEMPLATE.subject,
     // Divider lines: '_' is 1 char in a URL ('─' is 9 after encoding and pushed the Gmail link over its length limit → 400)
-    body: ((typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_SHTAR_EMAIL_TEMPLATE.body).replace(/[─━_]{8,}/g, '_'.repeat(80))
+    body: ((typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_SHTAR_EMAIL_TEMPLATE.body).replace(/[─━_]{8,}/g, '_'.repeat(70))
   };
 }
 
