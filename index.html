@@ -6995,6 +6995,7 @@ function sendMortgageSignMessage(clientId, channel) {
     const phone = (c.phone || '').replace(/\D/g, '').replace(/^0/, '972');
     if (!phone) { alert('אין טלפון ללקוח'); return; }
     window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
+    logCommunication(clientId, 'whatsapp', { to: phone, body: msg, messagePreview: msg.slice(0, 200), context: 'mortgage-sign' });
     return;
   }
   // channel === 'email' — simple dialog: client email only, subject + body preloaded.
@@ -7017,14 +7018,14 @@ function sendMortgageSignMessage(clientId, channel) {
       <textarea id="shtBody" style="width:100%;min-height:280px;font-family:inherit;direction:rtl">${safeMsg}</textarea>
     </div>
     <div class="modal-actions">
-      <button class="btn" onclick="_sendShtarEmail('gmail')">📧 פתח ב-Gmail</button>
-      <button class="btn secondary" onclick="_sendShtarEmail('mailto')">📨 פתח בלקוח ברירת מחדל</button>
+      <button class="btn" onclick="_sendShtarEmail('gmail','${clientId}')">📧 פתח ב-Gmail</button>
+      <button class="btn secondary" onclick="_sendShtarEmail('mailto','${clientId}')">📨 פתח בלקוח ברירת מחדל</button>
       <button class="btn secondary" onclick="closeModal()">סגור</button>
     </div>
   `);
 }
 
-function _sendShtarEmail(mode) {
+function _sendShtarEmail(mode, clientId) {
   const to = (document.getElementById('shtTo')?.value || '').trim();
   const subj = (document.getElementById('shtSubj')?.value || '').trim();
   const body = (document.getElementById('shtBody')?.value || '');
@@ -7036,6 +7037,7 @@ function _sendShtarEmail(mode) {
     url = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
   }
   window.open(url, '_blank');
+  if (clientId) logCommunication(clientId, 'email', { to, subject: subj, body, context: 'mortgage-sign' });
   closeModal();
 }
 
