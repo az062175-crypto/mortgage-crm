@@ -6933,7 +6933,8 @@ function _getShtarTemplate() {
   const t = (state.settings && state.settings.shtarMishkantaEmailTemplate) || {};
   return {
     subject: (t.subject && t.subject.trim()) || DEFAULT_SHTAR_EMAIL_TEMPLATE.subject,
-    body: (typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_SHTAR_EMAIL_TEMPLATE.body
+    // Divider lines: always stretched to a full line width (plain-text email can't do a real <hr>)
+    body: ((typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_SHTAR_EMAIL_TEMPLATE.body).replace(/[─━]{8,}/g, '─'.repeat(70))
   };
 }
 
