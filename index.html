@@ -7028,7 +7028,7 @@ function _sendShtarEmail(mode) {
   const to = (document.getElementById('shtTo')?.value || '').trim();
   const subj = (document.getElementById('shtSubj')?.value || '').trim();
   const body = (document.getElementById('shtBody')?.value || '');
-  if (!to) { alert('חסר כתובת מייל'); return; }
+  if (!to) alert('חסר כתובת מייל — הטיוטה תיפתח בלי נמען, תוסיף אותו ידנית.');
   let url;
   if (mode === 'gmail') {
     url = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
