@@ -5645,7 +5645,7 @@ function renderClientDetail() {
         <div>
           <h1 class="client-name" style="display:flex;align-items:center;gap:10px">
             <button onclick="openCustomTaskModal('${c.id}')" title="הוסף משימה ללקוח" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:18px;border:none;cursor:pointer;line-height:1">+</button>
-            <a href="#" onclick="event.preventDefault();openEditModal('${c.id}')" title="עריכת לקוח" style="color:inherit;text-decoration:none;border-bottom:2px dotted var(--accent);cursor:pointer">${escapeHtml(c.name)}</a>
+            <a href="#" onclick="event.preventDefault();openEditModal('${c.id}')" title="עריכת לקוח" style="color:inherit;text-decoration:none;cursor:pointer">${escapeHtml(c.name)}</a>
             ${(() => {
               const hasPath = !!clientFolderPath(c);
               const title = hasPath ? 'העתק נתיב התיקיה · לחיצה ימנית לעריכה' : 'הגדר תיקיית הלקוח';
