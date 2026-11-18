@@ -15992,6 +15992,73 @@ try {
   }
 } catch (e) { console.error('Task constants migration failed:', e); }
 
+const DEFAULT_SELLER_COLLATERAL_TEMPLATE = {
+  subject: `{name}[[ & {seller}]][[ · {location}]]`,
+  body: `{greeting},
+
+אודה לעזרתכם בטיפול המשכנתא ללקוחות הנ"ל.
+
+━━━━━━━━━━━━━━━━━━━━━━
+◆ נא להחתים את המוכרים על המסמכים כדלהלן:
+━━━━━━━━━━━━━━━━━━━━━━
+{bankBlock}
+
+━━━━━━━━━━━━━━━━━━━━━━
+◆ נא לצרף:
+━━━━━━━━━━━━━━━━━━━━━━
+{sellerBlock}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+תודה מראש ויום טוב,
+יצחק`
+};
+function _getSellerCollateralTemplate() {
+  const t = (state.settings && state.settings.sellerCollateralEmailTemplate) || {};
+  return {
+    subject: (t.subject && t.subject.trim()) || DEFAULT_SELLER_COLLATERAL_TEMPLATE.subject,
+    body: (typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_SELLER_COLLATERAL_TEMPLATE.body
+  };
+}
+function renderSellerCollateralEmailSection() {
+  const tpl = _getSellerCollateralTemplate();
+  return `<div class="panel">
+    <h2 class="panel-title">📧 תבנית מייל לחתימת בטחונות מוכר</h2>
+    <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px 14px;border-radius:8px;font-size:12px;color:#1e3a8a;margin-bottom:14px;line-height:1.8">
+      💡 התבנית נטענת מהכפתור "📧 שלח למוכר / עו״ד" בשלב בטחונות מוכר.
+      <br>משתנים: <code>{greeting}</code> ברכת זמן · <code>{name}</code> שם הלקוח · <code>{seller}</code> שם המוכר (יד שנייה) · <code>{location}</code> כתובת / פרויקט ועיר
+      <br><code>{bankBlock}</code> — רשימת המסמכים לחתימה (ממשימות שלב הבנק) · <code>{sellerBlock}</code> — רשימת המסמכים לצירוף (ממשימות בטחונות מוכר, כולל סכום הון עצמי)
+      <br>חלק אופציונלי: <code>[[ & {seller}]]</code> — נמחק אם השדה ריק.
+    </div>
+    <div class="form-group">
+      <label>נושא</label>
+      <input id="scTplSubj" value="${escapeAttr(tpl.subject)}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px">
+    </div>
+    <div class="form-group">
+      <label>גוף המייל</label>
+      <textarea id="scTplBody" style="width:100%;min-height:340px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px;direction:rtl">${escapeHtml(tpl.body)}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="saveSellerCollateralTemplate()" style="background:#22c55e">💾 שמור</button>
+      <button class="btn secondary" onclick="resetSellerCollateralTemplate()">↺ שחזר ברירת מחדל</button>
+    </div>
+  </div>`;
+}
+function saveSellerCollateralTemplate() {
+  state.settings.sellerCollateralEmailTemplate = {
+    subject: (document.getElementById('scTplSubj').value || '').trim(),
+    body: document.getElementById('scTplBody').value || ''
+  };
+  save();
+  alert('✓ נשמר');
+}
+function resetSellerCollateralTemplate() {
+  if (!confirm('לשחזר את תבנית ברירת המחדל?')) return;
+  state.settings.sellerCollateralEmailTemplate = JSON.parse(JSON.stringify(DEFAULT_SELLER_COLLATERAL_TEMPLATE));
+  save();
+  renderActiveSettingsSection();
+}
+
 function openSellerCollateralEmail(clientId) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
@@ -16067,9 +16134,9 @@ function openSellerCollateralEmail(clientId) {
   }
   const locationStr = locationParts.join(', ');
   // For יד שנייה — include seller name after client name
-  let subject = clientName;
-  if (isSecondHand && dd.secondHand?.sellerName) subject += ' & ' + dd.secondHand.sellerName;
-  if (locationStr) subject += ' · ' + locationStr;
+  const _scTpl = _getSellerCollateralTemplate();
+  const _scVars = { greeting: greetingByHour(), name: clientName, seller: (isSecondHand && dd.secondHand?.sellerName) ? dd.secondHand.sellerName : '', location: locationStr, bankBlock: '', sellerBlock: '' };
+  const subject = _fillLawyerTemplate(_scTpl.subject, _scVars, {});
   // Compute equity gap: contract price minus approved loan amount → owner-equity requirement
   const contractPriceForEquity = Number(c.propertyValue) || 0;
   const acceptedApproval = (c.approvals || []).slice().reverse().find(a => a.accepted && Number(a.amount) > 0);
@@ -16089,24 +16156,8 @@ function openSellerCollateralEmail(clientId) {
   const sellerTasks = (c.tasks || []).filter(t => t.stage === 'seller').map(t => '• ' + enrichTitle(t.title));
   const bankBlock = bankTasks.length ? bankTasks.join('\n') : '(אין מסמכים)';
   const sellerBlock = sellerTasks.length ? sellerTasks.join('\n') : '(אין מסמכים נוספים)';
-  const body = `${greetingByHour()},
-
-אודה לעזרתכם בטיפול המשכנתא ללקוחות הנ"ל.
-
-━━━━━━━━━━━━━━━━━━━━━━
-◆ נא להחתים את המוכרים על המסמכים כדלהלן:
-━━━━━━━━━━━━━━━━━━━━━━
-${bankBlock}
-
-━━━━━━━━━━━━━━━━━━━━━━
-◆ נא לצרף:
-━━━━━━━━━━━━━━━━━━━━━━
-${sellerBlock}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-תודה מראש ויום טוב,
-יצחק`;
+  _scVars.bankBlock = bankBlock; _scVars.sellerBlock = sellerBlock;
+  const body = _fillLawyerTemplate(_scTpl.body, _scVars, {});
   document.getElementById('scSubject').value = subject;
   // Translate short bank names to official display names for external email (uses settings.bankNameMap)
   const _bnm = (state.settings && Array.isArray(state.settings.bankNameMap) && state.settings.bankNameMap.length)
@@ -19696,6 +19747,7 @@ function renderEmailTemplatesHub() {
       ['executionSummary', 'סיכום ביצוע'],
       ['zechiaInstructions', 'אישור זכיה — הוראות'] ] },
     { title: '🧑‍💼 נשלחות לאנשי מקצוע', items: [
+      ['sellerCollateralEmail', 'לחתימת בטחונות מוכר'],
       ['lawyerEmail', 'לעו"ד - רישום משכנתא'],
       ['appraiserEmail', 'שמאי'],
       ['insuranceEmail', 'סוכן ביטוח'],
@@ -19734,6 +19786,7 @@ function renderSettingsSection(id) {
   if (id === 'executionSummary') return renderExecutionSummaryTemplateSection();
   if (id === 'shtarEmail') return renderShtarEmailTemplateSection();
   if (id === 'lawyerEmail') return renderLawyerEmailTemplateSection();
+  if (id === 'sellerCollateralEmail') return renderSellerCollateralEmailSection();
   if (id === 'appraiserEmail') return renderAppraiserEmailTemplateSection();
   if (id === 'insuranceEmail') return renderInsuranceEmailTemplateSection();
   if (id === 'sigCoordEmail') return renderSigCoordEmailTemplateSection();
