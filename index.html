@@ -7070,7 +7070,10 @@ function _hasSecondDegree(c) {
   return (c.tasks || []).some(t => /דרגה (שנייה|שניה)/.test(t.title || ''));
 }
 function _lawyerMailSubject(c) {
-  let out = 'רישום שטרי משכנתא - לקוח: ' + _lawyerBorrowerNames(c);
+  const b0 = (c.borrowers || [])[0] || {};
+  const f0 = (b0.firstName || '').trim(), fam0 = (b0.familyName || '').trim();
+  const oneName = (f0 && fam0) ? (f0 + ' ' + fam0) : ((b0.name || '').trim() || c.name || '');
+  let out = 'רישום שטרי משכנתא - לקוח: ' + oneName;
   if (c.propertyAddress) out += ', רחוב: ' + c.propertyAddress;
   const reg = [];
   if (c.propertyGush) reg.push('גוש ' + c.propertyGush);
