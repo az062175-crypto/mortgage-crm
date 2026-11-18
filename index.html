@@ -7089,7 +7089,7 @@ function _lawyerMailBody(c) {
   return greetingByHour() + ',\n\n'
     + 'אשמח לטיפולך ברישום משכנתא ללווים - ' + _lawyerBorrowerNames(c) + '\n\n'
     + 'מצ"ב:\n' + items.map((x, i) => (i + 1) + '. ' + x).join('\n')
-    + '\n\nבתודה מראש,\nיצחק';
+    + '\n\nאודה לאישור במייל חוזר בעת השידור לטאבו\n\nבתודה מראש,\nיצחק';
 }
 function openLawyerMortgageEmail(clientId) {
   const c = state.clients.find(x => x.id === clientId);
