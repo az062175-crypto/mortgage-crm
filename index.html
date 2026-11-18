@@ -23296,7 +23296,7 @@ setTimeout(chatFab, 1500);
 var SIGN_HOOK_DEFAULT = 'https://script.google.com/macros/s/AKfycbz3UorX_Gjge52MYMRLup2iz9_7-8LGKLX_pRCd-7_zW6hwYr4zCZ0zQJ6LAhekrm31CA/exec';
 var SIGNX = { bytes: null, title: '', fields: [], tool: 'signature', sel: null, cid: null, pages: [], busy: false };
 var SIGN_TYPES = {
-  signature: { label: 'חתימה', icon: '✍️', w: 0.25, h: 0.06 },
+  signature: { label: 'חתימה', icon: '✍️', w: 0.13, h: 0.032 },
   date:      { label: 'תאריך', icon: '📅', w: 0.14, h: 0.028 },
   name:      { label: 'שם', icon: '👤', w: 0.22, h: 0.028 },
   idNumber:  { label: 'ת"ז', icon: '🆔', w: 0.16, h: 0.028 },
@@ -23605,7 +23605,6 @@ function signPageDown(e) {
   if (e.target.closest && e.target.closest('.signbox')) return;
   var wrap = e.currentTarget, r = wrap.getBoundingClientRect(), T = SIGN_TYPES[SIGNX.tool];
   var x = (e.clientX - r.left) / r.width - T.w / 2, y = (e.clientY - r.top) / r.height - T.h / 2;
-  x = Math.max(0, Math.min(1 - T.w, x)); y = Math.max(0, Math.min(1 - T.h, y));
   var f = { id: 'f' + Date.now().toString(36) + Math.floor(Math.random() * 1000), type: SIGNX.tool, signer: SIGNX.signer || 0, page: +wrap.dataset.page, x: x, y: y, w: T.w, h: T.h };
   SIGNX.fields.push(f); SIGNX.sel = f.id; signDraw();
 }
@@ -23616,7 +23615,12 @@ function signDraw() {
     var T = SIGN_TYPES[f.type], sel = SIGNX.sel === f.id;
     var b = document.createElement('div'); b.className = 'signbox'; b.dataset.id = f.id;
     b.style.cssText = 'position:absolute;left:' + f.x * 100 + '%;top:' + f.y * 100 + '%;width:' + f.w * 100 + '%;height:' + f.h * 100 + '%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:4px;font-weight:700;font-size:12px;color:' + (f.signer === 1 ? '#9d174d' : '#1e3a8a') + ';cursor:move;border-radius:4px;overflow:visible;white-space:nowrap;' + signBoxCss(f, sel);
-    b.textContent = T.icon + ' ' + T.label + ' (ל' + ((f.signer === 1) ? 2 : 1) + ')';
+    var lb = document.createElement('span'); lb.textContent = T.icon + ' ' + T.label + ' (ל' + ((f.signer === 1) ? 2 : 1) + ')';
+    lb.style.cssText = 'position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:10px;line-height:1;white-space:nowrap;pointer-events:none;background:rgba(255,255,255,.85);padding:1px 3px;border-radius:3px';
+    b.appendChild(lb);
+    var dot = document.createElement('span');
+    dot.style.cssText = 'position:absolute;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:#dc2626;box-shadow:0 0 0 1.5px #fff;pointer-events:none';
+    b.appendChild(dot);
     var pe = document.createElement('span'); pe.textContent = '✏️'; pe.title = 'בחר מי החותם: לווה 1 / לווה 2';
     pe.style.cssText = 'position:absolute;top:-13px;inset-inline-end:-6px;background:#fff;border:1px solid #94a3b8;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;font-weight:400';
     pe.addEventListener('pointerdown', function (e) { e.stopPropagation(); e.preventDefault(); });
