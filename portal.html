@@ -79,6 +79,7 @@
 <body>
 <header class="brandbar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 70"><g opacity="1"><path d="M4 66 L60 12 L116 66" fill="none" stroke="#c0695c" stroke-width="9"/><polygon points="80,31 80,4 94,4 94,45" fill="#c0695c"/></g></svg><div><div class="bn">יצחק כהן</div><div class="bt">יועץ משכנתא ונדל"ן</div></div></header>
 <div class="brandline"></div>
+<div class="wrap" id="signWrap" style="padding-bottom:0"></div>
 <div class="wrap" id="app"><div class="center">טוען…</div></div>
 <footer class="bfoot"><div class="in"><span><span class="ic">✆</span>נייד: <a href="tel:0528932640">052-8932640</a></span><span><span class="ic">☎</span>משרד: <a href="tel:035591712">03-5591712</a></span><span><span class="ic">✉</span><a href="mailto:a035591712@gmail.com">a035591712@gmail.com</a></span></div></footer>
 <div id="chatRoot"></div>
@@ -410,6 +411,31 @@ async function chSend(){
 }
 setInterval(chPoll,15000);
 setTimeout(chPoll,1500);
+
+// ---- מסמכים לחתימה ----
+var SGN={list:[]};
+function sgnLink(id){return location.origin+location.pathname.replace(/[^\/]*$/,'')+'sign.html?t='+encodeURIComponent(TOKEN)+'&d='+encodeURIComponent(id);}
+function sgnDate(s){try{return new Date(s).toLocaleDateString('he-IL');}catch(e){return '';}}
+function sgnDraw(){
+  var w=document.getElementById('signWrap');if(!w)return;
+  var pend=SGN.list.filter(function(x){return x.status==='pending';}),done=SGN.list.filter(function(x){return x.status==='signed';});
+  if(!pend.length&&!done.length){w.innerHTML='';return;}
+  var h='<div class="card'+(pend.length?' alert':'')+'" style="margin-top:0"><h2>מסמכים לחתימה'+(pend.length?' <span class="cnt2">'+pend.length+'</span>':'')+'</h2>';
+  pend.forEach(function(x){h+='<div class="item"><div class="nm">'+esc(x.title)+'</div><div class="act"><a href="'+sgnLink(x.id)+'"><button class="send" type="button">לחתימה</button></a></div></div>';});
+  done.forEach(function(x){h+='<div class="item sent"><div class="nm">'+esc(x.title)+'</div><div class="note">נחתם ב-'+sgnDate(x.signed_at)+'</div><div class="act"><button class="link" type="button" onclick="sgnDownload(\''+x.id+'\',this)">הורדת עותק חתום</button></div></div>';});
+  w.innerHTML=h+'</div>';
+}
+async function sgnLoad(){try{SGN.list=await rpc('sign_list',{p_token:TOKEN})||[];sgnDraw();}catch(e){}}
+async function sgnDownload(id,btn){
+  var t=btn.textContent;btn.textContent='מכין…';
+  try{
+    var r=await rpc('sign_get',{p_id:id,p_token:TOKEN});if(!r||!r.file)throw 0;
+    var s=atob(r.file),a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);
+    var u=URL.createObjectURL(new Blob([a],{type:'application/pdf'})),l=document.createElement('a');l.href=u;l.download=(r.title||'מסמך')+' - חתום.pdf';document.body.appendChild(l);l.click();setTimeout(function(){l.remove();URL.revokeObjectURL(u);},1500);
+  }catch(e){alert('ההורדה נכשלה. נסה שוב.');}
+  btn.textContent=t;
+}
+if(TOKEN){sgnLoad();setInterval(function(){if(!document.hidden)sgnLoad();},60000);}
 </script>
 </body>
 </html>

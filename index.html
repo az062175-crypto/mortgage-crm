@@ -22455,7 +22455,8 @@ function portalHeaderButton(c) {
   var n = portalSentCount(c);
   return '<button onclick="portalOpenDialog(\'' + c.id + '\')" title="קישור ללקוח — מעקב מסמכים ושלבים" style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:' + (c.portalToken ? '#dbeafe' : '#f1f5f9') + ';border:1px solid var(--border);font-size:16px;cursor:pointer;line-height:1">🔗' +
     (n ? '<span style="position:absolute;top:-6px;inset-inline-start:-6px;background:#dc2626;color:#fff;border-radius:999px;font-size:11px;min-width:18px;height:18px;line-height:18px;text-align:center;font-weight:700">' + n + '</span>' : '') + '</button>' +
-    ' ' + (typeof chatButton === 'function' ? chatButton(c) : '');
+    ' ' + (typeof chatButton === 'function' ? chatButton(c) : '') +
+    ' ' + (typeof signButton === 'function' ? signButton(c) : '');
 }
 
 function portalNewToken() {
@@ -22868,6 +22869,311 @@ function chatBack() { chatClose(); chatInboxOpen(); }
 setInterval(chatPoll, 20000);
 setTimeout(chatPoll, 8000);
 setTimeout(chatFab, 1500);
+
+/* ================= חתימות דיגיטליות (הכנת מסמך + סימון מיקומים) ================= */
+var SIGN_HOOK_DEFAULT = 'https://script.google.com/macros/s/AKfycbz3UorX_Gjge52MYMRLup2iz9_7-8LGKLX_pRCd-7_zW6hwYr4zCZ0zQJ6LAhekrm31CA/exec';
+var SIGNX = { bytes: null, title: '', fields: [], tool: 'signature', sel: null, cid: null, pages: [], busy: false };
+var SIGN_TYPES = {
+  signature: { label: 'חתימה', icon: '✍️', w: 0.25, h: 0.06 },
+  date:      { label: 'תאריך', icon: '📅', w: 0.14, h: 0.028 },
+  name:      { label: 'שם', icon: '👤', w: 0.22, h: 0.028 },
+  idNumber:  { label: 'ת"ז', icon: '🆔', w: 0.16, h: 0.028 },
+  address:   { label: 'כתובת', icon: '🏠', w: 0.3, h: 0.028 }
+};
+function signLoadScript(src) {
+  return new Promise(function (res, rej) {
+    var s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = function () { rej(new Error('load ' + src)); };
+    document.head.appendChild(s);
+  });
+}
+async function signLibs() {
+  if (!window.pdfjsLib) await signLoadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  if (!window.PDFLib) await signLoadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js');
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+function signBytesToB64(u) { var s = '', C = 0x8000; for (var i = 0; i < u.length; i += C) s += String.fromCharCode.apply(null, u.subarray(i, i + C)); return btoa(s); }
+function signB64ToBytes(b) { var s = atob(b), a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+function signLink(c, id) { return PORTAL_URL.replace(/portal\.html.*$/, 'sign.html') + '?t=' + c.portalToken + '&d=' + id; }
+function signClient() { return state.clients.find(function (x) { return x.id === SIGNX.cid; }); }
+function signButton(c) {
+  return '<button onclick="signOpen(\'' + c.id + '\')" title="חתימה דיגיטלית על מסמך" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:#fce7f3;border:1px solid var(--border);font-size:16px;cursor:pointer;line-height:1">✍️</button>';
+}
+
+async function signOpen(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; });
+  if (!c) return;
+  if (!portalOn()) { alert('צריך להיות מחובר לענן (Supabase) כדי לשלוח מסמך לחתימה.'); return; }
+  if (!c.portalToken) { c.portalToken = portalNewToken(); save(); }
+  try { await portalPush(c, true); } catch (e) { alert('לא הצלחתי לפרסם את הפורטל של הלקוח. ודא שהרצת את supabase-client-portal.sql.'); return; }
+  SIGNX = { bytes: null, title: '', fields: [], tool: 'signature', sel: null, cid: cid, pages: [], busy: false };
+  var old = document.getElementById('signDlg'); if (old) old.remove();
+  var d = document.createElement('div');
+  d.id = 'signDlg';
+  d.style.cssText = 'position:fixed;inset:0;background:#f8fafc;z-index:100000;overflow:auto;direction:rtl';
+  d.innerHTML = '<div style="position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:10px">' +
+    '<h3 style="margin:0;flex:1">✍️ חתימה דיגיטלית — ' + escapeHtml(c.name || '') + '</h3>' +
+    '<button class="btn small secondary" onclick="signClose()">סגור</button></div>' +
+    '<div id="signBody" style="max-width:900px;margin:0 auto;padding:16px"></div>';
+  document.body.appendChild(d);
+  document.addEventListener('keydown', signKey);
+  signHome();
+}
+function signClose() {
+  var d = document.getElementById('signDlg'); if (d) d.remove();
+  document.removeEventListener('keydown', signKey);
+}
+function signKey(e) {
+  if (!document.getElementById('signDlg') || !SIGNX.bytes || !SIGNX.sel) return;
+  var t = (e.target && e.target.tagName) || '';
+  if (t === 'INPUT' || t === 'TEXTAREA') return;
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); signDelSel(); }
+}
+
+/* ---------- מסך ראשי: בקשות קיימות + מסמך חדש ---------- */
+async function signHome() {
+  var body = document.getElementById('signBody'); if (!body) return;
+  body.innerHTML = '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">' +
+    '<h3 style="margin:0 0 8px">מסמך חדש לחתימה</h3>' +
+    '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">בחר קובץ PDF או תמונה. בשלב הבא תסמן עם העכבר איפה תופיע החתימה, התאריך, השם, ת"ז והכתובת.</div>' +
+    '<input type="file" id="signFile" accept="application/pdf,image/png,image/jpeg" onchange="signPick(this)">' +
+    '<div id="signPickMsg" style="margin-top:8px;font-size:13px;color:var(--muted)"></div></div>' +
+    '<div id="signList" style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px"><h3 style="margin:0 0 8px">מסמכים שנשלחו ללקוח</h3><div style="color:var(--muted);font-size:13px">טוען…</div></div>';
+  signLoadList();
+}
+function signDateTxt(s) { try { return new Date(s).toLocaleDateString('he-IL'); } catch (e) { return ''; } }
+async function signLoadList() {
+  var box = document.getElementById('signList'); if (!box) return;
+  var c = signClient(); if (!c) return;
+  try {
+    var r = await portalFetch('/rest/v1/sign_requests?client_id=eq.' + encodeURIComponent(c.id) + '&status=neq.canceled&select=id,title,status,created_at,signed_at,delivered_at,delivery_info&order=created_at.desc');
+    var rows = await r.json();
+    var h = '<h3 style="margin:0 0 8px">מסמכים שנשלחו ללקוח</h3>';
+    if (!rows.length) h += '<div style="color:var(--muted);font-size:13px">עוד לא נשלח מסמך לחתימה.</div>';
+    rows.forEach(function (x) {
+      var signed = x.status === 'signed';
+      var info = x.delivery_info || {};
+      var deliv = signed ? (x.delivered_at ? '<span style="color:#16a34a">נמסר: ' + (info.drive ? 'Drive ✓ ' : 'Drive ✗ ') + (info.owner ? 'מייל ✓' : '') + '</span>' : '<span style="color:#b45309">עדיין לא נמסר ל-Drive/מייל</span>') : '';
+      h += '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:200px"><b>' + escapeHtml(x.title) + '</b><div style="font-size:12px;color:var(--muted)">' + (signed ? '✅ נחתם ב-' + signDateTxt(x.signed_at) + ' · ' + deliv : '⏳ ממתין לחתימה · נשלח ' + signDateTxt(x.created_at)) + '</div></div>';
+      if (signed) {
+        h += '<button class="btn small" onclick="signDownload(\'' + x.id + '\')">⬇ הורד חתום</button>';
+        if (!x.delivered_at) h += '<button class="btn small secondary" onclick="signRedeliver(\'' + x.id + '\')">📨 שלח שוב ל-Drive/מייל</button>';
+      } else {
+        h += '<button class="btn small secondary" onclick="signCopyLink(\'' + x.id + '\')">📋 העתק קישור</button>' +
+          '<button class="btn small secondary" onclick="signWhatsapp(\'' + x.id + '\')">💬 וואטסאפ</button>' +
+          '<button class="btn small secondary" style="color:#dc2626" onclick="signCancel(\'' + x.id + '\')">בטל</button>';
+      }
+      h += '</div>';
+    });
+    box.innerHTML = h;
+  } catch (e) {
+    box.innerHTML = '<h3 style="margin:0 0 8px">מסמכים שנשלחו ללקוח</h3><div style="color:#b45309;font-size:13px">לא הצלחתי לטעון. ודא שהרצת את supabase-signatures.sql ב-Supabase.</div>';
+  }
+}
+async function signCopyLink(id) {
+  var c = signClient(); var l = signLink(c, id);
+  try { await navigator.clipboard.writeText(l); alert('הקישור הועתק.'); } catch (e) { prompt('העתק את הקישור:', l); }
+}
+function signWhatsapp(id, title) {
+  var c = signClient(); if (!c) return;
+  var phone = String(c.phone || ((c.borrowers || [])[0] || {}).phone || '').replace(/\D/g, '');
+  if (phone.startsWith('0')) phone = '972' + phone.slice(1);
+  var first = String(((c.borrowers || [])[0] || {}).name || c.name || '').trim().split(/\s+/)[0];
+  var msg = 'שלום ' + first + ',\nמצורף קישור לחתימה על מסמך' + (title ? ' "' + title + '"' : '') + ':\n' + signLink(c, id) + '\nיצחק';
+  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
+}
+async function signCancel(id) {
+  if (!confirm('לבטל את בקשת החתימה? הקישור יפסיק לעבוד (המסמך נשאר שמור).')) return;
+  try { await portalFetch('/rest/v1/sign_requests?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ status: 'canceled' }) }); signLoadList(); }
+  catch (e) { alert('הביטול נכשל.'); }
+}
+async function signDownload(id) {
+  try {
+    var r = await portalFetch('/rest/v1/sign_requests?id=eq.' + id + '&select=signed_b64,title');
+    var rows = await r.json(); if (!rows[0] || !rows[0].signed_b64) throw 0;
+    var u = URL.createObjectURL(new Blob([signB64ToBytes(rows[0].signed_b64)], { type: 'application/pdf' }));
+    var a = document.createElement('a'); a.href = u; a.download = (rows[0].title || 'מסמך') + ' - חתום.pdf';
+    document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); URL.revokeObjectURL(u); }, 1500);
+  } catch (e) { alert('ההורדה נכשלה.'); }
+}
+async function signRedeliver(id) {
+  try {
+    var r = await portalFetch('/rest/v1/sign_requests?id=eq.' + id + '&select=token,hook');
+    var x = (await r.json())[0];
+    if (!x || !x.hook) { alert('לא הוגדרה כתובת Apps Script לבקשה הזו.'); return; }
+    await fetch(x.hook, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ id: id, token: x.token }) });
+    alert('נשלחה בקשה למסירה. רענן את הרשימה בעוד כמה שניות.');
+    setTimeout(signLoadList, 4000);
+  } catch (e) { alert('הבקשה נכשלה.'); }
+}
+
+/* ---------- בחירת קובץ ---------- */
+async function signPick(inp) {
+  var f = inp.files && inp.files[0]; if (!f) return;
+  var msg = document.getElementById('signPickMsg');
+  if (f.size > 12 * 1024 * 1024) { msg.textContent = 'הקובץ גדול מדי (מעל 12MB). כווץ אותו ונסה שוב.'; return; }
+  msg.textContent = 'טוען…';
+  try {
+    await signLibs();
+    var buf = new Uint8Array(await f.arrayBuffer());
+    if (/^image\//.test(f.type)) {
+      var pdf = await PDFLib.PDFDocument.create();
+      var img = f.type === 'image/png' ? await pdf.embedPng(buf) : await pdf.embedJpg(buf);
+      var w = 595.28, h = Math.min(1400, w * img.height / img.width);
+      var pg = pdf.addPage([w, h]); pg.drawImage(img, { x: 0, y: 0, width: w, height: h });
+      buf = await pdf.save();
+    } else if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { msg.textContent = 'נתמכים רק PDF או תמונה (PNG/JPG).'; return; }
+    SIGNX.bytes = buf; SIGNX.title = f.name.replace(/\.[^.]+$/, '');
+    SIGNX.fields = []; SIGNX.sel = null; SIGNX.tool = 'signature';
+    await signEditor();
+  } catch (e) { msg.textContent = 'לא הצלחתי לפתוח את הקובץ. ' + (e && e.message ? e.message : ''); }
+}
+
+/* ---------- עורך: סימון מיקומים ---------- */
+async function signEditor() {
+  var c = signClient(), body = document.getElementById('signBody'); if (!body) return;
+  var em = c.email || ((c.borrowers || []).find(function (b) { return b.email; }) || {}).email || '';
+  var hasFolder = /folders\/[A-Za-z0-9_-]+/.test(c.driveFolderUrl || '');
+  var tools = Object.keys(SIGN_TYPES).map(function (k) {
+    return '<button class="btn small secondary" id="signTool_' + k + '" onclick="signTool(\'' + k + '\')">' + SIGN_TYPES[k].icon + ' ' + SIGN_TYPES[k].label + '</button>';
+  }).join(' ');
+  body.innerHTML =
+    '<div style="position:sticky;top:56px;z-index:4;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+      '<b style="margin-inline-end:4px">בחר סוג ולחץ על המסמך:</b>' + tools +
+      '<span style="flex:1"></span>' +
+      '<button class="btn small secondary" onclick="signResize(1.12)" title="הגדל את הפריט הנבחר">＋</button>' +
+      '<button class="btn small secondary" onclick="signResize(0.89)" title="הקטן את הפריט הנבחר">－</button>' +
+      '<button class="btn small secondary" style="color:#dc2626" onclick="signDelSel()">🗑 מחק נבחר</button>' +
+    '</div>' +
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">גרור פריט כדי להזיז אותו. לחיצה על פריט בוחרת אותו (Delete מוחק). חובה לפחות מקום אחד לחתימה.</div>' +
+    '<div id="signPages"><div style="padding:30px;text-align:center;color:var(--muted)">טוען את המסמך…</div></div>' +
+    '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:12px">' +
+      '<label style="font-weight:700;font-size:13px">שם המסמך (יופיע ללקוח)</label>' +
+      '<input id="signTitle" type="text" value="' + escapeAttr(SIGNX.title) + '" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;margin:4px 0 12px">' +
+      '<label style="display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" id="signCopy" onchange="document.getElementById(\'signEmailRow\').style.display=this.checked?\'block\':\'none\'"> לשלוח עותק חתום גם ללקוח במייל?</label>' +
+      '<div style="font-size:12px;color:var(--muted);margin:2px 0 6px">הלקוח יראה ויוכל להוריד את המסמך החתום בפורטל שלו בכל מקרה. סמן רק אם אתה רוצה שיקבל אותו גם למייל.</div>' +
+      '<div id="signEmailRow" style="display:none"><input id="signEmail" type="text" dir="ltr" value="' + escapeAttr(em) + '" placeholder="מייל הלקוח" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px"></div>' +
+      '<div style="font-size:12.5px;margin-top:10px;color:' + (hasFolder ? '#166534' : '#b45309') + '">' + (hasFolder ? '✓ אחרי החתימה המסמך יישמר בתיקיית הלקוח ב-Drive ויישלח אליך למייל.' : '⚠ אין קישור לתיקיית Drive בתיק הלקוח. המסמך החתום יישלח אליך למייל בלבד. אפשר להגדיר תיקייה בתיק הלקוח.') + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="signCreateBtn" onclick="signCreate()">צור קישור לחתימה</button><button class="btn secondary" onclick="signHome()">חזרה</button></div>' +
+    '</div>';
+  signTool(SIGNX.tool);
+  try {
+    await signLibs();
+    var pdf = await pdfjsLib.getDocument({ data: SIGNX.bytes.slice() }).promise;
+    var host = document.getElementById('signPages'); if (!host) return;
+    host.innerHTML = ''; SIGNX.pages = [];
+    var cssW = Math.min(host.clientWidth || 760, 820), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (var n = 1; n <= pdf.numPages; n++) {
+      var page = await pdf.getPage(n), v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: cssW * dpr / v1.width });
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'position:relative;margin:0 auto 14px;background:#fff;border:1px solid #cbd5e1;box-shadow:0 2px 10px rgba(0,0,0,.12);width:' + cssW + 'px;cursor:crosshair;user-select:none;touch-action:none';
+      wrap.dataset.page = n - 1;
+      var cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      cv.style.cssText = 'display:block;width:100%;height:auto';
+      wrap.appendChild(cv); host.appendChild(wrap);
+      var lab = document.createElement('div'); lab.textContent = 'עמוד ' + n; lab.style.cssText = 'position:absolute;top:4px;inset-inline-end:8px;font-size:11px;color:#94a3b8;pointer-events:none'; wrap.appendChild(lab);
+      wrap.addEventListener('pointerdown', signPageDown);
+      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      SIGNX.pages.push(wrap);
+    }
+    signDraw();
+  } catch (e) { var h = document.getElementById('signPages'); if (h) h.innerHTML = '<div style="color:#dc2626;padding:20px">לא הצלחתי להציג את המסמך. ' + escapeHtml(e && e.message || '') + '</div>'; }
+}
+function signTool(k) {
+  SIGNX.tool = k;
+  Object.keys(SIGN_TYPES).forEach(function (t) {
+    var b = document.getElementById('signTool_' + t); if (!b) return;
+    b.style.background = t === k ? '#be185d' : ''; b.style.color = t === k ? '#fff' : '';
+  });
+}
+function signPageDown(e) {
+  if (e.target.closest && e.target.closest('.signbox')) return;
+  var wrap = e.currentTarget, r = wrap.getBoundingClientRect(), T = SIGN_TYPES[SIGNX.tool];
+  var x = (e.clientX - r.left) / r.width - T.w / 2, y = (e.clientY - r.top) / r.height - T.h / 2;
+  x = Math.max(0, Math.min(1 - T.w, x)); y = Math.max(0, Math.min(1 - T.h, y));
+  var f = { id: 'f' + Date.now().toString(36) + Math.floor(Math.random() * 1000), type: SIGNX.tool, page: +wrap.dataset.page, x: x, y: y, w: T.w, h: T.h };
+  SIGNX.fields.push(f); SIGNX.sel = f.id; signDraw();
+}
+function signDraw() {
+  SIGNX.pages.forEach(function (w) { Array.prototype.slice.call(w.querySelectorAll('.signbox')).forEach(function (b) { b.remove(); }); });
+  SIGNX.fields.forEach(function (f) {
+    var w = SIGNX.pages[f.page]; if (!w) return;
+    var T = SIGN_TYPES[f.type], sel = SIGNX.sel === f.id;
+    var b = document.createElement('div'); b.className = 'signbox'; b.dataset.id = f.id;
+    b.style.cssText = 'position:absolute;left:' + f.x * 100 + '%;top:' + f.y * 100 + '%;width:' + f.w * 100 + '%;height:' + f.h * 100 + '%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:4px;font-weight:700;font-size:12px;color:#9d174d;cursor:move;border-radius:4px;overflow:visible;white-space:nowrap;' +
+      (sel ? 'border:2px solid #be185d;background:rgba(190,24,93,.22)' : 'border:2px dashed #ec4899;background:rgba(236,72,153,.13)');
+    b.textContent = T.icon + ' ' + T.label;
+    b.addEventListener('pointerdown', function (e) { signBoxDown(e, f, b, w); });
+    w.appendChild(b);
+  });
+}
+function signBoxDown(e, f, b, w) {
+  e.stopPropagation(); e.preventDefault();
+  var wasSel = SIGNX.sel === f.id;
+  SIGNX.sel = f.id;
+  if (!wasSel) { Array.prototype.slice.call(document.querySelectorAll('.signbox')).forEach(function (x) { var s = x.dataset.id === f.id; x.style.border = s ? '2px solid #be185d' : '2px dashed #ec4899'; x.style.background = s ? 'rgba(190,24,93,.22)' : 'rgba(236,72,153,.13)'; }); }
+  var r = w.getBoundingClientRect(), sx = e.clientX, sy = e.clientY, ox = f.x, oy = f.y;
+  try { b.setPointerCapture(e.pointerId); } catch (_) {}
+  function mv(ev) {
+    f.x = Math.max(0, Math.min(1 - f.w, ox + (ev.clientX - sx) / r.width));
+    f.y = Math.max(0, Math.min(1 - f.h, oy + (ev.clientY - sy) / r.height));
+    b.style.left = f.x * 100 + '%'; b.style.top = f.y * 100 + '%';
+  }
+  function up() { b.removeEventListener('pointermove', mv); b.removeEventListener('pointerup', up); b.removeEventListener('pointercancel', up); }
+  b.addEventListener('pointermove', mv); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
+}
+function signResize(k) {
+  var f = SIGNX.fields.find(function (x) { return x.id === SIGNX.sel; }); if (!f) { alert('בחר קודם פריט במסמך.'); return; }
+  var cx = f.x + f.w / 2, cy = f.y + f.h / 2;
+  f.w = Math.max(0.04, Math.min(0.9, f.w * k)); f.h = Math.max(0.012, Math.min(0.3, f.h * k));
+  f.x = Math.max(0, Math.min(1 - f.w, cx - f.w / 2)); f.y = Math.max(0, Math.min(1 - f.h, cy - f.h / 2));
+  signDraw();
+}
+function signDelSel() {
+  if (!SIGNX.sel) { alert('בחר קודם פריט במסמך.'); return; }
+  SIGNX.fields = SIGNX.fields.filter(function (x) { return x.id !== SIGNX.sel; }); SIGNX.sel = null; signDraw();
+}
+
+/* ---------- יצירת הבקשה ---------- */
+async function signCreate() {
+  if (SIGNX.busy) return;
+  var c = signClient(); if (!c) return;
+  if (!SIGNX.fields.some(function (f) { return f.type === 'signature'; })) { alert('סמן במסמך לפחות מקום אחד לחתימה (כפתור ✍️ חתימה ואז לחיצה על המסמך).'); return; }
+  var title = (document.getElementById('signTitle').value || '').trim() || 'מסמך לחתימה';
+  var copy = document.getElementById('signCopy').checked, email = (document.getElementById('signEmail').value || '').trim();
+  if (copy && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) { alert('כתובת המייל של הלקוח לא תקינה.'); return; }
+  var hook = (state.settings && state.settings.signHookUrl) || SIGN_HOOK_DEFAULT;
+  if (!hook) {
+    var u = prompt('להדבקה פעם אחת: כתובת ה-Web app של signature-webhook.gs (היא שמוסרת את המסמך החתום למייל ול-Drive).\nאפשר ללחוץ ביטול ולדלג. אז המסמך החתום יישמר רק במערכת ובפורטל של הלקוח.', '');
+    if (u && /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u.trim())) { state.settings.signHookUrl = u.trim(); save(); hook = u.trim(); }
+    else if (u) alert('הכתובת לא נראית כמו כתובת Web app של Apps Script (script.google.com/macros/s/.../exec). ממשיך בלי.');
+  }
+  var m = /folders\/([A-Za-z0-9_-]+)/.exec(c.driveFolderUrl || '');
+  var id = (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (ch) { var r = Math.random() * 16 | 0; return (ch === 'x' ? r : (r & 3 | 8)).toString(16); }));
+  var btn = document.getElementById('signCreateBtn'); SIGNX.busy = true; if (btn) { btn.disabled = true; btn.textContent = 'יוצר…'; }
+  try {
+    await portalFetch('/rest/v1/sign_requests', { method: 'POST', body: JSON.stringify({
+      id: id, token: c.portalToken, client_id: c.id, title: title, doc_b64: signBytesToB64(SIGNX.bytes),
+      fields: SIGNX.fields.map(function (f) { return { id: f.id, type: f.type, page: f.page, x: +f.x.toFixed(5), y: +f.y.toFixed(5), w: +f.w.toFixed(5), h: +f.h.toFixed(5) }; }),
+      send_copy: copy, client_email: copy ? email : null, folder_id: m ? m[1] : null, hook: hook || null
+    }) });
+  } catch (e) {
+    SIGNX.busy = false; if (btn) { btn.disabled = false; btn.textContent = 'צור קישור לחתימה'; }
+    alert('היצירה נכשלה. ודא שהרצת את supabase-signatures.sql ב-Supabase ושאתה מחובר.'); return;
+  }
+  SIGNX.busy = false;
+  var link = signLink(c, id), body = document.getElementById('signBody');
+  body.innerHTML = '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px">' +
+    '<h3 style="margin:0 0 8px">✅ הבקשה נוצרה</h3>' +
+    '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">הלקוח יראה את המסמך גם בפורטל שלו. אפשר גם לשלוח לו את הקישור הישיר:</div>' +
+    '<input id="signLinkInp" readonly value="' + escapeAttr(link) + '" dir="ltr" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px" onclick="this.select()">' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
+      '<button class="btn small" onclick="signCopyLink(\'' + id + '\')">📋 העתק קישור</button>' +
+      '<button class="btn small secondary" onclick="signWhatsapp(\'' + id + '\',\'' + escapeAttr(title).replace(/'/g, '') + '\')">💬 שלח בוואטסאפ</button>' +
+      '<button class="btn small secondary" onclick="signHome()">חזרה לרשימה</button></div>' +
+    (hook ? '' : '<div style="margin-top:12px;font-size:12.5px;color:#b45309">⚠ לא הוגדרה כתובת Apps Script, לכן אחרי החתימה לא יישלח מייל ולא יישמר ב-Drive אוטומטית. את החתום אפשר להוריד מהרשימה.</div>') +
+    '</div>';
+}
 </script>
 
 </body>
