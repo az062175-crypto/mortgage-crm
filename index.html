@@ -22905,7 +22905,7 @@ async function signOpen(cid) {
   if (!portalOn()) { alert('צריך להיות מחובר לענן (Supabase) כדי לשלוח מסמך לחתימה.'); return; }
   if (!c.portalToken) { c.portalToken = portalNewToken(); save(); }
   try { await portalPush(c, true); } catch (e) { alert('לא הצלחתי לפרסם את הפורטל של הלקוח. ודא שהרצת את supabase-client-portal.sql.'); return; }
-  SIGNX = { bytes: null, title: '', fields: [], tool: 'signature', sel: null, cid: cid, pages: [], busy: false };
+  SIGNX = { bytes: null, title: '', fields: [], tool: 'signature', signer: 0, sel: null, cid: cid, pages: [], busy: false };
   var old = document.getElementById('signDlg'); if (old) old.remove();
   var d = document.createElement('div');
   d.id = 'signDlg';
@@ -23039,7 +23039,10 @@ async function signEditor() {
   }).join(' ');
   body.innerHTML =
     '<div style="position:sticky;top:56px;z-index:4;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-      '<b style="margin-inline-end:4px">בחר סוג ולחץ על המסמך:</b>' + tools +
+      '<b style="margin-inline-end:4px">חותם:</b>' +
+      '<button class="btn small secondary" id="signWho_0" onclick="signWho(0)">לווה 1</button>' +
+      '<button class="btn small secondary" id="signWho_1" onclick="signWho(1)">לווה 2</button>' +
+      '<b style="margin-inline:10px 4px">בחר סוג ולחץ על המסמך:</b>' + tools +
       '<span style="flex:1"></span>' +
       '<button class="btn small secondary" onclick="signResize(1.12)" title="הגדל את הפריט הנבחר">＋</button>' +
       '<button class="btn small secondary" onclick="signResize(0.89)" title="הקטן את הפריט הנבחר">－</button>' +
@@ -23056,7 +23059,7 @@ async function signEditor() {
       '<div style="font-size:12.5px;margin-top:10px;color:' + (hasFolder ? '#166534' : '#b45309') + '">' + (hasFolder ? '✓ אחרי החתימה המסמך יישמר בתיקיית הלקוח ב-Drive ויישלח אליך למייל.' : '⚠ אין קישור לתיקיית Drive בתיק הלקוח. המסמך החתום יישלח אליך למייל בלבד. אפשר להגדיר תיקייה בתיק הלקוח.') + '</div>' +
       '<div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="signCreateBtn" onclick="signCreate()">צור קישור לחתימה</button><button class="btn secondary" onclick="signHome()">חזרה</button></div>' +
     '</div>';
-  signTool(SIGNX.tool);
+  signTool(SIGNX.tool); signWho(SIGNX.signer);
   try {
     await signLibs();
     var pdf = await pdfjsLib.getDocument({ data: SIGNX.bytes.slice() }).promise;
@@ -23086,12 +23089,49 @@ function signTool(k) {
     b.style.background = t === k ? '#be185d' : ''; b.style.color = t === k ? '#fff' : '';
   });
 }
+function signWho(g) {
+  SIGNX.signer = g;
+  [0, 1].forEach(function (i) {
+    var b = document.getElementById('signWho_' + i); if (!b) return;
+    b.style.background = i === g ? (i ? '#1d4ed8' : '#be185d') : ''; b.style.color = i === g ? '#fff' : '';
+  });
+}
+function signBoxCss(f, sel) {
+  var bl = f.signer === 1;
+  return sel ? 'border:2px solid ' + (bl ? '#1d4ed8' : '#be185d') + ';background:' + (bl ? 'rgba(29,78,216,.22)' : 'rgba(190,24,93,.22)')
+             : 'border:2px dashed ' + (bl ? '#3b82f6' : '#ec4899') + ';background:' + (bl ? 'rgba(59,130,246,.13)' : 'rgba(236,72,153,.13)');
+}
+function signPeople(c) {
+  var bs = c.borrowers || [];
+  var prop = [c.propertyAddress, c.propertyBuilding ? 'בניין ' + c.propertyBuilding : '', c.propertyApartment ? 'דירה ' + c.propertyApartment : '', c.propertyCity].filter(Boolean).join(' ');
+  function mk(b, fb) { b = b || {}; return { name: b.name || (fb ? c.name : '') || '', idNumber: b.idNumber || b.tz || (fb ? c.idNumber : '') || '', address: b.address || (fb ? (c.address || prop) : '') || '' }; }
+  var p0 = mk(bs[0], true), p1 = mk(bs[1], false);
+  if (bs[1] && !p1.address) p1.address = p0.address;
+  return [p0, p1];
+}
+function signPickSigner(fid) {
+  var f = SIGNX.fields.find(function (x) { return x.id === fid; }); if (!f) return;
+  var P = signPeople(signClient());
+  var old = document.getElementById('signWhoDlg'); if (old) old.remove();
+  var d = document.createElement('div');
+  d.id = 'signWhoDlg'; d.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100001;display:flex;align-items:center;justify-content:center;direction:rtl';
+  d.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;min-width:280px;max-width:90vw">' +
+    '<h3 style="margin:0 0 12px">מי החותם על הפריט הזה?</h3>' +
+    [0, 1].map(function (i) { return '<button class="btn" style="display:block;width:100%;margin-bottom:8px;' + (f.signer === i || (i === 0 && !f.signer) ? 'outline:3px solid #0f172a;' : '') + (i ? 'background:#1d4ed8' : 'background:#be185d') + '" onclick="signSetSigner(\'' + fid + '\',' + i + ')">' + (i ? 'לווה 2 (האשה)' : 'לווה 1 (הבעל)') + (P[i].name ? ' — ' + escapeHtml(P[i].name) : '') + '</button>'; }).join('') +
+    '<button class="btn small secondary" onclick="document.getElementById(\'signWhoDlg\').remove()">ביטול</button></div>';
+  document.body.appendChild(d);
+}
+function signSetSigner(fid, g) {
+  var f = SIGNX.fields.find(function (x) { return x.id === fid; }); if (f) f.signer = g;
+  var d = document.getElementById('signWhoDlg'); if (d) d.remove();
+  signDraw();
+}
 function signPageDown(e) {
   if (e.target.closest && e.target.closest('.signbox')) return;
   var wrap = e.currentTarget, r = wrap.getBoundingClientRect(), T = SIGN_TYPES[SIGNX.tool];
   var x = (e.clientX - r.left) / r.width - T.w / 2, y = (e.clientY - r.top) / r.height - T.h / 2;
   x = Math.max(0, Math.min(1 - T.w, x)); y = Math.max(0, Math.min(1 - T.h, y));
-  var f = { id: 'f' + Date.now().toString(36) + Math.floor(Math.random() * 1000), type: SIGNX.tool, page: +wrap.dataset.page, x: x, y: y, w: T.w, h: T.h };
+  var f = { id: 'f' + Date.now().toString(36) + Math.floor(Math.random() * 1000), type: SIGNX.tool, signer: SIGNX.signer || 0, page: +wrap.dataset.page, x: x, y: y, w: T.w, h: T.h };
   SIGNX.fields.push(f); SIGNX.sel = f.id; signDraw();
 }
 function signDraw() {
@@ -23100,9 +23140,13 @@ function signDraw() {
     var w = SIGNX.pages[f.page]; if (!w) return;
     var T = SIGN_TYPES[f.type], sel = SIGNX.sel === f.id;
     var b = document.createElement('div'); b.className = 'signbox'; b.dataset.id = f.id;
-    b.style.cssText = 'position:absolute;left:' + f.x * 100 + '%;top:' + f.y * 100 + '%;width:' + f.w * 100 + '%;height:' + f.h * 100 + '%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:4px;font-weight:700;font-size:12px;color:#9d174d;cursor:move;border-radius:4px;overflow:visible;white-space:nowrap;' +
-      (sel ? 'border:2px solid #be185d;background:rgba(190,24,93,.22)' : 'border:2px dashed #ec4899;background:rgba(236,72,153,.13)');
-    b.textContent = T.icon + ' ' + T.label;
+    b.style.cssText = 'position:absolute;left:' + f.x * 100 + '%;top:' + f.y * 100 + '%;width:' + f.w * 100 + '%;height:' + f.h * 100 + '%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:4px;font-weight:700;font-size:12px;color:' + (f.signer === 1 ? '#1e3a8a' : '#9d174d') + ';cursor:move;border-radius:4px;overflow:visible;white-space:nowrap;' + signBoxCss(f, sel);
+    b.textContent = T.icon + ' ' + T.label + ' (ל' + ((f.signer === 1) ? 2 : 1) + ')';
+    var pe = document.createElement('span'); pe.textContent = '✏️'; pe.title = 'בחר מי החותם: לווה 1 / לווה 2';
+    pe.style.cssText = 'position:absolute;top:-13px;inset-inline-end:-6px;background:#fff;border:1px solid #94a3b8;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;font-weight:400';
+    pe.addEventListener('pointerdown', function (e) { e.stopPropagation(); e.preventDefault(); });
+    pe.addEventListener('click', function (e) { e.stopPropagation(); signPickSigner(f.id); });
+    b.appendChild(pe);
     b.addEventListener('pointerdown', function (e) { signBoxDown(e, f, b, w); });
     w.appendChild(b);
   });
@@ -23111,7 +23155,7 @@ function signBoxDown(e, f, b, w) {
   e.stopPropagation(); e.preventDefault();
   var wasSel = SIGNX.sel === f.id;
   SIGNX.sel = f.id;
-  if (!wasSel) { Array.prototype.slice.call(document.querySelectorAll('.signbox')).forEach(function (x) { var s = x.dataset.id === f.id; x.style.border = s ? '2px solid #be185d' : '2px dashed #ec4899'; x.style.background = s ? 'rgba(190,24,93,.22)' : 'rgba(236,72,153,.13)'; }); }
+  if (!wasSel) { Array.prototype.slice.call(document.querySelectorAll('.signbox')).forEach(function (x) { var ff = SIGNX.fields.find(function (q) { return q.id === x.dataset.id; }); if (ff) x.style.cssText += ';' + signBoxCss(ff, x.dataset.id === f.id); }); }
   var r = w.getBoundingClientRect(), sx = e.clientX, sy = e.clientY, ox = f.x, oy = f.y;
   try { b.setPointerCapture(e.pointerId); } catch (_) {}
   function mv(ev) {
@@ -23154,7 +23198,7 @@ async function signCreate() {
   try {
     await portalFetch('/rest/v1/sign_requests', { method: 'POST', body: JSON.stringify({
       id: id, token: c.portalToken, client_id: c.id, title: title, doc_b64: signBytesToB64(SIGNX.bytes),
-      fields: SIGNX.fields.map(function (f) { return { id: f.id, type: f.type, page: f.page, x: +f.x.toFixed(5), y: +f.y.toFixed(5), w: +f.w.toFixed(5), h: +f.h.toFixed(5) }; }),
+      fields: SIGNX.fields.map(function (f) { return { id: f.id, type: f.type, signer: f.signer === 1 ? 1 : 0, page: f.page, x: +f.x.toFixed(5), y: +f.y.toFixed(5), w: +f.w.toFixed(5), h: +f.h.toFixed(5) }; }).concat([{ id: 'meta', type: 'meta', people: signPeople(c) }]),
       send_copy: copy, client_email: copy ? email : null, folder_id: m ? m[1] : null, hook: hook || null
     }) });
   } catch (e) {
