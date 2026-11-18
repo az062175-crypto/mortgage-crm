@@ -16059,6 +16059,214 @@ function resetSellerCollateralTemplate() {
   renderActiveSettingsSection();
 }
 
+// ===== Email templates registry (all editable in Settings → תבניות מייל) =====
+const EMAIL_TPL_REGISTRY = {
+  missingDocs: { group: 'client', label: 'בקשת מסמכים חסרים', vars: '{greeting} {name} {missingList}',
+    subject: 'מסמכים חסרים לתיק המשכנתא',
+    body: `{greeting} {name},
+
+להלן רשימת המסמכים החסרים לתיק המשכנתא:
+
+{missingList}
+
+אשמח לקבל בהקדם.
+
+תודה,
+יצחק` },
+  missingDocsFollowUp: { group: 'client', label: 'תזכורת — מסמכים חסרים', vars: '{greeting} {name} {missingList}',
+    subject: 'תזכורת — מסמכים חסרים לתיק המשכנתא',
+    body: `{greeting} {name},
+
+זוהי תזכורת ידידותית — טרם התקבלו המסמכים הבאים לתיק המשכנתא:
+
+{missingList}
+
+אשמח לקבל בהקדם כדי שנוכל להמשיך בטיפול.
+
+תודה,
+יצחק` },
+  stageMissing: { group: 'client', label: 'חסרים בשלב (ללקוח)', vars: '{greeting} {firstName} {items}', subject: null,
+    body: `{greeting}[[, {firstName}]],
+
+להמשך הטיפול בתיק המשכנתא — חסרים כרגע הפריטים הבאים:
+
+{items}
+
+אשמח לקבל את החסרים בהקדם האפשרי.
+
+תודה,
+יצחק · יועץ משכנתאות` },
+  signRequest: { group: 'client', label: 'בקשת חתימה דיגיטלית', vars: '{greeting} {firstName} {title} {link}',
+    subject: 'חתימה על מסמך[[: {title}]]',
+    body: `{greeting} {firstName},
+
+מצורף קישור לחתימה דיגיטלית על המסמך[[ "{title}"]]:
+{link}
+
+אפשר לחתום מהטלפון או מהמחשב, זה לוקח דקה.
+
+בברכה,
+יצחק כהן` },
+  legalReview: { group: 'pro', label: 'בנקאי — כתב התחייבות לבדיקת הל"מ', vars: '{greeting} {name} {idNumber} {you}',
+    subject: '{name}[[ · ת.ז {idNumber}]]',
+    body: `{greeting},
+
+מצ"ב כתב התחייבות עם שינויים / נספח.
+אודה אם {you} לשלוח לבדיקה מול המשפטי.
+
+בתודה מראש,
+יצחק` },
+  mandate: { group: 'pro', label: 'בנקאי — הקמת הרשאה לחיוב חשבון', vars: '{greeting} {code} {bank}', subject: null,
+    body: `{greeting},
+
+צריך להקים הרשאה לחיוב חשבון — הרשאה ללא הגבלה בסכום וללא הגבלה בתאריך.
+
+להלן קוד המוסד: {code}[[ ({bank})]]
+
+אודה אם תוכל/י לשלוח אלי בהקדם.
+
+בתודה מראש,
+יצחק` },
+  executionBanker: { group: 'pro', label: 'בנקאי — הזמנת שטרות / כתב התחייבות', vars: '{greeting} {bankerName} {docName} {you} {name} {address} {addressOrDash} {idNumber} {idOrDash}',
+    subject: 'הזמנת {docName} — {name}[[ · {address}]][[ · ת.ז {idNumber}]]',
+    body: `{greeting} {bankerName},
+
+אודה אם {you} להזמין לי {docName} ללקוח:
+
+*שם הלקוח:* {name}
+*כתובת הנכס:* {addressOrDash}
+*ת.ז:* {idOrDash}
+
+תודה,
+יצחק` },
+  bankCollateral: { group: 'pro', label: 'בנקאי — בקשת בטחונות', vars: '{greeting} {you} {name} {idNumber} {tasksList} {docsList}',
+    subject: 'בקשת בטחונות — {name}[[ · ת.ז {idNumber}]]',
+    body: `{greeting},
+
+אודה אם {you} לשלוח לי בטחונות ללקוח הנ"ל:
+
+{tasksList}
+
+מצ"ב:{docsList}
+
+תודה,
+יצחק` },
+  bankCollateralFollowUp: { group: 'pro', label: 'בנקאי — תזכורת בקשת בטחונות', vars: '{greeting} {bankerName} {you} {name} {idNumber}',
+    subject: 'תזכורת — בקשת בטחונות ללקוח {name}[[ · ת.ז {idNumber}]]',
+    body: `{greeting} {bankerName},
+
+זוהי תזכורת — טרם התקבלה תשובה על בקשת הבטחונות שנשלחה עבור הלקוח {name}[[ (ת.ז {idNumber})]].
+
+אשמח אם {you} לטפל בהקדם.
+
+תודה,
+יצחק` },
+  bankerMissing: { group: 'pro', label: 'הודעה לבנקאי — מסמכים חסרים', vars: '{greeting} {bankerName} {name} {missingText}', subject: null,
+    body: `{greeting} {bankerName},
+
+לגבי הלקוח {name} — חסרים המסמכים הבאים:
+
+{missingText}
+
+אודה על טיפולך.
+
+בברכה,
+יצחק` },
+  bankerFree: { group: 'pro', label: 'הודעה לבנקאי — מלל חופשי', vars: '{greeting} {bankerName} {name}', subject: null,
+    body: `{greeting} {bankerName},
+
+לגבי הלקוח {name} —
+
+[כתוב כאן]
+
+בברכה,
+יצחק` },
+  appraiserFollowUp: { group: 'pro', label: 'הודעה לשמאי — בקשת עדכון', vars: '{greeting} {appraiserName} {name} {address}',
+    subject: 'שמאות {name}[[ · {address}]]',
+    body: `{greeting} {appraiserName},
+
+לגבי הלקוח {name}[[ · {address}]] —
+האם יש עדכון בשמאות?
+
+בתודה,
+יצחק` },
+  appraiserFree: { group: 'pro', label: 'הודעה לשמאי — מלל חופשי', vars: '{greeting} {appraiserName} {name} {address}', subject: null,
+    body: `{greeting} {appraiserName},
+
+לגבי הלקוח {name}[[ · {address}]] —
+
+[כתוב כאן]
+
+בתודה,
+יצחק` },
+  contactEmail: { group: 'other', label: 'מייל לאיש קשר (דיאלוג כללי)', vars: '{greeting}', subject: null,
+    body: `{greeting},
+
+
+
+בתודה מראש,
+יצחק` },
+  taskReminder: { group: 'other', label: 'תזכורת משימה לאחראי', vars: '{assignee} {name} {task} {subTopic} {dueDate}',
+    subject: 'תזכורת משימה: {task} — {name}',
+    body: `שלום {assignee}
+
+תזכורת למשימה בתיק של {name}:
+• {task}[[
+• פרט: {subTopic}]][[
+• תאריך יעד: {dueDate}]]
+
+תודה.` }
+};
+function getEmailTpl(key) {
+  const d = EMAIL_TPL_REGISTRY[key] || { subject: null, body: '' };
+  const t = (state.settings && state.settings.emailTpls && state.settings.emailTpls[key]) || {};
+  return {
+    subject: d.subject == null ? null : ((t.subject && t.subject.trim()) || d.subject),
+    body: (typeof t.body === 'string' && t.body.length) ? t.body : d.body
+  };
+}
+function fillEmailTpl(key, vars, flags) {
+  const t = getEmailTpl(key);
+  return {
+    subject: t.subject == null ? '' : _fillLawyerTemplate(t.subject, vars, flags),
+    body: _fillLawyerTemplate(t.body, vars, flags)
+  };
+}
+function renderGenericEmailTplSection(key) {
+  const d = EMAIL_TPL_REGISTRY[key]; if (!d) return '';
+  const t = getEmailTpl(key);
+  return `<div class="panel">
+    <h2 class="panel-title">📧 תבנית מייל — ${escapeHtml(d.label)}</h2>
+    <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px 14px;border-radius:8px;font-size:12px;color:#1e3a8a;margin-bottom:14px;line-height:1.8">
+      משתנים: <code>${escapeHtml(d.vars)}</code>
+      <br>חלק אופציונלי: <code>[[ · ת.ז {idNumber}]]</code> — נמחק אם המשתנה ריק.
+    </div>
+    ${t.subject == null ? '' : `<div class="form-group"><label>נושא</label>
+      <input id="gTplSubj" value="${escapeAttr(t.subject)}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px"></div>`}
+    <div class="form-group"><label>גוף המייל</label>
+      <textarea id="gTplBody" style="width:100%;min-height:300px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px;direction:rtl">${escapeHtml(t.body)}</textarea></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="saveGenericEmailTpl('${key}')" style="background:#22c55e">💾 שמור</button>
+      <button class="btn secondary" onclick="resetGenericEmailTpl('${key}')">↺ שחזר ברירת מחדל</button>
+    </div>
+  </div>`;
+}
+function saveGenericEmailTpl(key) {
+  state.settings.emailTpls = state.settings.emailTpls || {};
+  state.settings.emailTpls[key] = {
+    subject: document.getElementById('gTplSubj') ? document.getElementById('gTplSubj').value.trim() : '',
+    body: document.getElementById('gTplBody').value || ''
+  };
+  save();
+  alert('✓ נשמר');
+}
+function resetGenericEmailTpl(key) {
+  if (!confirm('לשחזר את תבנית ברירת המחדל?')) return;
+  if (state.settings.emailTpls) delete state.settings.emailTpls[key];
+  save();
+  renderActiveSettingsSection();
+}
+
 function openSellerCollateralEmail(clientId) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
@@ -19745,13 +19953,16 @@ function renderEmailTemplatesHub() {
       ['emailTemplatesGeneral', 'תבניות כלליות (מסמכים, אישור, ליד...)'],
       ['shtarEmail', 'רישום שטרות בטאבו'],
       ['executionSummary', 'סיכום ביצוע'],
-      ['zechiaInstructions', 'אישור זכיה — הוראות'] ] },
+      ['zechiaInstructions', 'אישור זכיה — הוראות']
+    ].concat(Object.keys(EMAIL_TPL_REGISTRY).filter(k => EMAIL_TPL_REGISTRY[k].group === 'client').map(k => ['tpl:' + k, EMAIL_TPL_REGISTRY[k].label])) },
     { title: '🧑‍💼 נשלחות לאנשי מקצוע', items: [
       ['sellerCollateralEmail', 'לחתימת בטחונות מוכר'],
       ['lawyerEmail', 'לעו"ד - רישום משכנתא'],
       ['appraiserEmail', 'שמאי'],
       ['insuranceEmail', 'סוכן ביטוח'],
-      ['sigCoordEmail', 'תיאום חתימות (בנקאי)'] ] }
+      ['sigCoordEmail', 'תיאום חתימות (בנקאי)']
+    ].concat(Object.keys(EMAIL_TPL_REGISTRY).filter(k => EMAIL_TPL_REGISTRY[k].group === 'pro').map(k => ['tpl:' + k, EMAIL_TPL_REGISTRY[k].label])) },
+    { title: '🔧 אחר', items: Object.keys(EMAIL_TPL_REGISTRY).filter(k => EMAIL_TPL_REGISTRY[k].group === 'other').map(k => ['tpl:' + k, EMAIL_TPL_REGISTRY[k].label]) }
   ];
   const bar = groups.map(g => `
     <div style="margin-bottom:10px">
@@ -19866,6 +20077,7 @@ function renderSettingsSection(id) {
     </div>`;
 
   if (id === 'emailTemplates') return renderEmailTemplatesHub();
+  if (id.indexOf('tpl:') === 0) return renderGenericEmailTplSection(id.slice(4));
   if (id === 'emailTemplatesGeneral') return `
     <div class="panel">
       <h2 class="panel-title">📧 תבניות כלליות ללקוח (${(state.settings.emailTemplates||[]).length})</h2>
@@ -23215,9 +23427,20 @@ async function signDashLoad() {
   var box = document.getElementById('signPendingDash'); if (!box) return;
   if (!portalOn()) return;
   try {
-    var r = await portalFetch('/rest/v1/sign_requests?status=eq.pending&select=id,client_id,title,created_at&order=created_at.asc');
-    var rows = await r.json();
-    box = document.getElementById('signPendingDash'); if (!box || !Array.isArray(rows)) return;
+    var r = await portalFetch('/rest/v1/sign_requests?status=neq.canceled&select=id,client_id,title,status,created_at,signed_at&order=created_at.desc&limit=300');
+    var all = await r.json();
+    if (!Array.isArray(all)) return;
+    var logged = false;
+    all.forEach(function (x) {
+      if (x.status !== 'signed') return;
+      var c = state.clients.find(function (k) { return k.id === x.client_id; }); if (!c) return;
+      c.commLog = c.commLog || [];
+      if (c.commLog.some(function (l) { return l.type === 'sign' && l.meta && l.meta.signId === x.id && l.meta.signed; })) return;
+      c.commLog.push({ id: uid(), type: 'sign', at: x.signed_at || now(), meta: { title: x.title, signId: x.id, signed: true } }); logged = true;
+    });
+    if (logged) save();
+    var rows = all.filter(function (x) { return x.status === 'pending'; }).reverse();
+    box = document.getElementById('signPendingDash'); if (!box) return;
     box.innerHTML = rows.map(function (x) {
       var c = state.clients.find(function (k) { return k.id === x.client_id; });
       if (!c) return '';
