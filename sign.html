@@ -91,6 +91,10 @@ async function load(){
     META=(D.fields||[]).filter(function(f){return f.type==='meta';})[0]||null;
     USED=[];FIELDS.forEach(function(f){var g=f.signer===1?1:0;if(USED.indexOf(g)<0)USED.push(g);});USED.sort();if(!USED.length)USED=[0];
     for(var i=0;i<2;i++){var pp=(META&&META.people&&META.people[i])||{};S[i]={name:pp.name||'',idNumber:pp.idNumber||'',address:pp.address||'',sigData:null,sigImg:null};}
+    var prev=null;try{prev=await rpc('sign_prev',{p_token:TOKEN});}catch(_){}
+    for(var k=0;k<2;k++){var ps=prev&&prev.signers&&prev.signers[k];if(!ps)continue;
+      if(!S[k].name)S[k].name=ps.name||'';if(!S[k].idNumber)S[k].idNumber=ps.idNumber||'';if(!S[k].address)S[k].address=ps.address||'';
+      if(ps.sig&&/^data:image\/png;base64,[A-Za-z0-9+\/=]+$/.test(ps.sig)){S[k].sigData=ps.sig;S[k].saved=true;}}
     V.date=today();
     buildForm();
     await renderPages();
@@ -114,6 +118,7 @@ function buildForm(){
      '<div><label for="fId'+g+'">תעודת זהות</label><input type="text" id="fId'+g+'" inputmode="numeric" maxlength="9" autocomplete="off" value="'+esc(S[g].idNumber)+'"></div></div>'+
      '<label for="fAddr'+g+'">כתובת</label><input type="text" id="fAddr'+g+'" autocomplete="street-address" value="'+esc(S[g].address)+'">'+
      '<label>חתימה'+(lb?' של '+lb:'')+' (בעכבר או באצבע)</label><canvas id="sigpad'+g+'" class="sigpad"></canvas>'+
+     (S[g].saved?'<div class="muted" id="savedNote'+g+'" style="margin-top:6px">✓ החתימה שמורה מהחתימה הקודמת שלך. אפשר פשוט לשלוח, או ללחוץ "ניקוי חתימה" ולחתום מחדש.</div>':'')+
      '<div style="margin-top:6px"><button class="link" id="clr'+g+'">ניקוי חתימה</button></div></div>';
   }).join('');
   $('app').innerHTML='<h1>'+esc(D.title)+'</h1>'+
@@ -127,20 +132,26 @@ function buildForm(){
   USED.forEach(function(g){
     var map={name:'fName',idNumber:'fId',address:'fAddr'};
     Object.keys(map).forEach(function(k){$(map[k]+g).addEventListener('input',function(){S[g][k]=$(map[k]+g).value;paintFields();});});
-    $('clr'+g).onclick=function(){S[g].sigData=null;S[g].sigImg=null;initPad(g);paintFields();};
-    initPad(g);
+    $('clr'+g).onclick=function(){S[g].sigData=null;S[g].sigImg=null;S[g].saved=false;var n=$('savedNote'+g);if(n)n.remove();initPad(g);paintFields();};
+    initPad(g);if(S[g].saved)restoreSaved(g);
   });
   $('go').onclick=submit;
   window.addEventListener('resize',paintFields);
 }
 
+function restoreSaved(g){
+  var im=new Image();
+  im.onload=function(){S[g].sigImg=im;var c=$('sigpad'+g),x=c.getContext('2d'),sc=Math.min((c.width-20)/im.width,(c.height-20)/im.height);
+    x.drawImage(im,(c.width-im.width*sc)/2,(c.height-im.height*sc)/2,im.width*sc,im.height*sc);paintFields();};
+  im.src=S[g].sigData;
+}
 function initPad(g){
   var c=$('sigpad'+g),r=c.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
   c.width=Math.round(r.width*dpr);c.height=Math.round(r.height*dpr);
   var x=c.getContext('2d');x.lineWidth=3.2*dpr;x.lineCap='round';x.lineJoin='round';x.strokeStyle='#0b2a6b';
   var down=false,last=null,drew=false;
   function pt(e){var b=c.getBoundingClientRect();return {x:(e.clientX-b.left)*c.width/b.width,y:(e.clientY-b.top)*c.height/b.height};}
-  c.onpointerdown=function(e){down=true;last=pt(e);drew=false;try{c.setPointerCapture(e.pointerId);}catch(_){}e.preventDefault();};
+  c.onpointerdown=function(e){if(S[g].saved){x.clearRect(0,0,c.width,c.height);S[g].saved=false;S[g].sigData=null;S[g].sigImg=null;var nn=$('savedNote'+g);if(nn)nn.remove();}down=true;last=pt(e);drew=false;try{c.setPointerCapture(e.pointerId);}catch(_){}e.preventDefault();};
   c.onpointermove=function(e){if(!down)return;var p=pt(e);x.beginPath();x.moveTo(last.x,last.y);x.lineTo(p.x,p.y);x.stroke();last=p;drew=true;e.preventDefault();};
   function end(){if(!down)return;down=false;if(drew){var sd=c.toDataURL('image/png');S[g].sigData=sd;var im=new Image();im.onload=function(){S[g].sigImg=im;paintFields();};im.src=sd;}}
   c.onpointerup=end;c.onpointercancel=end;c.onpointerleave=end;
@@ -253,7 +264,7 @@ async function submit(){
     var out=await pdf.save();
     btn.textContent='שולח…';
     var r=await rpc('sign_submit',{p_id:ID,p_token:TOKEN,p_signed_b64:bytesToB64(out),
-      p_signer:{name:S[USED[0]].name,idNumber:S[USED[0]].idNumber,address:S[USED[0]].address,date:fmtDate(V.date),at:now.toISOString(),ua:navigator.userAgent.slice(0,200),clientName:(META&&META.clientName)||'',signers:USED.map(function(g){return {label:signerLbl(g)||'לווה 1',name:S[g].name,idNumber:S[g].idNumber,address:S[g].address};})},p_hash:hash});
+      p_signer:{name:S[USED[0]].name,idNumber:S[USED[0]].idNumber,address:S[USED[0]].address,date:fmtDate(V.date),at:now.toISOString(),ua:navigator.userAgent.slice(0,200),clientName:(META&&META.clientName)||'',signers:USED.map(function(g){return {label:signerLbl(g)||'לווה 1',name:S[g].name,idNumber:S[g].idNumber,address:S[g].address,sig:S[g].sigData};})},p_hash:hash});
     if(!r||!r.ok)throw new Error('submit');
     notifyDelivery();
     showDone(out,false);
