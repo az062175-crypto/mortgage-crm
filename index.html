@@ -7070,16 +7070,15 @@ function _hasSecondDegree(c) {
   return (c.tasks || []).some(t => /דרגה (שנייה|שניה)/.test(t.title || ''));
 }
 function _lawyerMailSubject(c) {
-  const parts = [_lawyerBorrowerNames(c)];
-  if (c.propertyAddress) parts.push(c.propertyAddress);
+  let out = 'רישום שטרי משכנתא - לקוח: ' + _lawyerBorrowerNames(c);
+  if (c.propertyAddress) out += ', רחוב: ' + c.propertyAddress;
   const reg = [];
   if (c.propertyGush) reg.push('גוש ' + c.propertyGush);
   if (c.propertyHelka) reg.push('חלקה ' + c.propertyHelka);
   if (c.propertyTatHelka) reg.push('תת חלקה ' + c.propertyTatHelka);
-  let regStr = reg.join(' ');
-  if (c.propertyCity) regStr += (regStr ? ' ' : '') + 'ב' + c.propertyCity;
-  if (regStr) parts.push(regStr);
-  return parts.join(', ');
+  const tail = [c.propertyCity || '', reg.join(' ')].filter(Boolean).join(' ');
+  if (tail) out += ',  ' + tail;
+  return out;
 }
 function _lawyerMailBody(c) {
   const items = ['שטרות משכנתא חתומים', 'אגרת רישום', 'נסח טאבו', 'אסמכתא לתשלום שכ"ט'];
