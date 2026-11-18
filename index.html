@@ -23123,11 +23123,11 @@ function signWho(g) {
   SIGNX.signer = g;
   [0, 1].forEach(function (i) {
     var b = document.getElementById('signWho_' + i); if (!b) return;
-    b.style.background = i === g ? (i ? '#1d4ed8' : '#be185d') : ''; b.style.color = i === g ? '#fff' : '';
+    b.style.background = i === g ? (i ? '#be185d' : '#1d4ed8') : ''; b.style.color = i === g ? '#fff' : '';
   });
 }
 function signBoxCss(f, sel) {
-  var bl = f.signer === 1;
+  var bl = f.signer !== 1;
   return sel ? 'border:2px solid ' + (bl ? '#1d4ed8' : '#be185d') + ';background:' + (bl ? 'rgba(29,78,216,.22)' : 'rgba(190,24,93,.22)')
              : 'border:2px dashed ' + (bl ? '#3b82f6' : '#ec4899') + ';background:' + (bl ? 'rgba(59,130,246,.13)' : 'rgba(236,72,153,.13)');
 }
@@ -23147,7 +23147,7 @@ function signPickSigner(fid) {
   d.id = 'signWhoDlg'; d.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100001;display:flex;align-items:center;justify-content:center;direction:rtl';
   d.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;min-width:280px;max-width:90vw">' +
     '<h3 style="margin:0 0 12px">מי החותם על הפריט הזה?</h3>' +
-    [0, 1].map(function (i) { return '<button class="btn" style="display:block;width:100%;margin-bottom:8px;' + (f.signer === i || (i === 0 && !f.signer) ? 'outline:3px solid #0f172a;' : '') + (i ? 'background:#1d4ed8' : 'background:#be185d') + '" onclick="signSetSigner(\'' + fid + '\',' + i + ')">' + (i ? 'לווה 2 (האשה)' : 'לווה 1 (הבעל)') + (P[i].name ? ' — ' + escapeHtml(P[i].name) : '') + '</button>'; }).join('') +
+    [0, 1].map(function (i) { return '<button class="btn" style="display:block;width:100%;margin-bottom:8px;' + (f.signer === i || (i === 0 && !f.signer) ? 'outline:3px solid #0f172a;' : '') + (i ? 'background:#be185d' : 'background:#1d4ed8') + '" onclick="signSetSigner(\'' + fid + '\',' + i + ')">' + (i ? 'לווה 2 (האשה)' : 'לווה 1 (הבעל)') + (P[i].name ? ' — ' + escapeHtml(P[i].name) : '') + '</button>'; }).join('') +
     '<button class="btn small secondary" onclick="document.getElementById(\'signWhoDlg\').remove()">ביטול</button></div>';
   document.body.appendChild(d);
 }
@@ -23170,7 +23170,7 @@ function signDraw() {
     var w = SIGNX.pages[f.page]; if (!w) return;
     var T = SIGN_TYPES[f.type], sel = SIGNX.sel === f.id;
     var b = document.createElement('div'); b.className = 'signbox'; b.dataset.id = f.id;
-    b.style.cssText = 'position:absolute;left:' + f.x * 100 + '%;top:' + f.y * 100 + '%;width:' + f.w * 100 + '%;height:' + f.h * 100 + '%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:4px;font-weight:700;font-size:12px;color:' + (f.signer === 1 ? '#1e3a8a' : '#9d174d') + ';cursor:move;border-radius:4px;overflow:visible;white-space:nowrap;' + signBoxCss(f, sel);
+    b.style.cssText = 'position:absolute;left:' + f.x * 100 + '%;top:' + f.y * 100 + '%;width:' + f.w * 100 + '%;height:' + f.h * 100 + '%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:4px;font-weight:700;font-size:12px;color:' + (f.signer === 1 ? '#9d174d' : '#1e3a8a') + ';cursor:move;border-radius:4px;overflow:visible;white-space:nowrap;' + signBoxCss(f, sel);
     b.textContent = T.icon + ' ' + T.label + ' (ל' + ((f.signer === 1) ? 2 : 1) + ')';
     var pe = document.createElement('span'); pe.textContent = '✏️'; pe.title = 'בחר מי החותם: לווה 1 / לווה 2';
     pe.style.cssText = 'position:absolute;top:-13px;inset-inline-end:-6px;background:#fff;border:1px solid #94a3b8;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;font-weight:400';
