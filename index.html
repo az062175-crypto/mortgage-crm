@@ -6024,12 +6024,14 @@ function renderClientDetail() {
                   const to = meta.to || '';
                   const subj = meta.subject || '';
                   title = icon + ' מייל נשלח' + (subj ? ' · ' + subj : '') + (to ? '\nאל: ' + to : '');
+                } else if (kind === 'sign') {
+                  title = (meta.signed ? '✅ מסמך נחתם' : '✍️ נשלח מסמך לחתימה') + (meta.title ? ' · ' + meta.title : '');
                 } else if (kind === 'whatsapp') {
                   title = icon + ' WhatsApp נשלח' + (meta.messagePreview ? '\n' + meta.messagePreview : '');
                 } else {
                   title = icon + ' ' + kind;
                 }
-                items.push({ at: l.at, kind, label: title, color: kind === 'whatsapp' ? '#22c55e' : '#3b82f6', meta, commId: l.id });
+                items.push({ at: l.at, kind, label: title, color: kind === 'whatsapp' ? '#22c55e' : (kind === 'sign' ? (meta.signed ? '#16a34a' : '#be185d') : '#3b82f6'), meta, commId: kind === 'sign' ? null : l.id });
               });
               items.sort((a, b) => new Date(b.at) - new Date(a.at));
               if (!items.length) return '<li class="task-item"><div class="task-body"><div class="task-meta" style="color:var(--muted)">אין פעילות עדיין</div></div></li>';
@@ -22949,6 +22951,11 @@ async function signLoadList() {
   try {
     var r = await portalFetch('/rest/v1/sign_requests?client_id=eq.' + encodeURIComponent(c.id) + '&status=neq.canceled&select=id,title,status,created_at,signed_at,delivered_at,delivery_info&order=created_at.desc');
     var rows = await r.json();
+    rows.forEach(function (x) {
+      if (x.status !== 'signed') return;
+      c.commLog = c.commLog || [];
+      if (!c.commLog.some(function (l) { return l.type === 'sign' && l.meta && l.meta.signId === x.id && l.meta.signed; })) logCommunication(c.id, 'sign', { title: x.title, signId: x.id, signed: true });
+    });
     var h = '<h3 style="margin:0 0 8px">מסמכים שנשלחו ללקוח</h3>';
     if (!rows.length) h += '<div style="color:var(--muted);font-size:13px">עוד לא נשלח מסמך לחתימה.</div>';
     rows.forEach(function (x) {
@@ -22963,6 +22970,7 @@ async function signLoadList() {
       } else {
         h += '<button class="btn small secondary" onclick="signCopyLink(\'' + x.id + '\')">📋 העתק קישור</button>' +
           '<button class="btn small secondary" onclick="signWhatsapp(\'' + x.id + '\')">💬 וואטסאפ</button>' +
+          '<button class="btn small secondary" onclick="signEmail(\'' + x.id + '\')">✉️ מייל</button>' +
           '<button class="btn small secondary" style="color:#dc2626" onclick="signCancel(\'' + x.id + '\')">בטל</button>';
       }
       h += '</div>';
@@ -23011,6 +23019,14 @@ function signWhatsapp(id, title) {
   var first = String(((c.borrowers || [])[0] || {}).name || c.name || '').trim().split(/\s+/)[0];
   var msg = 'שלום ' + first + ',\nמצורף קישור לחתימה על מסמך' + (title ? ' "' + title + '"' : '') + ':\n' + signLink(c, id) + '\nיצחק';
   window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
+}
+function signEmail(id, title) {
+  var c = signClient() || state.clients.find(function (k) { return k.id === SIGNX.cid; }); if (!c) return;
+  var to = c.email || ((c.borrowers || []).find(function (b) { return b.email; }) || {}).email || '';
+  var h = new Date().getHours(), g = h < 12 ? 'בוקר טוב' : (h < 18 ? 'צהריים טובים' : 'ערב טוב');
+  var first = String(((c.borrowers || [])[0] || {}).name || c.name || '').trim().split(/\s+/)[0];
+  var body = g + ' ' + first + ',\n\nמצורף קישור לחתימה דיגיטלית על המסמך' + (title ? ' "' + title + '"' : '') + ':\n' + signLink(c, id) + '\n\nאפשר לחתום מהטלפון או מהמחשב, זה לוקח דקה.\n\nבברכה,\nיצחק כהן';
+  window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent('חתימה על מסמך' + (title ? ': ' + title : '')) + '&body=' + encodeURIComponent(body), '_blank');
 }
 async function signCancel(id) {
   if (!confirm('לבטל את בקשת החתימה? הקישור יפסיק לעבוד (המסמך נשאר שמור).')) return;
@@ -23236,6 +23252,7 @@ async function signCreate() {
     alert('היצירה נכשלה. ודא שהרצת את supabase-signatures.sql ב-Supabase ושאתה מחובר.'); return;
   }
   SIGNX.busy = false;
+  try { logCommunication(c.id, 'sign', { title: title, signId: id }); } catch (e) {}
   var link = signLink(c, id), body = document.getElementById('signBody');
   body.innerHTML = '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px">' +
     '<h3 style="margin:0 0 8px">✅ הבקשה נוצרה</h3>' +
@@ -23244,6 +23261,7 @@ async function signCreate() {
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
       '<button class="btn small" onclick="signCopyLink(\'' + id + '\')">📋 העתק קישור</button>' +
       '<button class="btn small secondary" onclick="signWhatsapp(\'' + id + '\',\'' + escapeAttr(title).replace(/'/g, '') + '\')">💬 שלח בוואטסאפ</button>' +
+      '<button class="btn small secondary" onclick="signEmail(\'' + id + '\',\'' + escapeAttr(title).replace(/'/g, '') + '\')">✉️ שלח במייל</button>' +
       '<button class="btn small secondary" onclick="signHome()">חזרה לרשימה</button></div>' +
     (hook ? '' : '<div style="margin-top:12px;font-size:12.5px;color:#b45309">⚠ לא הוגדרה כתובת Apps Script, לכן אחרי החתימה לא יישלח מייל ולא יישמר ב-Drive אוטומטית. את החתום אפשר להוריד מהרשימה.</div>') +
     '</div>';
