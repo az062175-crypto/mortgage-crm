@@ -3990,8 +3990,9 @@ function renderControlBoard() {
 
         <!-- 5b. מחכה ללקוח -->
         <div class="panel">
-          <h2 class="panel-title">📤 מחכה ללקוח (${waitingForThem.length})</h2>
-          ${waitingForThem.length === 0 ? '<div class="empty" style="padding:12px">אין פולואפים פתוחים.</div>' : `
+          <h2 class="panel-title">📤 מחכה ללקוח (<span id="waitCnt" data-base="${waitingForThem.length}">${waitingForThem.length}</span>)</h2>
+          <div id="signPendingDash" style="display:flex;flex-direction:column;gap:5px;margin-bottom:5px"></div>
+          ${waitingForThem.length === 0 ? '<div class="empty" id="waitEmpty" style="padding:12px">אין פולואפים פתוחים.</div>' : `
           <div style="display:flex;flex-direction:column;gap:5px">
             ${waitingForThem.map(w => `
               <div style="background:#fef3c7;border-right:3px solid #f59e0b;padding:6px 10px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -4063,6 +4064,7 @@ function renderControlBoard() {
       </div>
     </div>
   `;
+  if (typeof signDashLoad === 'function') signDashLoad();
 }
 
 // The dashboard's filter scope. Tiles and the dialogs they open both read from here,
@@ -22970,6 +22972,34 @@ async function signLoadList() {
     box.innerHTML = '<h3 style="margin:0 0 8px">מסמכים שנשלחו ללקוח</h3><div style="color:#b45309;font-size:13px">לא הצלחתי לטעון. ודא שהרצת את supabase-signatures.sql ב-Supabase.</div>';
   }
 }
+/* לוח בקרה: מסמכים שנשלחו לחתימה והלקוח עוד לא חתם */
+async function signDashLoad() {
+  var box = document.getElementById('signPendingDash'); if (!box) return;
+  if (!portalOn()) return;
+  try {
+    var r = await portalFetch('/rest/v1/sign_requests?status=eq.pending&select=id,client_id,title,created_at&order=created_at.asc');
+    var rows = await r.json();
+    box = document.getElementById('signPendingDash'); if (!box || !Array.isArray(rows)) return;
+    box.innerHTML = rows.map(function (x) {
+      var c = state.clients.find(function (k) { return k.id === x.client_id; });
+      if (!c) return '';
+      var days = Math.floor((Date.now() - new Date(x.created_at).getTime()) / 86400000);
+      return '<div style="background:#fef3c7;border-right:3px solid #be185d;padding:6px 10px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;gap:8px">' +
+        '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px">' + escapeHtml(c.name || '—') + '</div>' +
+        '<div style="font-size:11px;color:#92400e">✍️ ממתין לחתימה: ' + escapeHtml(x.title || 'מסמך') + ' · ' + (days <= 0 ? 'נשלח היום' : days + ' ימים ללא חתימה') + '</div></div>' +
+        '<button class="btn small secondary" style="padding:2px 8px;font-size:11px" onclick="signCopyLinkFor(\'' + c.id + '\',\'' + x.id + '\')">📋 קישור</button>' +
+        '<button class="btn small" style="background:#be185d;color:#fff;padding:2px 10px;font-size:11px" onclick="openClient(\'' + c.id + '\')">פתח</button></div>';
+    }).join('');
+    var n = box.children.length, cnt = document.getElementById('waitCnt');
+    if (cnt) cnt.textContent = (+cnt.dataset.base || 0) + n;
+    var em = document.getElementById('waitEmpty'); if (em) em.style.display = n ? 'none' : '';
+  } catch (e) {}
+}
+function signCopyLinkFor(cid, id) {
+  var c = state.clients.find(function (k) { return k.id === cid; }); if (!c) return;
+  var l = signLink(c, id);
+  try { navigator.clipboard.writeText(l); alert('הקישור הועתק.'); } catch (e) { prompt('העתק את הקישור:', l); }
+}
 async function signCopyLink(id) {
   var c = signClient(); var l = signLink(c, id);
   try { await navigator.clipboard.writeText(l); alert('הקישור הועתק.'); } catch (e) { prompt('העתק את הקישור:', l); }
@@ -23198,7 +23228,7 @@ async function signCreate() {
   try {
     await portalFetch('/rest/v1/sign_requests', { method: 'POST', body: JSON.stringify({
       id: id, token: c.portalToken, client_id: c.id, title: title, doc_b64: signBytesToB64(SIGNX.bytes),
-      fields: SIGNX.fields.map(function (f) { return { id: f.id, type: f.type, signer: f.signer === 1 ? 1 : 0, page: f.page, x: +f.x.toFixed(5), y: +f.y.toFixed(5), w: +f.w.toFixed(5), h: +f.h.toFixed(5) }; }).concat([{ id: 'meta', type: 'meta', people: signPeople(c) }]),
+      fields: SIGNX.fields.map(function (f) { return { id: f.id, type: f.type, signer: f.signer === 1 ? 1 : 0, page: f.page, x: +f.x.toFixed(5), y: +f.y.toFixed(5), w: +f.w.toFixed(5), h: +f.h.toFixed(5) }; }).concat([{ id: 'meta', type: 'meta', clientName: c.name || '', people: signPeople(c) }]),
       send_copy: copy, client_email: copy ? email : null, folder_id: m ? m[1] : null, hook: hook || null
     }) });
   } catch (e) {

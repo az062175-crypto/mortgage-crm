@@ -253,7 +253,7 @@ async function submit(){
     var out=await pdf.save();
     btn.textContent='שולח…';
     var r=await rpc('sign_submit',{p_id:ID,p_token:TOKEN,p_signed_b64:bytesToB64(out),
-      p_signer:{name:S[USED[0]].name,idNumber:S[USED[0]].idNumber,address:S[USED[0]].address,date:fmtDate(V.date),at:now.toISOString(),ua:navigator.userAgent.slice(0,200),signers:USED.map(function(g){return {label:signerLbl(g)||'לווה 1',name:S[g].name,idNumber:S[g].idNumber,address:S[g].address};})},p_hash:hash});
+      p_signer:{name:S[USED[0]].name,idNumber:S[USED[0]].idNumber,address:S[USED[0]].address,date:fmtDate(V.date),at:now.toISOString(),ua:navigator.userAgent.slice(0,200),clientName:(META&&META.clientName)||'',signers:USED.map(function(g){return {label:signerLbl(g)||'לווה 1',name:S[g].name,idNumber:S[g].idNumber,address:S[g].address};})},p_hash:hash});
     if(!r||!r.ok)throw new Error('submit');
     notifyDelivery();
     showDone(out,false);
