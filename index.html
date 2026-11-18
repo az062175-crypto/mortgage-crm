@@ -2428,6 +2428,13 @@ function migrateClient(c) {
       seedSellerStageTasks(c);
     }
   } catch(e) {}
+  // Backfill: bank-stage "שליחת מייל לעו"ד" next to the mortgage-deed task
+  try {
+    if (Array.isArray(c.tasks) && c.tasks.some(t => t.stage === 'bank' && (t.title === 'שטר משכנתא' || t.title === 'שטרי משכנתא'))
+        && !c.tasks.some(t => t.stage === 'bank' && t.title === 'שליחת מייל לעו"ד')) {
+      c.tasks.push({ id: uid(), stage: 'bank', title: 'שליחת מייל לעו"ד', status: 'active', done: false, doneAt: null, createdAt: now(), history: [{ status: 'active', at: now() }], source: 'bank-seed' });
+    }
+  } catch(e) {}
   // Migration: "נשלח לבחינה" moved from bank stage to approval stage
   if (Array.isArray(c.tasks)) {
     c.tasks.forEach(t => {
@@ -6659,7 +6666,7 @@ function taskItemHtml(c, t) {
         <button class="btn small" style="background:#f59e0b;color:#fff" onclick="sendMortgageSignMessage('${c.id}','email')">📧 מייל ללקוח</button>
       </div>
     </div>`;
-  } else if (t.source === 'shtar-mishkanta-seed' && t.title === 'שליחת מייל לעו"ד') {
+  } else if (t.title === 'שליחת מייל לעו"ד') {
     inlineExtra = `<div style="margin-top:8px"><button class="btn small" style="background:#3b82f6;color:#fff" onclick="openLawyerMortgageEmail('${c.id}')">📧 מייל לעו"ד</button></div>`;
   } else if (t.stage === 'signature' && (t.title.indexOf('כתב התחייבות') === 0 || t.title.startsWith('בקשה לקבלת כתב התחייבות'))) {
     // Ask: are there changes in the mandate? If so, show the legal-review action inline (no separate task)
@@ -15862,19 +15869,19 @@ const BANK_TASKS_BY_REG_AND_DEAL = {
   'tabu-ownership': {
     'יד שנייה': ['בקשה לרישום הערת אזהרה', 'כתב התחייבות', 'אישור הון עצמי', 'הוראת תשלום/אישור פרטי מוכר'],
     'יד ראשונה': ['בקשה לרישום הערת אזהרה', 'כתב התחייבות', 'התחייבות קבלן — חוק המכר'],
-    'שיפוצים': ['שטר משכנתא'],
+    'שיפוצים': ['שטר משכנתא', 'שליחת מייל לעו"ד'],
     'מחיר למשתכן': ['בקשה לרישום הערת אזהרה', 'כתב התחייבות', 'התחייבות קבלן — חוק המכר'],
-    'כל מטרה': ['שטר משכנתא'],
+    'כל מטרה': ['שטר משכנתא', 'שליחת מייל לעו"ד'],
     'מיחזור': ['הזמנת הסכמה לדרגה שנייה'],
     'מיחזור + שיפוץ': ['הזמנת הסכמה לדרגה שנייה'],
     'מיחזור + הרחבה': ['הזמנת הסכמה לדרגה שנייה'],
     'מיחזור + כל מטרה': ['הזמנת הסכמה לדרגה שנייה'],
     'מיחזור + תוספת': ['הזמנת הסכמה לדרגה שנייה'],
     'מיחזור + גרירה': ['הזמנת הסכמה לדרגה שנייה'],
-    'הרחבה': ['שטר משכנתא'],
+    'הרחבה': ['שטר משכנתא', 'שליחת מייל לעו"ד'],
     'גרירה + כסף חדש': [],
-    'גישור': ['שטר משכנתא'],
-    'בניה עצמי': ['שטרי משכנתא'],
+    'גישור': ['שטר משכנתא', 'שליחת מייל לעו"ד'],
+    'בניה עצמי': ['שטרי משכנתא', 'שליחת מייל לעו"ד'],
     'היפוך לווים': []
   },
   'tabu-warning': {
@@ -15921,6 +15928,13 @@ try {
     if (!state.settings.bankTasksByRegAndDeal || typeof state.settings.bankTasksByRegAndDeal !== 'object') {
       state.settings.bankTasksByRegAndDeal = JSON.parse(JSON.stringify(BANK_TASKS_BY_REG_AND_DEAL));
     }
+    try {
+      const _tb = state.settings.bankTasksByRegAndDeal['tabu-ownership'] || {};
+      Object.keys(_tb).forEach(k => {
+        const l = _tb[k];
+        if (Array.isArray(l) && (l.includes('שטר משכנתא') || l.includes('שטרי משכנתא')) && !l.includes('שליחת מייל לעו"ד')) l.push('שליחת מייל לעו"ד');
+      });
+    } catch (e) {}
     if (!state.settings.sellerTasksByDeal || typeof state.settings.sellerTasksByDeal !== 'object') {
       state.settings.sellerTasksByDeal = JSON.parse(JSON.stringify(SELLER_TASKS_BY_DEAL));
     }
