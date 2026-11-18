@@ -7069,28 +7069,55 @@ function _hasSecondDegree(c) {
   if (purposes.some(p => /דרגה (שנייה|שניה)/.test(p))) return true;
   return (c.tasks || []).some(t => /דרגה (שנייה|שניה)/.test(t.title || ''));
 }
-function _lawyerMailSubject(c) {
+const DEFAULT_LAWYER_EMAIL_TEMPLATE = {
+  subject: `רישום שטרי משכנתא - לקוח: {name}[[, רחוב: {street}]][[,  {city}]][[ גוש {gush}]][[ חלקה {helka}]][[ תת חלקה {tatHelka}]]`,
+  body: `{greeting},
+
+אשמח לטיפולך ברישום משכנתא ללווים - {borrowers}
+
+מצ"ב:
+1. שטרות משכנתא חתומים
+2. אגרת רישום
+3. נסח טאבו
+4. אסמכתא לתשלום שכ"ט[[?secondDegree:
+5. הסכמה לדרגה שנייה]]
+
+אודה לאישור במייל חוזר בעת השידור לטאבו
+
+בתודה מראש,
+יצחק`
+};
+function _getLawyerTemplate() {
+  const t = (state.settings && state.settings.lawyerMortgageEmailTemplate) || {};
+  return {
+    subject: (t.subject && t.subject.trim()) || DEFAULT_LAWYER_EMAIL_TEMPLATE.subject,
+    body: (typeof t.body === 'string' && t.body.length) ? t.body : DEFAULT_LAWYER_EMAIL_TEMPLATE.body
+  };
+}
+// Fills {vars}. [[ ... ]] = optional segment, dropped if any {var} inside is empty.
+// [[?flag: ... ]] = shown only when the flag is true.
+function _fillLawyerTemplate(tpl, vars, flags) {
+  const fill = (t) => t.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+  const out = tpl.replace(/\[\[(?:\?(\w+):)?([\s\S]*?)\]\]/g, (m, flag, inner) => {
+    if (flag) return (flags && flags[flag]) ? fill(inner) : '';
+    const keys = (inner.match(/\{(\w+)\}/g) || []).map(x => x.slice(1, -1));
+    return keys.some(k => !String(vars[k] == null ? '' : vars[k]).trim()) ? '' : fill(inner);
+  });
+  return fill(out);
+}
+function _lawyerVars(c) {
   const b0 = (c.borrowers || [])[0] || {};
   const f0 = (b0.firstName || '').trim(), fam0 = (b0.familyName || '').trim();
-  const oneName = (f0 && fam0) ? (f0 + ' ' + fam0) : ((b0.name || '').trim() || c.name || '');
-  let out = 'רישום שטרי משכנתא - לקוח: ' + oneName;
-  if (c.propertyAddress) out += ', רחוב: ' + c.propertyAddress;
-  const reg = [];
-  if (c.propertyGush) reg.push('גוש ' + c.propertyGush);
-  if (c.propertyHelka) reg.push('חלקה ' + c.propertyHelka);
-  if (c.propertyTatHelka) reg.push('תת חלקה ' + c.propertyTatHelka);
-  const tail = [c.propertyCity || '', reg.join(' ')].filter(Boolean).join(' ');
-  if (tail) out += ',  ' + tail;
-  return out;
+  return {
+    greeting: greetingByHour(),
+    name: (f0 && fam0) ? (f0 + ' ' + fam0) : ((b0.name || '').trim() || c.name || ''),
+    borrowers: _lawyerBorrowerNames(c),
+    street: c.propertyAddress || '', city: c.propertyCity || '',
+    gush: c.propertyGush || '', helka: c.propertyHelka || '', tatHelka: c.propertyTatHelka || ''
+  };
 }
-function _lawyerMailBody(c) {
-  const items = ['שטרות משכנתא חתומים', 'אגרת רישום', 'נסח טאבו', 'אסמכתא לתשלום שכ"ט'];
-  if (_hasSecondDegree(c)) items.push('הסכמה לדרגה שנייה');
-  return greetingByHour() + ',\n\n'
-    + 'אשמח לטיפולך ברישום משכנתא ללווים - ' + _lawyerBorrowerNames(c) + '\n\n'
-    + 'מצ"ב:\n' + items.map((x, i) => (i + 1) + '. ' + x).join('\n')
-    + '\n\nאודה לאישור במייל חוזר בעת השידור לטאבו\n\nבתודה מראש,\nיצחק';
-}
+function _lawyerMailSubject(c) { return _fillLawyerTemplate(_getLawyerTemplate().subject, _lawyerVars(c), {}); }
+function _lawyerMailBody(c) { return _fillLawyerTemplate(_getLawyerTemplate().body, _lawyerVars(c), { secondDegree: _hasSecondDegree(c) }); }
 function openLawyerMortgageEmail(clientId) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
@@ -19488,6 +19515,45 @@ function renderShtarEmailTemplateSection() {
   </div>`;
 }
 
+function renderLawyerEmailTemplateSection() {
+  const tpl = _getLawyerTemplate();
+  return `<div class="panel">
+    <h2 class="panel-title">📧 תבנית מייל: "מייל לעו"ד — רישום משכנתא"</h2>
+    <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px 14px;border-radius:8px;font-size:12px;color:#1e3a8a;margin-bottom:14px;line-height:1.8">
+      💡 התבנית נטענת מהכפתור "📧 מייל לעו"ד" במשימה "שליחת מייל לעו"ד".
+      <br>משתנים: <code>{greeting}</code> ברכת זמן · <code>{name}</code> שם הלקוח · <code>{borrowers}</code> שמות כל הלווים · <code>{street}</code> רחוב · <code>{city}</code> עיר · <code>{gush}</code> גוש · <code>{helka}</code> חלקה · <code>{tatHelka}</code> תת חלקה
+      <br>חלק אופציונלי: <code>[[, רחוב: {street}]]</code> — נמחק אם השדה ריק בכרטיס הלקוח.
+      <br>חלק מותנה: <code>[[?secondDegree: 5. הסכמה לדרגה שנייה]]</code> — מופיע רק בתיק עם הסכמה לדרגה שנייה (מיחזור חיצוני).
+    </div>
+    <div class="form-group">
+      <label>נושא</label>
+      <input id="lawyerEmailSubj" value="${escapeAttr(tpl.subject)}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px">
+    </div>
+    <div class="form-group">
+      <label>גוף המייל</label>
+      <textarea id="lawyerEmailBody" style="width:100%;min-height:340px;font-family:inherit;padding:10px;border:1px solid var(--border);border-radius:8px;direction:rtl">${escapeHtml(tpl.body)}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="saveLawyerEmailTemplate()" style="background:#22c55e">💾 שמור</button>
+      <button class="btn secondary" onclick="resetLawyerEmailTemplate()">↺ שחזר ברירת מחדל</button>
+    </div>
+  </div>`;
+}
+function saveLawyerEmailTemplate() {
+  state.settings.lawyerMortgageEmailTemplate = {
+    subject: (document.getElementById('lawyerEmailSubj').value || '').trim(),
+    body: document.getElementById('lawyerEmailBody').value || ''
+  };
+  save();
+  alert('✓ נשמר');
+}
+function resetLawyerEmailTemplate() {
+  if (!confirm('לשחזר את תבנית ברירת המחדל?')) return;
+  state.settings.lawyerMortgageEmailTemplate = JSON.parse(JSON.stringify(DEFAULT_LAWYER_EMAIL_TEMPLATE));
+  save();
+  renderActiveSettingsSection();
+}
+
 function saveShtarEmailTemplate() {
   const subj = (document.getElementById('shtarEmailSubj').value || '').trim();
   const body = document.getElementById('shtarEmailBody').value || '';
@@ -19593,6 +19659,7 @@ function renderSettings() {
     { id: 'stageTab_execution', label: '🚀 משימות ביצוע', icon: '🚀' },
     { id: 'executionSummary', label: '📧 תבנית סיכום ללקוח', icon: '📧' },
     { id: 'shtarEmail', label: '📧 תבנית מייל רישום שטרות', icon: '📧' },
+    { id: 'lawyerEmail', label: '📧 תבנית מייל לעו"ד', icon: '📧' },
     { id: 'appraiserEmail', label: '📧 תבנית מייל לשמאי', icon: '📧' },
     { id: 'insuranceEmail', label: '🛡 תבנית מייל ביטוח', icon: '🛡' },
     { id: 'sigCoordEmail', label: '✍️ תבנית תיאום חתימות (לבנקאי)', icon: '✍️' },
@@ -19644,6 +19711,7 @@ function renderSettingsSection(id) {
   if (id === 'signatureTasks') return renderSignatureTasksSection();
   if (id === 'executionSummary') return renderExecutionSummaryTemplateSection();
   if (id === 'shtarEmail') return renderShtarEmailTemplateSection();
+  if (id === 'lawyerEmail') return renderLawyerEmailTemplateSection();
   if (id === 'appraiserEmail') return renderAppraiserEmailTemplateSection();
   if (id === 'insuranceEmail') return renderInsuranceEmailTemplateSection();
   if (id === 'sigCoordEmail') return renderSigCoordEmailTemplateSection();
