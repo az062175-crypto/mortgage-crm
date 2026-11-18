@@ -19657,13 +19657,6 @@ function renderSettings() {
     { id: 'sellerTasks', label: '🤝 משימות בטחונות מוכר', icon: '🤝' },
     { id: 'signatureTasks', label: '✍️ משימות חתימות', icon: '✍️' },
     { id: 'stageTab_execution', label: '🚀 משימות ביצוע', icon: '🚀' },
-    { id: 'executionSummary', label: '📧 תבנית סיכום ללקוח', icon: '📧' },
-    { id: 'shtarEmail', label: '📧 תבנית מייל רישום שטרות', icon: '📧' },
-    { id: 'lawyerEmail', label: '📧 תבנית מייל לעו"ד', icon: '📧' },
-    { id: 'appraiserEmail', label: '📧 תבנית מייל לשמאי', icon: '📧' },
-    { id: 'insuranceEmail', label: '🛡 תבנית מייל ביטוח', icon: '🛡' },
-    { id: 'sigCoordEmail', label: '✍️ תבנית תיאום חתימות (לבנקאי)', icon: '✍️' },
-    { id: 'zechiaInstructions', label: '📨 אישור זכיה — הוראות ללקוח', icon: '📨' },
     { id: 'bankNameMap', label: '🏦 מיפוי שמות בנקים', icon: '🏦' },
     { id: 'banksList', label: '🏦 בנקים לניהול עו"ש', icon: '🏦' },
     { id: 'bankInstCodes', label: '🏦 קודי מוסד בנקים', icon: '🏦' },
@@ -19691,6 +19684,35 @@ function renderSettings() {
     </div>
   `;
   renderActiveSettingsSection();
+}
+
+let activeEmailTplTab = 'emailTemplatesGeneral';
+function setEmailTplTab(id) { activeEmailTplTab = id; renderActiveSettingsSection(); }
+function renderEmailTemplatesHub() {
+  const groups = [
+    { title: '📤 נשלחות ללקוח', items: [
+      ['emailTemplatesGeneral', 'תבניות כלליות (מסמכים, אישור, ליד...)'],
+      ['shtarEmail', 'רישום שטרות בטאבו'],
+      ['executionSummary', 'סיכום ביצוע'],
+      ['zechiaInstructions', 'אישור זכיה — הוראות'] ] },
+    { title: '🧑‍💼 נשלחות לאנשי מקצוע', items: [
+      ['lawyerEmail', 'עו"ד — רישום משכנתא'],
+      ['appraiserEmail', 'שמאי'],
+      ['insuranceEmail', 'סוכן ביטוח'],
+      ['sigCoordEmail', 'תיאום חתימות (בנקאי)'] ] }
+  ];
+  const bar = groups.map(g => `
+    <div style="margin-bottom:10px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px">${g.title}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${g.items.map(([id, label]) => `<button class="btn small ${activeEmailTplTab === id ? '' : 'secondary'}" onclick="setEmailTplTab('${id}')">${escapeHtml(label)}</button>`).join('')}
+      </div>
+    </div>`).join('');
+  return `<div class="panel" style="padding-bottom:6px">
+      <h2 class="panel-title">📧 תבניות מייל</h2>
+      ${bar}
+    </div>
+    ${renderSettingsSection(activeEmailTplTab)}`;
 }
 
 function renderActiveSettingsSection() {
@@ -19790,9 +19812,10 @@ function renderSettingsSection(id) {
       <button class="btn small" onclick="addWaTemplate()">+ הוסף תבנית</button>
     </div>`;
 
-  if (id === 'emailTemplates') return `
+  if (id === 'emailTemplates') return renderEmailTemplatesHub();
+  if (id === 'emailTemplatesGeneral') return `
     <div class="panel">
-      <h2 class="panel-title">📧 תבניות מייל (${(state.settings.emailTemplates||[]).length})</h2>
+      <h2 class="panel-title">📧 תבניות כלליות ללקוח (${(state.settings.emailTemplates||[]).length})</h2>
       <div style="background:#eff6ff;border:1px solid #93c5fd;padding:8px 12px;border-radius:6px;font-size:12px;color:#1e3a8a;margin-bottom:10px">
         💡 כל תבנית מייל שיוצרים כאן נוצרת גם כתבנית וואטסאפ (מסומנת ב-📧). ניתן לערוך את שתיהן בנפרד בטאב "תבניות WhatsApp".
       </div>
