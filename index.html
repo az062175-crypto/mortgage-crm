@@ -23570,7 +23570,7 @@ async function signEditor() {
   signTool(SIGNX.tool); signWho(SIGNX.signer);
   try {
     await signLibs();
-    var pdf = await pdfjsLib.getDocument({ data: SIGNX.bytes.slice() }).promise;
+    var pdf = await pdfjsLib.getDocument({ data: SIGNX.bytes.slice(), disableFontFace: true }).promise;
     var host = document.getElementById('signPages'); if (!host) return;
     host.innerHTML = ''; SIGNX.pages = [];
     var cssW = Math.min(host.clientWidth || 760, 820);
