@@ -435,8 +435,12 @@ async function sgnView(id,btn){
     var old=document.getElementById('sgnViewDlg');if(old)old.remove();
     var d=document.createElement('div');d.id='sgnViewDlg';
     d.style.cssText='position:fixed;top:0;bottom:0;left:0;width:min(520px,100vw);z-index:9999;background:#fff;display:flex;flex-direction:column;direction:rtl;box-shadow:6px 0 24px rgba(15,23,42,.35)';
-    d.innerHTML='<div style="background:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px"><b style="flex:1">'+esc(r.title||'מסמך')+'</b><button class="link" type="button" id="sgnViewX" style="font-weight:700">✕ סגור</button></div><iframe src="'+u+'" style="flex:1;border:0;background:#fff"></iframe>';
+    d.innerHTML='<div style="background:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px"><b style="flex:1">'+esc(r.title||'מסמך')+'</b><button class="link" type="button" id="sgnViewNar">▶</button><button class="link" type="button" id="sgnViewWid">◀</button><button class="link" type="button" id="sgnViewX" style="font-weight:700">✕ סגור</button></div><iframe src="'+u+'" style="flex:1;border:0;background:#fff"></iframe>';
     document.body.appendChild(d);
+    var W=[360,520,760,1100],wi=1;
+    function setW(px){d.style.width='min('+px+'px,100vw)';}
+    document.getElementById('sgnViewWid').onclick=function(){wi=Math.min(W.length-1,wi+1);setW(W[wi]);};
+    document.getElementById('sgnViewNar').onclick=function(){wi=Math.max(0,wi-1);setW(W[wi]);};
     document.getElementById('sgnViewX').onclick=function(){d.remove();URL.revokeObjectURL(u);};
   }catch(e){alert('לא הצלחנו לפתוח את המסמך. נסה שוב.');}
   btn.textContent=t;

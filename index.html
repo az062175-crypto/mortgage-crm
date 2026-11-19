@@ -23471,9 +23471,20 @@ async function signView(id) {
     var d = document.createElement('div'); d.id = 'signViewDlg';
     d.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:min(560px,92vw);z-index:100002;background:#fff;display:flex;flex-direction:column;direction:rtl;box-shadow:6px 0 24px rgba(15,23,42,.35);border-right:1px solid #cbd5e1';
     d.innerHTML = '<div style="background:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px"><b style="flex:1">' + escapeHtml(rows[0].title || 'מסמך') + ' — חתום</b>' +
+      '<button class="btn small secondary" id="signViewNar" title="צמצם">▶</button><button class="btn small secondary" id="signViewWid" title="הרחב">◀</button>' +
       '<button class="btn small secondary" id="signViewDl">⬇ הורד</button><button class="btn small" id="signViewX">✕ סגור</button></div>' +
-      '<iframe src="' + u + '" style="flex:1;border:0;background:#fff"></iframe>';
+      '<iframe id="signViewFr" src="' + u + '" style="flex:1;border:0;background:#fff"></iframe>' +
+      '<div id="signViewGrip" title="גרור כדי לשנות רוחב" style="position:absolute;top:0;bottom:0;right:-5px;width:10px;cursor:ew-resize"></div>';
     document.body.appendChild(d);
+    var W = [380, 560, 800, 1100, 1500], wi = 1;
+    var setW = function (px) { d.style.width = 'min(' + Math.round(px) + 'px,98vw)'; };
+    document.getElementById('signViewWid').onclick = function () { wi = Math.min(W.length - 1, wi + 1); setW(W[wi]); };
+    document.getElementById('signViewNar').onclick = function () { wi = Math.max(0, wi - 1); setW(W[wi]); };
+    var grip = document.getElementById('signViewGrip'), fr = document.getElementById('signViewFr');
+    grip.addEventListener('pointerdown', function (e) { try { grip.setPointerCapture(e.pointerId); } catch (_) {} fr.style.pointerEvents = 'none'; e.preventDefault(); });
+    grip.addEventListener('pointermove', function (e) { if (grip.hasPointerCapture && grip.hasPointerCapture(e.pointerId)) setW(Math.max(300, e.clientX)); });
+    var gripUp = function () { fr.style.pointerEvents = ''; };
+    grip.addEventListener('pointerup', gripUp); grip.addEventListener('pointercancel', gripUp);
     var close = function () { d.remove(); URL.revokeObjectURL(u); document.removeEventListener('keydown', esc); };
     var esc = function (e) { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', esc);
