@@ -23549,12 +23549,9 @@ async function signEditor() {
       '<button class="btn small secondary" id="signWho_1" onclick="signWho(1)">לווה 2</button>' +
       '<b style="margin-inline:10px 4px">בחר סוג ולחץ על המסמך:</b>' + tools +
       '<span style="flex:1"></span>' +
-      '<button class="btn small secondary" onclick="signZoom(-1)" title="הקטן את המסמך">🔍－</button>' +
-      '<span id="signZoomLbl" style="font-size:12px;min-width:38px;text-align:center">100%</span>' +
-      '<button class="btn small secondary" onclick="signZoom(1)" title="הגדל את המסמך">🔍＋</button>' +
-      '<span style="width:10px"></span>' +
-      '<button class="btn small secondary" onclick="signResize(1.12)" title="הגדל את הפריט הנבחר">＋</button>' +
-      '<button class="btn small secondary" onclick="signResize(0.89)" title="הקטן את הפריט הנבחר">－</button>' +
+      '<button class="btn small secondary" style="font-size:16px;padding:2px 12px" onclick="signSize(1)" title="הגדל: את הפריט הנבחר, ואם לא נבחר פריט את המסמך">＋</button>' +
+      '<span id="signZoomLbl" title="כשפריט נבחר: לחץ כאן לביטול הבחירה, ואז הכפתורים משנים את גודל המסמך" onclick="if(SIGNX.sel){SIGNX.sel=null;signDraw();}" style="font-size:12px;min-width:70px;text-align:center;cursor:pointer">מסמך 100%</span>' +
+      '<button class="btn small secondary" style="font-size:16px;padding:2px 12px" onclick="signSize(-1)" title="הקטן: את הפריט הנבחר, ואם לא נבחר פריט את המסמך">－</button>' +
       '<button class="btn small secondary" style="color:#dc2626" onclick="signDelSel()">🗑 מחק נבחר</button>' +
     '</div>' +
     '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">גרור פריט כדי להזיז אותו. לחיצה על פריט בוחרת אותו (Delete מוחק). חובה לפחות מקום אחד לחתימה.</div>' +
@@ -23606,8 +23603,14 @@ function signZoom(d) {
   i = Math.max(0, Math.min(SIGN_ZOOMS.length - 1, i + d));
   SIGNX.zoom = SIGN_ZOOMS[i];
   SIGNX.pages.forEach(function (w) { w.style.width = (SIGNX.baseW * SIGNX.zoom) + 'px'; w.style.margin = SIGNX.zoom > 1 ? '0 0 14px' : '0 auto 14px'; });
-  var l = document.getElementById('signZoomLbl'); if (l) l.textContent = Math.round(SIGNX.zoom * 100) + '%';
+  signLbl();
 }
+function signLbl() {
+  var l = document.getElementById('signZoomLbl'); if (!l) return;
+  l.textContent = SIGNX.sel ? 'פריט נבחר' : 'מסמך ' + Math.round((SIGNX.zoom || 1) * 100) + '%';
+  l.style.color = SIGNX.sel ? '#be185d' : '';
+}
+function signSize(d) { if (SIGNX.sel) signResize(d > 0 ? 1.12 : 0.89); else signZoom(d); }
 function signWho(g) {
   SIGNX.signer = g;
   [0, 1].forEach(function (i) {
@@ -23653,6 +23656,7 @@ function signPageDown(e) {
   SIGNX.fields.push(f); SIGNX.sel = f.id; signDraw();
 }
 function signDraw() {
+  signLbl();
   SIGNX.pages.forEach(function (w) { Array.prototype.slice.call(w.querySelectorAll('.signbox')).forEach(function (b) { b.remove(); }); });
   SIGNX.fields.forEach(function (f) {
     var w = SIGNX.pages[f.page]; if (!w) return;
@@ -23677,7 +23681,7 @@ function signDraw() {
 function signBoxDown(e, f, b, w) {
   e.stopPropagation(); e.preventDefault();
   var wasSel = SIGNX.sel === f.id;
-  SIGNX.sel = f.id;
+  SIGNX.sel = f.id; signLbl();
   if (!wasSel) { Array.prototype.slice.call(document.querySelectorAll('.signbox')).forEach(function (x) { var ff = SIGNX.fields.find(function (q) { return q.id === x.dataset.id; }); if (ff) x.style.cssText += ';' + signBoxCss(ff, x.dataset.id === f.id); }); }
   var r = w.getBoundingClientRect(), sx = e.clientX, sy = e.clientY, ox = f.x, oy = f.y;
   try { b.setPointerCapture(e.pointerId); } catch (_) {}
