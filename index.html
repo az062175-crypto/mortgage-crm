@@ -10745,6 +10745,7 @@ function startRenameReq(clientId, reqId) {
   const trimmed = newName.trim();
   if (!trimmed) { alert('השם לא יכול להיות ריק'); return; }
   if (trimmed === r.name) return;
+  if (!r.origName && !r.manual) r.origName = r.name; // זוכר את שם התבנית המקורי כדי לשמר את העריכה בבנייה מחדש
   r.name = trimmed;
   save();
   renderClientDetail();
@@ -10800,7 +10801,7 @@ function submitAddReq(clientId, section) {
   const name = document.getElementById('newReqName').value.trim();
   if (!name) { alert('שם הדרישה חובה'); return; }
   const c = state.clients.find(x => x.id === clientId);
-  const req = { id: uid(), stage: 'client', section, name, status: 'pending' };
+  const req = { id: uid(), stage: 'client', section, name, status: 'pending', manual: true };
   const dealTypeEl = document.getElementById('newReqDealType');
   if (dealTypeEl && dealTypeEl.value) req.dealType = dealTypeEl.value;
   c.requirements.push(req);
@@ -15339,6 +15340,7 @@ function submitNewClient() {
         }
       });
     };
+    const _oldReqsAll = c.requirements.map(r => Object.assign({}, r));
     // Refresh borrower + guarantor document requirements
     c.requirements = c.requirements.filter(r => !(r.stage === 'client' && (r.section === 'borrower' || r.section === 'guarantor' || !r.section)));
     const isCoupleNow = borrowers.length > 1;
@@ -15394,6 +15396,23 @@ function submitNewClient() {
         }
       });
     }
+    // שימור עריכות ידניות: סדר גרירה, שמות שנערכו ומשימות שנוספו ידנית — לא נמחקים בבנייה מחדש
+    (function () {
+      const k = r => (r.section || '') + '::' + (r.dealType || '') + '::' + (r.origName || r.name);
+      const used = new Set();
+      _oldReqsAll.forEach(o => {
+        const n = c.requirements.find(x => !used.has(x.id) && !x._kept && k(x) === k(o) && o.stage === x.stage);
+        if (n) {
+          if (typeof o.order === 'number') n.order = o.order;
+          if (o.origName) { n.origName = o.origName; n.name = o.name; }
+          n.id = o.id;
+          used.add(n.id);
+        } else if (o.manual && !c.requirements.some(x => x.id === o.id)) {
+          const wiped = (o.section === 'borrower' || o.section === 'guarantor' || !o.section || o.section === 'deal');
+          if (wiped && o.stage === 'client') c.requirements.push(o);
+        }
+      });
+    })();
     // Restore previously-marked statuses (provided / not-required) that survived the re-seed
     _restoreReqStatuses();
     // If this save concludes a "סגרנו עסקה" flow — move the lead to 'client' stage now
