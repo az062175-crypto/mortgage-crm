@@ -19527,6 +19527,179 @@ function renderAccompanimentBanksSection() {
   `;
 }
 
+// ================= גיבוי יומי אוטומטי + שחזור לקוח בודד =================
+var BK_DIR_KEY = 'backup-dir';
+var _bkDir = null;
+var _bkLoaded = null; // { label, clients: [] }
+function _bkStamp(d) { d = d || new Date(); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+function _bkPayload() { return { app: 'mortgage-crm', exportedAt: new Date().toISOString(), clientsCount: (state.clients || []).length, state: state }; }
+
+async function bkDirReady(ask) {
+  try {
+    if (!_bkDir) _bkDir = await idbGet(BK_DIR_KEY);
+    if (!_bkDir) return null;
+    let p = await _bkDir.queryPermission({ mode: 'readwrite' });
+    if (p !== 'granted' && ask) p = await _bkDir.requestPermission({ mode: 'readwrite' });
+    return p === 'granted' ? _bkDir : null;
+  } catch (e) { return null; }
+}
+
+async function bkRun(force) {
+  try {
+    if (!state || !Array.isArray(state.clients) || !state.clients.length) return;
+    const today = _bkStamp();
+    let last = ''; try { last = localStorage.getItem('mortgage_crm_lastDailyBackup') || ''; } catch (e) {}
+    if (!force && last === today) return;
+    const name = 'crm-backup-' + today + (force ? '-' + new Date().toTimeString().slice(0, 5).replace(':', '') : '') + '.json';
+    const json = JSON.stringify(_bkPayload());
+    let saved = false, toFolder = false;
+    const dir = await bkDirReady(false);
+    if (dir) {
+      try {
+        if (!force) { try { await dir.getFileHandle(name); saved = true; toFolder = true; } catch (e) {} } // כבר קיים להיום — לא דורסים
+        if (!saved) { const fh = await dir.getFileHandle(name, { create: true }); const w = await fh.createWritable(); await w.write(json); await w.close(); saved = true; toFolder = true; }
+      } catch (e) { saved = false; }
+    }
+    if (!saved) { // גיבוי: הורדה אוטומטית לתיקיית ההורדות של הדפדפן
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      a.download = name; document.body.appendChild(a); a.click();
+      setTimeout(() => { try { URL.revokeObjectURL(a.href); a.remove(); } catch (e) {} }, 2500);
+      saved = true;
+    }
+    try {
+      localStorage.setItem('mortgage_crm_lastDailyBackup', today);
+      localStorage.setItem('mortgage_crm_lastDailyBackupInfo', JSON.stringify({ at: new Date().toISOString(), n: state.clients.length, folder: toFolder, name: name }));
+    } catch (e) {}
+    bkRefreshStatus();
+  } catch (e) { console.warn('[backup] failed', e); }
+}
+
+async function bkChooseFolder() {
+  if (!window.showDirectoryPicker) { alert('פתח את המערכת ב-Chrome או Edge כדי לבחור תיקייה.'); return; }
+  try {
+    const h = await window.showDirectoryPicker({ mode: 'readwrite' });
+    _bkDir = h; await idbSet(BK_DIR_KEY, h);
+    await bkRun(true);
+    alert('תיקיית הגיבוי נבחרה, וגיבוי ראשון נשמר בה ✓\nמעכשיו יישמר גיבוי חדש בכל יום לבד.');
+  } catch (e) { if (e.name !== 'AbortError') alert('שגיאה: ' + e.message); }
+}
+
+function bkRefreshStatus() {
+  const el = document.getElementById('bkStatus');
+  if (!el) return;
+  let info = null; try { info = JSON.parse(localStorage.getItem('mortgage_crm_lastDailyBackupInfo') || 'null'); } catch (e) {}
+  el.innerHTML = info
+    ? ('גיבוי אחרון: <b>' + escapeHtml(new Date(info.at).toLocaleString('he-IL')) + '</b> · ' + info.n + ' לקוחות · ' + (info.folder ? '📁 נשמר בתיקיית הגיבוי' : '⬇️ ירד לתיקיית ההורדות') + '<br><span style="color:var(--muted)">' + escapeHtml(info.name || '') + '</span>')
+    : 'עדיין לא נעשה גיבוי בדפדפן הזה.';
+}
+
+function bkInit() {
+  setTimeout(() => bkRun(false), 10000);
+  setInterval(() => bkRun(false), 30 * 60 * 1000);
+  // אחרי הפעלה מחדש של הדפדפן ייתכן שנדרש אישור חד-פעמי לתיקייה — מבקשים אותו בלחיצה הראשונה
+  document.addEventListener('click', async function () {
+    try {
+      const saved = await idbGet(BK_DIR_KEY);
+      if (!saved) return;
+      if ((await saved.queryPermission({ mode: 'readwrite' })) === 'prompt') { _bkDir = saved; await bkDirReady(true); bkRun(false); }
+    } catch (e) {}
+  }, { once: true });
+}
+
+function _bkExtract(obj) {
+  const st = (obj && obj.state) ? obj.state : obj;
+  const list = (st && Array.isArray(st.clients)) ? st.clients.slice() : [];
+  if (st && Array.isArray(st.trash)) st.trash.forEach(c => list.push(Object.assign({}, c, { _inTrash: true })));
+  return list;
+}
+function bkLoadFile(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try { _bkLoaded = { label: f.name, clients: _bkExtract(JSON.parse(r.result)) }; bkRenderClients(); }
+    catch (e) { alert('הקובץ לא תקין'); }
+  };
+  r.readAsText(f);
+  input.value = '';
+}
+function bkLoadSnap(sel) {
+  const i = parseInt(sel.value, 10);
+  if (isNaN(i)) return;
+  const s = listLocalSnapshots()[i];
+  if (!s) return;
+  _bkLoaded = { label: 'גיבוי מקומי ' + new Date(s.at).toLocaleString('he-IL'), clients: _bkExtract(s.state) };
+  bkRenderClients();
+}
+function bkRenderClients() {
+  const box = document.getElementById('bkClients');
+  if (!box) return;
+  if (!_bkLoaded) { box.innerHTML = ''; return; }
+  const qEl = document.getElementById('bkSearch');
+  const q = ((qEl && qEl.value) || '').trim().toLowerCase();
+  const rows = [];
+  _bkLoaded.clients.forEach((c, i) => {
+    if (q && !((c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q))) return;
+    const exists = (state.clients || []).some(x => x.id === c.id);
+    rows.push('<tr><td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + escapeHtml(c.name || '—') + (c._inTrash ? ' <span style="color:#b45309">(היה בפח)</span>' : '') + '</td>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + escapeHtml(c.phone || '') + '</td>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center">' + (exists ? '✓ קיים' : '<b style="color:#b91c1c">חסר</b>') + '</td>' +
+      '<td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center"><button class="btn small" onclick="bkRestoreClient(' + i + ')">♻️ שחזר</button></td></tr>');
+  });
+  box.innerHTML = '<div style="font-size:12px;color:var(--muted);margin:8px 0">מקור: ' + escapeHtml(_bkLoaded.label) + ' · ' + _bkLoaded.clients.length + ' לקוחות</div>' +
+    '<div style="max-height:320px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>' + (rows.join('') || '<tr><td style="padding:10px">לא נמצאו לקוחות</td></tr>') + '</tbody></table></div>';
+}
+function bkRestoreClient(i) {
+  const src = _bkLoaded && _bkLoaded.clients[i];
+  if (!src) return;
+  const c = JSON.parse(JSON.stringify(src));
+  delete c._inTrash; delete c._deletedAt;
+  const exists = (state.clients || []).some(x => x.id === c.id);
+  const tombstoned = !!(state.purged && state.purged[c.id]) || (state.trash || []).some(t => t.id === c.id);
+  if (exists) {
+    if (!confirm('הלקוח "' + c.name + '" כבר קיים במערכת.\nלהוסיף עותק משוחזר נוסף? (הלקוח הקיים לא ישתנה)')) return;
+    c.id = uid(); c.name = (c.name || '') + ' (משוחזר)';
+  } else {
+    if (!confirm('לשחזר את "' + c.name + '" מהגיבוי?\nרק הלקוח הזה יתווסף, שאר הנתונים לא ישתנו.')) return;
+    if (tombstoned) c.id = uid(); // מזהה חדש, כדי שסימון מחיקה קודם לא יסנן אותו בסנכרון
+  }
+  c._restoredAt = new Date().toISOString();
+  state.clients.push(c);
+  saveNow();
+  try { if (typeof sbQueueSave === 'function') sbQueueSave(true); } catch (e) {}
+  try { if (typeof renderClientsList === 'function') renderClientsList(); if (typeof renderKanban === 'function') renderKanban(); } catch (e) {}
+  bkRenderClients();
+  alert('"' + c.name + '" שוחזר ✓');
+}
+function bkPanelHtml() {
+  const snaps = listLocalSnapshots();
+  const opts = snaps.map((s, i) => '<option value="' + i + '">' + escapeHtml(new Date(s.at).toLocaleString('he-IL')) + ' · ' + s.clientsCount + ' לקוחות</option>').reverse().join('');
+  setTimeout(bkRefreshStatus, 0);
+  return `
+    <div class="panel" style="margin-bottom:14px">
+      <h2 class="panel-title">💾 גיבוי יומי אוטומטי</h2>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+        פעם ביום, כשהמערכת פתוחה, נשמר לבד קובץ גיבוי מלא של כל הנתונים. בלי לחיצה.<br>
+        בחר תיקיית גיבוי פעם אחת (מומלץ תיקייה ב-Google Drive). בלי תיקייה, הקובץ יורד לתיקיית ההורדות.
+      </div>
+      <div id="bkStatus" style="font-size:13px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="bkChooseFolder()">📁 בחר תיקיית גיבוי</button>
+        <button class="btn secondary" onclick="bkRun(true)">💾 גבה עכשיו</button>
+      </div>
+      <hr style="margin:16px 0;border:none;border-top:1px solid var(--border)">
+      <h3 style="margin:0 0 6px;font-size:15px">♻️ שחזור לקוח מסוים מגיבוי</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">בחר קובץ גיבוי (או גיבוי מקומי), חפש את הלקוח ושחזר רק אותו. שאר הנתונים לא נוגעים.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <label class="btn secondary" style="cursor:pointer">📂 בחר קובץ גיבוי<input type="file" accept=".json,application/json" style="display:none" onchange="bkLoadFile(this)"></label>
+        ${snaps.length ? `<select onchange="bkLoadSnap(this)" style="padding:8px;border:1px solid var(--border);border-radius:8px"><option value="">או גיבוי מקומי…</option>${opts}</select>` : ''}
+        <input id="bkSearch" placeholder="🔍 חיפוש לפי שם / טלפון" oninput="bkRenderClients()" style="flex:1;min-width:180px;padding:8px 12px;border:1px solid var(--border);border-radius:8px">
+      </div>
+      <div id="bkClients"></div>
+    </div>`;
+}
+
 // ------------------- Local snapshots (safety-net restore) -------------------
 function restoreFromSnapshot(idx) {
   const snaps = listLocalSnapshots();
@@ -19556,7 +19729,7 @@ function renderSnapshotsSection() {
       </td>
     </tr>`;
   }).join('');
-  return `
+  return bkPanelHtml() + `
     <div class="panel">
       <h2 class="panel-title">🛟 גיבויים אוטומטיים</h2>
       <div style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
@@ -21645,6 +21818,7 @@ if (!storageAvailable) showStorageBanner();
 // that the user actually edited — not every client (which would make local win vs. cloud for
 // untouched clients, losing cross-device updates).
 try { _seedClientSnapshot(); } catch (e) {}
+try { bkInit(); } catch (e) {}
 // Try to reconnect to a previously-linked save file
 tryReconnectSavedFile();
 reconnectDonnaExport();
