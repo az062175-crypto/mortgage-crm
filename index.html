@@ -11640,8 +11640,9 @@ function refreshClientTasks(clientId) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
   const msg = 'רענון משימות לפי סוג עסקה + רישום נוכחי.\n\n' +
-              '• שום משימה קיימת לא תשתנה ולא תימחק (כולל עריכות, סדר וסטטוס)\n' +
-              '• יתווספו רק משימות חדשות שנדרשות ועדיין לא קיימות\n\nלהמשיך?';
+              '• משימות שערכת, שסימנת ✓ או שהוספת ידנית לא ישתנו ולא יימחקו\n' +
+              '• יתווספו משימות חדשות שנדרשות\n' +
+              '• משימות אוטומטיות שלא בוצעו ושכבר לא נדרשות יוסרו\n\nלהמשיך?';
   if (!confirm(msg)) return;
   // תוספתי בלבד: שומרים את כל המשימות הקיימות, מייצרים סט טרי, ומוסיפים רק מה שחסר
   const _oldTasks = (c.tasks || []).slice();
@@ -11657,11 +11658,22 @@ function refreshClientTasks(clientId) {
   if (visitedStages.has('seller')) seedSellerStageTasks(c);
   if (visitedStages.has('signature')) seedSignatureStageTasks(c);
   if (visitedStages.has('execution')) seedExecutionStageTasks(c);
-  const _fresh = (c.tasks || []).filter(t => !_oldKeys.has(t.stage + '::' + t.title));
-  c.tasks = _oldTasks.concat(_fresh);
+  const _freshAll = c.tasks || [];
+  const _freshKeys = new Set(_freshAll.map(t => t.stage + '::' + t.title));
+  const _freshSources = new Set(_freshAll.map(t => t.source));
+  const _fresh = _freshAll.filter(t => !_oldKeys.has(t.stage + '::' + t.title));
+  // משימה אוטומטית שלא בוצעה, לא נערכה, ושכבר לא נדרשת לפי ההגדרות הנוכחיות — מוסרת
+  let _removed = 0;
+  const _kept = _oldTasks.filter(t => {
+    const stale = AUTO_SEED_SOURCES.has(t.source) && t.status !== 'done' && !t.done && !t.origTitle && !t.custom
+      && _freshSources.has(t.source) && !_freshKeys.has(t.stage + '::' + t.title);
+    if (stale) _removed++;
+    return !stale;
+  });
+  c.tasks = _kept.concat(_fresh);
   if (typeof dedupRequirementsAndTasks === 'function') dedupRequirementsAndTasks(c);
   save(); renderClientDetail();
-  alert(_fresh.length ? ('נוספו ' + _fresh.length + ' משימות חדשות ✓') : 'אין משימות חדשות להוסיף ✓');
+  alert('נוספו ' + _fresh.length + ' משימות חדשות, הוסרו ' + _removed + ' משימות שכבר לא נדרשות ✓');
 }
 
 // ============================
