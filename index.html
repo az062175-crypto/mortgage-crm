@@ -23544,18 +23544,18 @@ async function signEditor() {
     return '<button class="btn small secondary" id="signTool_' + k + '" onclick="signTool(\'' + k + '\')">' + SIGN_TYPES[k].icon + ' ' + SIGN_TYPES[k].label + '</button>';
   }).join(' ');
   body.innerHTML =
-    '<div style="position:sticky;top:56px;z-index:4;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-      '<b style="margin-inline-end:4px">חותם:</b>' +
-      '<button class="btn small secondary" id="signWho_0" onclick="signWho(0)">לווה 1</button>' +
-      '<button class="btn small secondary" id="signWho_1" onclick="signWho(1)">לווה 2</button>' +
-      '<b style="margin-inline:10px 4px">בחר סוג ולחץ על המסמך:</b>' + tools +
-      '<span style="flex:1"></span>' +
-      '<span style="display:inline-flex;direction:ltr;border:2px solid #2563eb;border-radius:999px;background:#fff;overflow:hidden"><button style="border:0;background:#fff;color:#2563eb;font-size:20px;font-weight:700;line-height:1;padding:2px 22px;cursor:pointer" onclick="signZoom(1)" title="הגדל מסמך">＋</button><button style="border:0;background:#fff;color:#2563eb;font-size:20px;font-weight:700;line-height:1;padding:2px 22px;cursor:pointer" onclick="signZoom(-1)" title="הקטן מסמך">－</button></span>' +
-      '<span id="signZoomLbl" style="font-size:12px;min-width:70px;text-align:center">מסמך 100%</span>' +
-      '<span style="width:14px"></span>' +
-      '<span style="display:inline-flex;direction:ltr;border:2px solid #2563eb;border-radius:999px;background:#fff;overflow:hidden"><button style="border:0;background:#fff;color:#2563eb;font-size:20px;font-weight:700;line-height:1;padding:2px 22px;cursor:pointer" onclick="signResize(1.12)" title="הגדל פריט נבחר (חתימה/תאריך…)">＋</button><button style="border:0;background:#fff;color:#2563eb;font-size:20px;font-weight:700;line-height:1;padding:2px 22px;cursor:pointer" onclick="signResize(0.89)" title="הקטן פריט נבחר (חתימה/תאריך…)">－</button></span>' +
-      '<span style="font-size:12px;min-width:50px;text-align:center">פריט נבחר</span>' +
-      '<button class="btn small secondary" style="color:#dc2626" onclick="signDelSel()">🗑 מחק נבחר</button>' +
+    '<div style="position:sticky;top:56px;z-index:4;background:#fff;border:1px solid var(--border);border-radius:14px;padding:10px 12px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;flex-direction:column;gap:8px">' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:10px"><span style="font-size:11.5px;font-weight:700;color:var(--muted);margin-inline-end:2px">חותם</span>' +
+          '<button class="btn small secondary" id="signWho_0" onclick="signWho(0)">לווה 1</button>' +
+          '<button class="btn small secondary" id="signWho_1" onclick="signWho(1)">לווה 2</button></div>' +
+        '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;flex-wrap:wrap"><span style="font-size:11.5px;font-weight:700;color:var(--muted);margin-inline-end:2px">הוסף למסמך</span>' + tools + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:10px"><span style="font-size:11.5px;font-weight:700;color:var(--muted);margin-inline-end:2px">מסמך</span><span style="display:inline-flex;direction:ltr;border:2px solid #2563eb;border-radius:999px;background:#fff;overflow:hidden"><button style="border:0;background:#fff;color:#2563eb;font-size:20px;font-weight:700;line-height:1;padding:2px 20px;cursor:pointer" onclick="signZoom(1)" title="הגדל מסמך">＋</button><button style="border:0;background:#fff;color:#2563eb;font-size:20px;font-weight:700;line-height:1;padding:2px 20px;cursor:pointer" onclick="signZoom(-1)" title="הקטן מסמך">－</button></span><span id="signZoomLbl" style="font-size:12px;min-width:62px;text-align:center">מסמך 100%</span></div>' +
+        '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:10px"><span style="font-size:11.5px;font-weight:700;color:var(--muted);margin-inline-end:2px">פריט נבחר</span><span style="display:inline-flex;direction:ltr;border:2px solid #2563eb;border-radius:999px;background:#fff;overflow:hidden"><button style="border:0;background:#fff;color:#2563eb;font-size:20px;font-weight:700;line-height:1;padding:2px 20px;cursor:pointer" onclick="signResize(1.12)" title="הגדל פריט נבחר">＋</button><button style="border:0;background:#fff;color:#2563eb;font-size:20px;font-weight:700;line-height:1;padding:2px 20px;cursor:pointer" onclick="signResize(0.89)" title="הקטן פריט נבחר">－</button></span><button class="btn small secondary" style="color:#dc2626" onclick="signDelSel()">🗑 מחק</button></div>' +
+        '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:10px"><span style="font-size:11.5px;font-weight:700;color:var(--muted);margin-inline-end:2px">עט וגופן</span>' + signStyleHtml() + '</div>' +
+      '</div>' +
     '</div>' +
     '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">גרור פריט כדי להזיז אותו. לחיצה על פריט בוחרת אותו (Delete מוחק). חובה לפחות מקום אחד לחתימה.</div>' +
     '<div id="signPages"><div style="padding:30px;text-align:center;color:var(--muted)">טוען את המסמך…</div></div>' +
@@ -23568,7 +23568,7 @@ async function signEditor() {
       '<div style="font-size:12.5px;margin-top:10px;color:' + (hasFolder ? '#166534' : '#b45309') + '">' + (hasFolder ? '✓ אחרי החתימה המסמך יישמר בתיקיית הלקוח ב-Drive ויישלח אליך למייל.' : '⚠ אין קישור לתיקיית Drive בתיק הלקוח. המסמך החתום יישלח אליך למייל בלבד. אפשר להגדיר תיקייה בתיק הלקוח.') + '</div>' +
       '<div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="signCreateBtn" onclick="signCreate()">צור קישור לחתימה</button><button class="btn secondary" onclick="signHome()">חזרה</button></div>' +
     '</div>';
-  signTool(SIGNX.tool); signWho(SIGNX.signer);
+  signTool(SIGNX.tool); signWho(SIGNX.signer); signStylePaint();
   try {
     await signLibs();
     var pdf = await pdfjsLib.getDocument({ data: SIGNX.bytes.slice(), disableFontFace: true }).promise;
@@ -23600,6 +23600,22 @@ function signTool(k) {
     b.style.background = t === k ? '#be185d' : ''; b.style.color = t === k ? '#fff' : '';
   });
 }
+var SIGN_COLORS = ['#0b2a6b', '#111827', '#1d4ed8', '#dc2626', '#047857'];
+function signStyleHtml() {
+  SIGNX.style = SIGNX.style || { color: '#0b2a6b', w: 2 };
+  return SIGN_COLORS.map(function (c) {
+    return '<button type="button" data-sc="' + c + '" onclick="signStyle(\'' + c + '\')" style="width:24px;height:24px;border-radius:50%;background:' + c + ';cursor:pointer;border:3px solid #fff;box-shadow:0 0 0 1px #cbd5e1"></button>';
+  }).join('') + '<span style="width:6px"></span>' + [[1, 'דק'], [2, 'רגיל'], [3, 'עבה']].map(function (t) {
+    return '<button type="button" data-sw="' + t[0] + '" onclick="signStyleW(' + t[0] + ')" style="padding:3px 11px;border-radius:999px;border:1.5px solid #cbd5e1;background:#fff;cursor:pointer;font:inherit;font-size:12.5px">' + t[1] + '</button>';
+  }).join('');
+}
+function signStylePaint() {
+  var st = SIGNX.style || { color: '#0b2a6b', w: 2 };
+  Array.prototype.slice.call(document.querySelectorAll('[data-sc]')).forEach(function (b) { b.style.boxShadow = b.dataset.sc === st.color ? '0 0 0 2px #2563eb' : '0 0 0 1px #cbd5e1'; });
+  Array.prototype.slice.call(document.querySelectorAll('[data-sw]')).forEach(function (b) { var on = +b.dataset.sw === st.w; b.style.borderColor = on ? '#2563eb' : '#cbd5e1'; b.style.background = on ? '#eff6ff' : '#fff'; b.style.color = on ? '#1d4ed8' : ''; });
+}
+function signStyle(c) { SIGNX.style.color = c; signStylePaint(); }
+function signStyleW(w) { SIGNX.style.w = w; signStylePaint(); }
 var SIGN_ZOOMS = [0.75, 1, 1.25, 1.5, 2, 2.5];
 function signZoom(d) {
   var i = SIGN_ZOOMS.indexOf(SIGNX.zoom || 1); if (i < 0) i = 1;
@@ -23725,7 +23741,7 @@ async function signCreate() {
   try {
     await portalFetch('/rest/v1/sign_requests', { method: 'POST', body: JSON.stringify({
       id: id, token: c.portalToken, client_id: c.id, title: title, doc_b64: signBytesToB64(SIGNX.bytes),
-      fields: SIGNX.fields.map(function (f) { return { id: f.id, type: f.type, signer: f.signer === 1 ? 1 : 0, page: f.page, x: +f.x.toFixed(5), y: +f.y.toFixed(5), w: +f.w.toFixed(5), h: +f.h.toFixed(5) }; }).concat([{ id: 'meta', type: 'meta', clientName: c.name || '', people: signPeople(c) }]),
+      fields: SIGNX.fields.map(function (f) { return { id: f.id, type: f.type, signer: f.signer === 1 ? 1 : 0, page: f.page, x: +f.x.toFixed(5), y: +f.y.toFixed(5), w: +f.w.toFixed(5), h: +f.h.toFixed(5) }; }).concat([{ id: 'meta', type: 'meta', clientName: c.name || '', people: signPeople(c), style: SIGNX.style || { color: '#0b2a6b', w: 2 } }]),
       send_copy: copy, client_email: copy ? email : null, folder_id: m ? m[1] : null, hook: hook || null
     }) });
   } catch (e) {
