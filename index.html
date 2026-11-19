@@ -605,7 +605,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-17 #AU</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-19 #AV</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -18587,7 +18587,7 @@ function openGlobalSearch() {
   showModal(`
     <h2 class="modal-title">🔍 חיפוש גלובלי</h2>
     <div style="display:flex;gap:8px;align-items:stretch">
-      <input id="globalSearchInput" placeholder="חפש: שם, ת.ז, טלפון, כתובת, עו״ד, בנקאי..." style="flex:1;padding:12px;font-size:15px;border:2px solid var(--accent);border-radius:8px" oninput="renderGlobalSearchResults()">
+      <input id="globalSearchInput" placeholder="חפש: שם, ת.ז, טלפון, כתובת, עו״ד, בנקאי..." style="flex:1;padding:12px;font-size:15px;border:2px solid var(--accent);border-radius:8px" oninput="renderGlobalSearchResults()" onkeydown="globalSearchKey(event)">
       <button id="voiceSearchBtn" onclick="toggleVoiceSearch()" title="חיפוש קולי" style="width:48px;background:white;border:2px solid var(--accent);border-radius:8px;font-size:20px;cursor:pointer;flex-shrink:0">🎤</button>
     </div>
     <div id="voiceSearchStatus" style="margin-top:6px;font-size:13px;color:#64748b;min-height:18px"></div>
@@ -18660,9 +18660,10 @@ function renderGlobalSearchResults() {
     if (c.bankerId) { const b = state.settings.bankers.find(x=>x.id===c.bankerId); if(b) fields.push(b.name, b.bank); }
     return fields.some(f => (f||'').toString().toLowerCase().includes(q));
   }).slice(0, 30);
+  _gsIds = matches.map(c => c.id); _gsIdx = 0;
   if (matches.length === 0) { el.innerHTML = '<div class="empty" style="padding:20px">לא נמצאו תוצאות</div>'; return; }
-  el.innerHTML = matches.map(c => `
-    <div style="padding:10px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--border);margin-bottom:4px" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background=''" onclick="closeModal();openClient('${c.id}')">
+  el.innerHTML = matches.map((c, i) => `
+    <div class="gs-row" data-i="${i}" style="padding:10px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--border);margin-bottom:4px;${i===0?'background:#eef2ff;border-color:var(--accent)':''}" onmouseover="_gsHighlight(${i})" onclick="closeModal();openClient('${c.id}')">
       <div style="font-weight:700;display:flex;align-items:center;gap:8px">
         <span>${escapeHtml(c.name)}</span>
         <span class="stage-pill" style="background:${stageInfo(c.stage).color}">${stageInfo(c.stage).label}</span>
@@ -18670,6 +18671,28 @@ function renderGlobalSearchResults() {
       <div style="font-size:12px;color:var(--muted)">📞 ${escapeHtml(c.phone||'—')} · ${escapeHtml((c.purposes||[]).join(', ')||'—')}${c.propertyAddress?' · 🏠 '+escapeHtml(c.propertyAddress):''}</div>
     </div>
   `).join('');
+}
+// Enter opens the highlighted result (the first one by default); ↑/↓ move the highlight.
+let _gsIds = [], _gsIdx = 0;
+function _gsHighlight(i) {
+  _gsIdx = i;
+  document.querySelectorAll('#globalSearchResults .gs-row').forEach(r => {
+    const on = Number(r.dataset.i) === i;
+    r.style.background = on ? '#eef2ff' : '';
+    r.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+    if (on) r.scrollIntoView({ block: 'nearest' });
+  });
+}
+function globalSearchKey(e) {
+  if (!_gsIds.length) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    _gsHighlight((_gsIdx + (e.key === 'ArrowDown' ? 1 : -1) + _gsIds.length) % _gsIds.length);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const id = _gsIds[_gsIdx];
+    closeModal(); openClient(id);
+  }
 }
 // Ctrl+K keyboard shortcut
 document.addEventListener('keydown', e => {
