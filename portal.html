@@ -427,14 +427,18 @@ function sgnDraw(){
 }
 async function sgnLoad(){try{SGN.list=await rpc('sign_list',{p_token:TOKEN})||[];sgnDraw();}catch(e){}}
 async function sgnView(id,btn){
-  var w=window.open('','_blank'),t=btn.textContent;btn.textContent='פותח…';
+  var t=btn.textContent;btn.textContent='פותח…';
   try{
     var r=await rpc('sign_get',{p_id:id,p_token:TOKEN});if(!r||!r.file)throw 0;
     var s=atob(r.file),a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);
     var u=URL.createObjectURL(new Blob([a],{type:'application/pdf'}));
-    if(w)w.location=u;else window.open(u,'_blank');
-    setTimeout(function(){URL.revokeObjectURL(u);},120000);
-  }catch(e){if(w)w.close();alert('לא הצלחנו לפתוח את המסמך. נסה שוב.');}
+    var old=document.getElementById('sgnViewDlg');if(old)old.remove();
+    var d=document.createElement('div');d.id='sgnViewDlg';
+    d.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.6);display:flex;flex-direction:column;direction:rtl';
+    d.innerHTML='<div style="background:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px"><b style="flex:1">'+esc(r.title||'מסמך')+'</b><button class="link" type="button" id="sgnViewX" style="font-weight:700">✕ סגור</button></div><iframe src="'+u+'" style="flex:1;border:0;background:#fff"></iframe>';
+    document.body.appendChild(d);
+    document.getElementById('sgnViewX').onclick=function(){d.remove();URL.revokeObjectURL(u);};
+  }catch(e){alert('לא הצלחנו לפתוח את המסמך. נסה שוב.');}
   btn.textContent=t;
 }
 async function sgnDownload(id,btn){

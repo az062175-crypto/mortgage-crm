@@ -23463,14 +23463,23 @@ async function signCancel(id) {
   catch (e) { alert('הביטול נכשל.'); }
 }
 async function signView(id) {
-  var w = window.open('', '_blank');
   try {
-    var r = await portalFetch('/rest/v1/sign_requests?id=eq.' + id + '&select=signed_b64');
+    var r = await portalFetch('/rest/v1/sign_requests?id=eq.' + id + '&select=signed_b64,title');
     var rows = await r.json(); if (!rows[0] || !rows[0].signed_b64) throw 0;
     var u = URL.createObjectURL(new Blob([signB64ToBytes(rows[0].signed_b64)], { type: 'application/pdf' }));
-    if (w) w.location = u; else window.open(u, '_blank');
-    setTimeout(function () { URL.revokeObjectURL(u); }, 120000);
-  } catch (e) { if (w) w.close(); alert('לא הצלחתי לפתוח את המסמך.'); }
+    var old = document.getElementById('signViewDlg'); if (old) old.remove();
+    var d = document.createElement('div'); d.id = 'signViewDlg';
+    d.style.cssText = 'position:fixed;inset:0;z-index:100002;background:rgba(15,23,42,.6);display:flex;flex-direction:column;direction:rtl';
+    d.innerHTML = '<div style="background:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px"><b style="flex:1">' + escapeHtml(rows[0].title || 'מסמך') + ' — חתום</b>' +
+      '<button class="btn small secondary" id="signViewDl">⬇ הורד</button><button class="btn small" id="signViewX">✕ סגור</button></div>' +
+      '<iframe src="' + u + '" style="flex:1;border:0;background:#fff"></iframe>';
+    document.body.appendChild(d);
+    var close = function () { d.remove(); URL.revokeObjectURL(u); document.removeEventListener('keydown', esc); };
+    var esc = function (e) { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', esc);
+    document.getElementById('signViewX').onclick = close;
+    document.getElementById('signViewDl').onclick = function () { signDownload(id); };
+  } catch (e) { alert('לא הצלחתי לפתוח את המסמך.'); }
 }
 async function signDownload(id) {
   try {
