@@ -17773,8 +17773,36 @@ function makeDraggable(el, handle) {
 // {docsStatus}: the full document list — received (✅) on top, then what's still missing (☐).
 // "Not required" docs are left out. The missing header keeps the "מסמכים חסרים" wording so
 // sending it still starts the missing-docs follow-up tracking.
+// Same order the client screen shows: by stage, borrowers/guarantors/deal sections, custom drag order, then pending → provided.
+function _reqsUiOrder(c) {
+  const all = (c.requirements || []).slice();
+  const rank = r => r.status === 'pending' ? 0 : (r.status === 'provided' ? 1 : 2);
+  const srt = arr => arr.sort((a, b) => {
+    const oa = typeof a.order === 'number' ? a.order : 999999, ob = typeof b.order === 'number' ? b.order : 999999;
+    return oa !== ob ? oa - ob : rank(a) - rank(b);
+  });
+  const byStage = {};
+  all.forEach(r => { (byStage[r.stage] = byStage[r.stage] || []).push(r); });
+  Object.keys(byStage).forEach(k => srt(byStage[k]));
+  const out = [];
+  (typeof STAGES !== 'undefined' ? STAGES : []).forEach(st => {
+    const list = byStage[st.id]; if (!list) return;
+    if (st.id === 'client') {
+      const sec = f => list.filter(f).sort((a, b) => rank(a) - rank(b));
+      out.push.apply(out, sec(r => r.section === 'borrower' || !r.section));
+      out.push.apply(out, sec(r => r.section === 'guarantor'));
+      const deal = sec(r => r.section === 'deal'), byDeal = {};
+      deal.forEach(r => { (byDeal[r.dealType || 'עסקה'] = byDeal[r.dealType || 'עסקה'] || []).push(r); });
+      Object.keys(byDeal).forEach(k => out.push.apply(out, byDeal[k]));
+      out.push.apply(out, list.filter(r => r.section && ['borrower', 'guarantor', 'deal'].indexOf(r.section) < 0));
+    } else out.push.apply(out, list);
+    delete byStage[st.id];
+  });
+  Object.keys(byStage).forEach(k => out.push.apply(out, byStage[k]));
+  return out;
+}
 function _docsStatusText(c) {
-  const reqs = c.requirements || [];
+  const reqs = _reqsUiOrder(c);
   const got = reqs.filter(r => r.status === 'provided');
   const missing = reqs.filter(r => r.status === 'pending');
   const parts = [];
@@ -17787,7 +17815,7 @@ function _docsStatusText(c) {
 function fillTemplate(text, client) {
   const c = client;
   // Split missing requirements between borrowers and guarantors, cleanly grouped.
-  const pendingReqs = c.requirements.filter(r => r.status === 'pending');
+  const pendingReqs = _reqsUiOrder(c).filter(r => r.status === 'pending');
   const _borrowerReqs = pendingReqs.filter(r => !/— ערב\s*\d/.test(r.name));
   const _guarantorReqs = pendingReqs.filter(r => /— ערב\s*\d/.test(r.name));
   const _boxCh = '☐';
