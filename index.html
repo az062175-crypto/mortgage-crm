@@ -23549,9 +23549,13 @@ async function signEditor() {
       '<button class="btn small secondary" id="signWho_1" onclick="signWho(1)">לווה 2</button>' +
       '<b style="margin-inline:10px 4px">בחר סוג ולחץ על המסמך:</b>' + tools +
       '<span style="flex:1"></span>' +
-      '<button class="btn small secondary" style="font-size:16px;padding:2px 12px" onclick="signSize(1)" title="הגדל: את הפריט הנבחר, ואם לא נבחר פריט את המסמך">＋</button>' +
-      '<span id="signZoomLbl" title="כשפריט נבחר: לחץ כאן לביטול הבחירה, ואז הכפתורים משנים את גודל המסמך" onclick="if(SIGNX.sel){SIGNX.sel=null;signDraw();}" style="font-size:12px;min-width:70px;text-align:center;cursor:pointer">מסמך 100%</span>' +
-      '<button class="btn small secondary" style="font-size:16px;padding:2px 12px" onclick="signSize(-1)" title="הקטן: את הפריט הנבחר, ואם לא נבחר פריט את המסמך">－</button>' +
+      '<button class="btn small secondary" style="font-size:16px;padding:2px 12px" onclick="signZoom(1)" title="הגדל מסמך">＋</button>' +
+      '<span id="signZoomLbl" style="font-size:12px;min-width:70px;text-align:center">מסמך 100%</span>' +
+      '<button class="btn small secondary" style="font-size:16px;padding:2px 12px" onclick="signZoom(-1)" title="הקטן מסמך">－</button>' +
+      '<span style="width:12px"></span>' +
+      '<button class="btn small secondary" style="font-size:16px;padding:2px 12px" onclick="signResize(1.12)" title="הגדל את הפריט הנבחר (חתימה/תאריך…)">＋</button>' +
+      '<span style="font-size:12px;min-width:50px;text-align:center">פריט נבחר</span>' +
+      '<button class="btn small secondary" style="font-size:16px;padding:2px 12px" onclick="signResize(0.89)" title="הקטן את הפריט הנבחר (חתימה/תאריך…)">－</button>' +
       '<button class="btn small secondary" style="color:#dc2626" onclick="signDelSel()">🗑 מחק נבחר</button>' +
     '</div>' +
     '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">גרור פריט כדי להזיז אותו. לחיצה על פריט בוחרת אותו (Delete מוחק). חובה לפחות מקום אחד לחתימה.</div>' +
@@ -23606,11 +23610,8 @@ function signZoom(d) {
   signLbl();
 }
 function signLbl() {
-  var l = document.getElementById('signZoomLbl'); if (!l) return;
-  l.textContent = SIGNX.sel ? 'פריט נבחר' : 'מסמך ' + Math.round((SIGNX.zoom || 1) * 100) + '%';
-  l.style.color = SIGNX.sel ? '#be185d' : '';
+  var l = document.getElementById('signZoomLbl'); if (l) l.textContent = 'מסמך ' + Math.round((SIGNX.zoom || 1) * 100) + '%';
 }
-function signSize(d) { if (SIGNX.sel) signResize(d > 0 ? 1.12 : 0.89); else signZoom(d); }
 function signWho(g) {
   SIGNX.signer = g;
   [0, 1].forEach(function (i) {
