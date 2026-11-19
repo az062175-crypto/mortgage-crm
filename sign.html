@@ -61,7 +61,7 @@ var SB_URL='https://pfimmngjgkgzjjhemjdy.supabase.co';
 var SB_KEY='sb_publishable_iOafusxiYK5ZBPqEb3IwOQ_jijlKgvO';
 var Q=new URLSearchParams(location.search);
 var TOKEN=(Q.get('t')||'').trim(), ID=(Q.get('d')||'').trim();
-var D=null, docBytes=null, FIELDS=[], META=null, USED=[0], S=[{},{}], V={date:''};
+var NEED=[{},{}],HASDATE=false,D=null, docBytes=null, FIELDS=[], META=null, USED=[0], S=[{},{}], V={date:''};
 var FONT='Assistant, Arial, "Noto Sans Hebrew", sans-serif';
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});}
@@ -90,6 +90,7 @@ async function load(){
     FIELDS=(D.fields||[]).filter(function(f){return f.type!=='meta';});
     META=(D.fields||[]).filter(function(f){return f.type==='meta';})[0]||null;
     USED=[];FIELDS.forEach(function(f){var g=f.signer===1?1:0;if(USED.indexOf(g)<0)USED.push(g);});USED.sort();if(!USED.length)USED=[0];
+    NEED=[{},{}];HASDATE=false;FIELDS.forEach(function(f){var g=f.signer===1?1:0;NEED[g][f.type]=1;if(f.type==='date')HASDATE=true;});
     for(var i=0;i<2;i++){var pp=(META&&META.people&&META.people[i])||{};S[i]={name:pp.name||'',idNumber:pp.idNumber||'',address:pp.address||'',sigData:null,sigImg:null};}
     var prev=null;try{prev=await rpc('sign_prev',{p_token:TOKEN});}catch(_){}
     for(var k=0;k<2;k++){var ps=prev&&prev.signers&&prev.signers[k];if(!ps)continue;
@@ -114,9 +115,9 @@ function buildForm(){
   var cards=USED.map(function(g){
     var lb=signerLbl(g);
     return '<div class="card" id="formCard'+g+'"><h2>פרטי החותם'+(lb?' — '+lb:'')+'</h2>'+
-     '<div class="row2"><div><label for="fName'+g+'">שם מלא</label><input type="text" id="fName'+g+'" autocomplete="name" value="'+esc(S[g].name)+'"></div>'+
-     '<div><label for="fId'+g+'">תעודת זהות</label><input type="text" id="fId'+g+'" inputmode="numeric" maxlength="9" autocomplete="off" value="'+esc(S[g].idNumber)+'"></div></div>'+
-     '<label for="fAddr'+g+'">כתובת</label><input type="text" id="fAddr'+g+'" autocomplete="street-address" value="'+esc(S[g].address)+'">'+
+     ((NEED[g].name||NEED[g].idNumber)?'<div class="row2">'+(NEED[g].name?'<div><label for="fName'+g+'">שם מלא</label><input type="text" id="fName'+g+'" autocomplete="name" value="'+esc(S[g].name)+'"></div>':'')+
+     (NEED[g].idNumber?'<div><label for="fId'+g+'">תעודת זהות</label><input type="text" id="fId'+g+'" inputmode="numeric" maxlength="9" autocomplete="off" value="'+esc(S[g].idNumber)+'"></div>':'')+'</div>':'')+
+     (NEED[g].address?'<label for="fAddr'+g+'">כתובת</label><input type="text" id="fAddr'+g+'" autocomplete="street-address" value="'+esc(S[g].address)+'">':'')+
      '<label>חתימה'+(lb?' של '+lb:'')+' (בעכבר או באצבע)</label><canvas id="sigpad'+g+'" class="sigpad"></canvas>'+
      (S[g].saved?'<div class="muted" id="savedNote'+g+'" style="margin-top:6px">✓ החתימה שמורה מהחתימה הקודמת שלך. אפשר פשוט לשלוח, או ללחוץ "ניקוי חתימה" ולחתום מחדש.</div>':'')+
      '<div style="margin-top:6px"><button class="link" id="clr'+g+'">ניקוי חתימה</button></div></div>';
@@ -125,13 +126,13 @@ function buildForm(){
    '<div class="card"><h2>איך חותמים?</h2><div class="muted">1. קראו את המסמך למטה. המקומות שבהם יופיעו החתימה והפרטים מסומנים במסגרת מקווקווה.<br>2. בדקו את הפרטים וחתמו בתיבה שמתחת למסמך. הם יופיעו במסמך מיד.<br>3. לחצו "חתום ושלח".</div>'+
    '<button class="btn ghost" id="jump">קפיצה לטופס החתימה</button></div>'+
    '<div id="pages"><div class="center">טוען את המסמך…</div></div>'+cards+
-   '<div class="card"><label for="fDate">תאריך</label><input type="date" id="fDate" value="'+today()+'">'+
+   '<div class="card">'+(HASDATE?'<label for="fDate">תאריך</label>':'')+'<input type="date" id="fDate" value="'+today()+'"'+(HASDATE?'':' style="display:none"')+'>'+
    '<div class="err" id="err"></div><button class="btn" id="go">חתום ושלח</button></div>';
   $('jump').onclick=function(){$('formCard'+USED[0]).scrollIntoView({behavior:'smooth'});};
   $('fDate').addEventListener('input',function(){V.date=$('fDate').value;paintFields();});
   USED.forEach(function(g){
     var map={name:'fName',idNumber:'fId',address:'fAddr'};
-    Object.keys(map).forEach(function(k){$(map[k]+g).addEventListener('input',function(){S[g][k]=$(map[k]+g).value;paintFields();});});
+    Object.keys(map).forEach(function(k){if(!$(map[k]+g))return;$(map[k]+g).addEventListener('input',function(){S[g][k]=$(map[k]+g).value;paintFields();});});
     $('clr'+g).onclick=function(){S[g].sigData=null;S[g].sigImg=null;S[g].saved=false;var n=$('savedNote'+g);if(n)n.remove();initPad(g);paintFields();};
     initPad(g);if(S[g].saved)restoreSaved(g);
   });
@@ -256,10 +257,10 @@ async function submit(){
   var err=$('err');err.textContent='';
   V.date=$('fDate').value;
   for(var u=0;u<USED.length;u++){var g=USED[u],lb=signerLbl(g),pre=lb?lb+': ':'';
-    S[g].name=$('fName'+g).value.trim();S[g].idNumber=$('fId'+g).value.trim();S[g].address=$('fAddr'+g).value.trim();
-    if(S[g].name.length<2){err.textContent=pre+'נא למלא שם מלא.';$('fName'+g).focus();return;}
-    if(!/^\d{5,9}$/.test(S[g].idNumber)){err.textContent=pre+'נא למלא תעודת זהות (ספרות בלבד).';$('fId'+g).focus();return;}
-    if(S[g].address.length<3){err.textContent=pre+'נא למלא כתובת.';$('fAddr'+g).focus();return;}
+    if($('fName'+g))S[g].name=$('fName'+g).value.trim();if($('fId'+g))S[g].idNumber=$('fId'+g).value.trim();if($('fAddr'+g))S[g].address=$('fAddr'+g).value.trim();
+    if(NEED[g].name&&S[g].name.length<2){err.textContent=pre+'נא למלא שם מלא.';$('fName'+g).focus();return;}
+    if(NEED[g].idNumber&&!/^\d{5,9}$/.test(S[g].idNumber)){err.textContent=pre+'נא למלא תעודת זהות (ספרות בלבד).';$('fId'+g).focus();return;}
+    if(NEED[g].address&&S[g].address.length<3){err.textContent=pre+'נא למלא כתובת.';$('fAddr'+g).focus();return;}
     if(!S[g].sigData||!S[g].sigImg){err.textContent=pre+'נא לחתום בתיבת החתימה.';return;}
   }
   if(!V.date){err.textContent='נא לבחור תאריך.';return;}
