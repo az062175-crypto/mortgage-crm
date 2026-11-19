@@ -23383,6 +23383,7 @@ async function signLoadList() {
       var deliv = signed ? (x.delivered_at ? '<span style="color:#16a34a">נמסר: ' + (info.drive ? 'Drive ✓ ' : 'Drive ✗ ') + (info.owner ? 'מייל ✓' : '') + '</span>' : '<span style="color:#b45309">עדיין לא נמסר ל-Drive/מייל</span>') : '';
       h += '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
         '<div style="flex:1;min-width:200px"><b>' + escapeHtml(x.title) + '</b><div style="font-size:12px;color:var(--muted)">' + (signed ? '✅ נחתם ב-' + signDateTxt(x.signed_at) + ' · ' + deliv : '⏳ ממתין לחתימה · נשלח ' + signDateTxt(x.created_at)) + '</div></div>';
+      h += '<button class="btn small secondary" onclick="signReedit(\'' + x.id + '\')" title="פתח את המסמך בעורך עם הסימונים הקיימים, ערוך ושלח מחדש">✏️ ערוך מחדש</button>';
       if (signed) {
         h += '<button class="btn small secondary" onclick="signView(\'' + x.id + '\')">👁 צפה</button><button class="btn small" onclick="signDownload(\'' + x.id + '\')">⬇ הורד חתום</button>';
         if (!x.delivered_at) h += '<button class="btn small secondary" onclick="signRedeliver(\'' + x.id + '\')">📨 שלח שוב ל-Drive/מייל</button>';
@@ -23458,6 +23459,17 @@ function signEmail(id, title) {
   var _sm = fillEmailTpl('signRequest', { greeting: g, firstName: first, title: title || '', link: signLink(c, id) }, {});
   window.open('https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(_sm.subject) + '&body=' + encodeURIComponent(_sm.body), '_blank');
 }
+async function signReedit(id) {
+  try {
+    var r = await portalFetch('/rest/v1/sign_requests?id=eq.' + id + '&select=title,doc_b64,fields,status');
+    var rows = await r.json(); var q = rows[0]; if (!q || !q.doc_b64) throw 0;
+    var meta = (q.fields || []).filter(function (f) { return f.type === 'meta'; })[0] || {};
+    SIGNX.bytes = signB64ToBytes(q.doc_b64); SIGNX.title = q.title || 'מסמך לחתימה';
+    SIGNX.fields = (q.fields || []).filter(function (f) { return f.type !== 'meta'; }).map(function (f) { return { id: f.id, type: f.type, signer: f.signer === 1 ? 1 : 0, page: f.page, x: f.x, y: f.y, w: f.w, h: f.h }; });
+    SIGNX.sel = null; SIGNX.tool = 'signature'; SIGNX.zoom = 1; SIGNX.style = meta.style || null; SIGNX.replaces = q.status === 'pending' ? id : null;
+    await signEditor();
+  } catch (e) { alert('לא הצלחתי לפתוח את המסמך לעריכה.'); }
+}
 async function signCancel(id) {
   if (!confirm('לבטל את בקשת החתימה? הקישור יפסיק לעבוד (המסמך נשאר שמור).')) return;
   try { await portalFetch('/rest/v1/sign_requests?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ status: 'canceled' }) }); signLoadList(); }
@@ -23530,7 +23542,7 @@ async function signPick(inp) {
       buf = await pdf.save();
     } else if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { msg.textContent = 'נתמכים רק PDF או תמונה (PNG/JPG).'; return; }
     SIGNX.bytes = buf; SIGNX.title = f.name.replace(/\.[^.]+$/, '');
-    SIGNX.fields = []; SIGNX.sel = null; SIGNX.tool = 'signature';
+    SIGNX.fields = []; SIGNX.sel = null; SIGNX.tool = 'signature'; SIGNX.replaces = null; SIGNX.style = null;
     await signEditor();
   } catch (e) { msg.textContent = 'לא הצלחתי לפתוח את הקובץ. ' + (e && e.message ? e.message : ''); }
 }
@@ -23749,6 +23761,10 @@ async function signCreate() {
     alert('היצירה נכשלה. ודא שהרצת את supabase-signatures.sql ב-Supabase ושאתה מחובר.'); return;
   }
   SIGNX.busy = false;
+  if (SIGNX.replaces && confirm('נוצרה בקשה חדשה. לבטל את הבקשה הישנה שעוד לא נחתמה? (הקישור הישן יפסיק לעבוד, המסמך נשאר שמור)')) {
+    try { await portalFetch('/rest/v1/sign_requests?id=eq.' + SIGNX.replaces, { method: 'PATCH', body: JSON.stringify({ status: 'canceled' }) }); } catch (e) {}
+  }
+  SIGNX.replaces = null;
   try { logCommunication(c.id, 'sign', { title: title, signId: id }); } catch (e) {}
   var link = signLink(c, id), body = document.getElementById('signBody');
   body.innerHTML = '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px">' +
