@@ -3248,6 +3248,7 @@ function emptyTrash() {
 
 // Auto-purge trash entries older than 30 days
 function autoPurgeTrash() {
+  return; // כבוי: לקוחות בפח נמחקים לצמיתות רק ידנית (ריקון פח / מחיקה לצמיתות)
   if (!Array.isArray(state.trash) || !state.trash.length) return;
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const before = state.trash.length;
@@ -21955,6 +21956,7 @@ async function sbMergeFromServer(){
     if (!r || !r.state) return;
     var remote = r.state;
     SB.rowUpdated = r.updated_at || SB.rowUpdated;
+    try { SB.remoteIds = (Array.isArray(remote.clients) ? remote.clients : []).map(function(c){ return c && c.id; }).filter(Boolean); } catch(e){}
     // Reuse the restore-aware merge logic from pull — gives us a fully consistent state object.
     var merged = _buildMergedStateFromRemote(remote);
     if (merged && typeof merged === 'object') {
@@ -21983,6 +21985,24 @@ async function sbPushState(){
         state._lastEditor=SB.user.email;
         state._lastEditedAt=new Date().toISOString();
       }
+      // Guard: never push a state that is missing clients the cloud has, unless they were
+      // explicitly deleted (in trash / purged tombstones).
+      try {
+        if (Array.isArray(SB.remoteIds) && SB.remoteIds.length) {
+          var _have = {};
+          (state.clients||[]).forEach(function(c){ if (c && c.id) _have[c.id] = 1; });
+          (state.trash||[]).forEach(function(c){ if (c && c.id) _have[c.id] = 1; });
+          var _pg = (state.purged && typeof state.purged === 'object') ? state.purged : {};
+          var _miss = SB.remoteIds.filter(function(id){ return !_have[id] && !_pg[id]; });
+          if (_miss.length) {
+            var _mk = _miss.slice().sort().join(',');
+            if (SB._guardDeclined === _mk) { sbBadge('err', 'הדחיפה נעצרה — חסרים לקוחות'); return; }
+            try { _writeLocalSnapshot(); } catch(e){}
+            var _ok = window.confirm('⚠️ זוהה סנכרון שמוריד ' + _miss.length + ' לקוחות שקיימים בענן ולא נמחקו מפורשות.\nהדחיפה נעצרה כדי לא לאבד אותם.\n\nאישור = לדרוס בכל זאת (הלקוחות ייעלמו מהענן)\nביטול = לעצור (מומלץ), ורענן את הדף כדי למשוך אותם חזרה.');
+            if (!_ok) { SB._guardDeclined = _mk; sbBadge('err', 'הדחיפה נעצרה — חסרים לקוחות'); return; }
+          }
+        }
+      } catch(e){}
       try { _writeLocalSnapshot(); } catch(e){}
       var nowIso = new Date().toISOString();
       var body = JSON.stringify({state:state, updated_at: nowIso});
@@ -22006,6 +22026,7 @@ async function sbPushState(){
       if (rows && rows[0]) {
         // Success — our write landed. Capture the new updated_at and we're done.
         SB.rowUpdated = rows[0].updated_at;
+        try { SB.remoteIds = (state.clients||[]).map(function(c){ return c && c.id; }).filter(Boolean); } catch(e){}
         sbBadge('ok'); sbUpdateLast();
         return;
       }
