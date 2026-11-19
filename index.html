@@ -23529,6 +23529,10 @@ async function signEditor() {
       '<button class="btn small secondary" id="signWho_1" onclick="signWho(1)">לווה 2</button>' +
       '<b style="margin-inline:10px 4px">בחר סוג ולחץ על המסמך:</b>' + tools +
       '<span style="flex:1"></span>' +
+      '<button class="btn small secondary" onclick="signZoom(-1)" title="הקטן את המסמך">🔍－</button>' +
+      '<span id="signZoomLbl" style="font-size:12px;min-width:38px;text-align:center">100%</span>' +
+      '<button class="btn small secondary" onclick="signZoom(1)" title="הגדל את המסמך">🔍＋</button>' +
+      '<span style="width:10px"></span>' +
       '<button class="btn small secondary" onclick="signResize(1.12)" title="הגדל את הפריט הנבחר">＋</button>' +
       '<button class="btn small secondary" onclick="signResize(0.89)" title="הקטן את הפריט הנבחר">－</button>' +
       '<button class="btn small secondary" style="color:#dc2626" onclick="signDelSel()">🗑 מחק נבחר</button>' +
@@ -23550,11 +23554,13 @@ async function signEditor() {
     var pdf = await pdfjsLib.getDocument({ data: SIGNX.bytes.slice() }).promise;
     var host = document.getElementById('signPages'); if (!host) return;
     host.innerHTML = ''; SIGNX.pages = [];
-    var cssW = Math.min(host.clientWidth || 760, 820), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var cssW = Math.min(host.clientWidth || 760, 820);
+    SIGNX.baseW = cssW; SIGNX.zoom = SIGNX.zoom || 1;
+    host.style.overflow = 'auto';
     for (var n = 1; n <= pdf.numPages; n++) {
-      var page = await pdf.getPage(n), v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: cssW * dpr / v1.width });
+      var page = await pdf.getPage(n), v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(cssW * 2.6, 2400) / v1.width });
       var wrap = document.createElement('div');
-      wrap.style.cssText = 'position:relative;margin:0 auto 14px;background:#fff;border:1px solid #cbd5e1;box-shadow:0 2px 10px rgba(0,0,0,.12);width:' + cssW + 'px;cursor:crosshair;user-select:none;touch-action:none';
+      wrap.style.cssText = 'position:relative;margin:0 auto 14px;background:#fff;border:1px solid #cbd5e1;box-shadow:0 2px 10px rgba(0,0,0,.12);width:' + cssW * (SIGNX.zoom || 1) + 'px;cursor:crosshair;user-select:none;touch-action:none';
       wrap.dataset.page = n - 1;
       var cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
       cv.style.cssText = 'display:block;width:100%;height:auto';
@@ -23573,6 +23579,14 @@ function signTool(k) {
     var b = document.getElementById('signTool_' + t); if (!b) return;
     b.style.background = t === k ? '#be185d' : ''; b.style.color = t === k ? '#fff' : '';
   });
+}
+var SIGN_ZOOMS = [0.75, 1, 1.25, 1.5, 2, 2.5];
+function signZoom(d) {
+  var i = SIGN_ZOOMS.indexOf(SIGNX.zoom || 1); if (i < 0) i = 1;
+  i = Math.max(0, Math.min(SIGN_ZOOMS.length - 1, i + d));
+  SIGNX.zoom = SIGN_ZOOMS[i];
+  SIGNX.pages.forEach(function (w) { w.style.width = (SIGNX.baseW * SIGNX.zoom) + 'px'; w.style.margin = SIGNX.zoom > 1 ? '0 0 14px' : '0 auto 14px'; });
+  var l = document.getElementById('signZoomLbl'); if (l) l.textContent = Math.round(SIGNX.zoom * 100) + '%';
 }
 function signWho(g) {
   SIGNX.signer = g;
