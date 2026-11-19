@@ -422,10 +422,21 @@ function sgnDraw(){
   if(!pend.length&&!done.length){w.innerHTML='';return;}
   var h='<div class="card'+(pend.length?' alert':'')+'" style="margin-top:0"><h2>מסמכים לחתימה'+(pend.length?' <span class="cnt2">'+pend.length+'</span>':'')+'</h2>';
   pend.forEach(function(x){h+='<div class="item"><div class="nm">'+esc(x.title)+'</div><div class="act"><a href="'+sgnLink(x.id)+'"><button class="send" type="button">לחתימה</button></a></div></div>';});
-  done.forEach(function(x){h+='<div class="item sent"><div class="nm">'+esc(x.title)+'</div><div class="note">נחתם ב-'+sgnDate(x.signed_at)+'</div><div class="act"><button class="link" type="button" onclick="sgnDownload(\''+x.id+'\',this)">הורדת עותק חתום</button></div></div>';});
+  done.forEach(function(x){h+='<div class="item sent"><div class="nm">'+esc(x.title)+'</div><div class="note">נחתם ב-'+sgnDate(x.signed_at)+'</div><div class="act"><button class="link" type="button" onclick="sgnView(\''+x.id+'\',this)">צפייה במסמך</button> <button class="link" type="button" onclick="sgnDownload(\''+x.id+'\',this)">הורדת עותק חתום</button></div></div>';});
   w.innerHTML=h+'</div>';
 }
 async function sgnLoad(){try{SGN.list=await rpc('sign_list',{p_token:TOKEN})||[];sgnDraw();}catch(e){}}
+async function sgnView(id,btn){
+  var w=window.open('','_blank'),t=btn.textContent;btn.textContent='פותח…';
+  try{
+    var r=await rpc('sign_get',{p_id:id,p_token:TOKEN});if(!r||!r.file)throw 0;
+    var s=atob(r.file),a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);
+    var u=URL.createObjectURL(new Blob([a],{type:'application/pdf'}));
+    if(w)w.location=u;else window.open(u,'_blank');
+    setTimeout(function(){URL.revokeObjectURL(u);},120000);
+  }catch(e){if(w)w.close();alert('לא הצלחנו לפתוח את המסמך. נסה שוב.');}
+  btn.textContent=t;
+}
 async function sgnDownload(id,btn){
   var t=btn.textContent;btn.textContent='מכין…';
   try{

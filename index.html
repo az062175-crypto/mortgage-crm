@@ -23383,7 +23383,7 @@ async function signLoadList() {
       h += '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
         '<div style="flex:1;min-width:200px"><b>' + escapeHtml(x.title) + '</b><div style="font-size:12px;color:var(--muted)">' + (signed ? '✅ נחתם ב-' + signDateTxt(x.signed_at) + ' · ' + deliv : '⏳ ממתין לחתימה · נשלח ' + signDateTxt(x.created_at)) + '</div></div>';
       if (signed) {
-        h += '<button class="btn small" onclick="signDownload(\'' + x.id + '\')">⬇ הורד חתום</button>';
+        h += '<button class="btn small secondary" onclick="signView(\'' + x.id + '\')">👁 צפה</button><button class="btn small" onclick="signDownload(\'' + x.id + '\')">⬇ הורד חתום</button>';
         if (!x.delivered_at) h += '<button class="btn small secondary" onclick="signRedeliver(\'' + x.id + '\')">📨 שלח שוב ל-Drive/מייל</button>';
       } else {
         h += '<button class="btn small secondary" onclick="signCopyLink(\'' + x.id + '\')">📋 העתק קישור</button>' +
@@ -23461,6 +23461,16 @@ async function signCancel(id) {
   if (!confirm('לבטל את בקשת החתימה? הקישור יפסיק לעבוד (המסמך נשאר שמור).')) return;
   try { await portalFetch('/rest/v1/sign_requests?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ status: 'canceled' }) }); signLoadList(); }
   catch (e) { alert('הביטול נכשל.'); }
+}
+async function signView(id) {
+  var w = window.open('', '_blank');
+  try {
+    var r = await portalFetch('/rest/v1/sign_requests?id=eq.' + id + '&select=signed_b64');
+    var rows = await r.json(); if (!rows[0] || !rows[0].signed_b64) throw 0;
+    var u = URL.createObjectURL(new Blob([signB64ToBytes(rows[0].signed_b64)], { type: 'application/pdf' }));
+    if (w) w.location = u; else window.open(u, '_blank');
+    setTimeout(function () { URL.revokeObjectURL(u); }, 120000);
+  } catch (e) { if (w) w.close(); alert('לא הצלחתי לפתוח את המסמך.'); }
 }
 async function signDownload(id) {
   try {
