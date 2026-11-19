@@ -23469,7 +23469,7 @@ async function signView(id) {
     var u = URL.createObjectURL(new Blob([signB64ToBytes(rows[0].signed_b64)], { type: 'application/pdf' }));
     var old = document.getElementById('signViewDlg'); if (old) old.remove();
     var d = document.createElement('div'); d.id = 'signViewDlg';
-    d.style.cssText = 'position:fixed;inset:0;z-index:100002;background:rgba(15,23,42,.6);display:flex;flex-direction:column;direction:rtl';
+    d.style.cssText = 'position:fixed;top:0;bottom:0;left:0;width:min(560px,92vw);z-index:100002;background:#fff;display:flex;flex-direction:column;direction:rtl;box-shadow:6px 0 24px rgba(15,23,42,.35);border-right:1px solid #cbd5e1';
     d.innerHTML = '<div style="background:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px"><b style="flex:1">' + escapeHtml(rows[0].title || 'מסמך') + ' — חתום</b>' +
       '<button class="btn small secondary" id="signViewDl">⬇ הורד</button><button class="btn small" id="signViewX">✕ סגור</button></div>' +
       '<iframe src="' + u + '" style="flex:1;border:0;background:#fff"></iframe>';

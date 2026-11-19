@@ -434,7 +434,7 @@ async function sgnView(id,btn){
     var u=URL.createObjectURL(new Blob([a],{type:'application/pdf'}));
     var old=document.getElementById('sgnViewDlg');if(old)old.remove();
     var d=document.createElement('div');d.id='sgnViewDlg';
-    d.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.6);display:flex;flex-direction:column;direction:rtl';
+    d.style.cssText='position:fixed;top:0;bottom:0;left:0;width:min(520px,100vw);z-index:9999;background:#fff;display:flex;flex-direction:column;direction:rtl;box-shadow:6px 0 24px rgba(15,23,42,.35)';
     d.innerHTML='<div style="background:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px"><b style="flex:1">'+esc(r.title||'מסמך')+'</b><button class="link" type="button" id="sgnViewX" style="font-weight:700">✕ סגור</button></div><iframe src="'+u+'" style="flex:1;border:0;background:#fff"></iframe>';
     document.body.appendChild(d);
     document.getElementById('sgnViewX').onclick=function(){d.remove();URL.revokeObjectURL(u);};
