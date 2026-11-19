@@ -7160,6 +7160,7 @@ function startRenameTask(clientId, taskId) {
   const trimmed = newName.trim();
   if (!trimmed) { alert('השם לא יכול להיות ריק'); return; }
   if (trimmed === t.title) return;
+  if (!t.origTitle && !t.custom) t.origTitle = t.title; // שם התבנית המקורי, כדי שרענון לא ייצור כפילות
   t.title = trimmed;
   save();
   if (currentTab === 'detail') renderClientDetail();
@@ -11638,14 +11639,15 @@ const AUTO_SEED_SOURCES = new Set([
 function refreshClientTasks(clientId) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
-  const undoneAutoCount = (c.tasks || []).filter(t => AUTO_SEED_SOURCES.has(t.source) && t.status !== 'done').length;
-  const msg = 'רענון משימות אוטומטיות לפי סוג עסקה + רישום נוכחי.\n\n' +
-              '• יוסרו ' + undoneAutoCount + ' משימות שלא בוצעו שנוצרו אוטומטית קודם\n' +
-              '• יתווספו משימות חדשות לפי הגדרות סוג העסקה והרישום הנוכחיים\n' +
-              '• משימות שסימנת ✓ ומשימות שהוספת ידנית יישארו\n\nלהמשיך?';
+  const msg = 'רענון משימות לפי סוג עסקה + רישום נוכחי.\n\n' +
+              '• שום משימה קיימת לא תשתנה ולא תימחק (כולל עריכות, סדר וסטטוס)\n' +
+              '• יתווספו רק משימות חדשות שנדרשות ועדיין לא קיימות\n\nלהמשיך?';
   if (!confirm(msg)) return;
-  // Remove undone auto-seeded tasks
-  c.tasks = (c.tasks || []).filter(t => !(AUTO_SEED_SOURCES.has(t.source) && t.status !== 'done'));
+  // תוספתי בלבד: שומרים את כל המשימות הקיימות, מייצרים סט טרי, ומוסיפים רק מה שחסר
+  const _oldTasks = (c.tasks || []).slice();
+  const _oldKeys = new Set();
+  _oldTasks.forEach(t => { _oldKeys.add(t.stage + '::' + t.title); if (t.origTitle) _oldKeys.add(t.stage + '::' + t.origTitle); });
+  c.tasks = [];
   // Re-seed for all stages the client has entered (or is currently in)
   const visitedStages = new Set((c.stageHistory || []).map(h => h.stage));
   visitedStages.add(c.stage);
@@ -11655,9 +11657,11 @@ function refreshClientTasks(clientId) {
   if (visitedStages.has('seller')) seedSellerStageTasks(c);
   if (visitedStages.has('signature')) seedSignatureStageTasks(c);
   if (visitedStages.has('execution')) seedExecutionStageTasks(c);
+  const _fresh = (c.tasks || []).filter(t => !_oldKeys.has(t.stage + '::' + t.title));
+  c.tasks = _oldTasks.concat(_fresh);
   if (typeof dedupRequirementsAndTasks === 'function') dedupRequirementsAndTasks(c);
   save(); renderClientDetail();
-  alert('המשימות רועננו ✓');
+  alert(_fresh.length ? ('נוספו ' + _fresh.length + ' משימות חדשות ✓') : 'אין משימות חדשות להוסיף ✓');
 }
 
 // ============================
@@ -15410,6 +15414,8 @@ function submitNewClient() {
         } else if (o.manual && !c.requirements.some(x => x.id === o.id)) {
           const wiped = (o.section === 'borrower' || o.section === 'guarantor' || !o.section || o.section === 'deal');
           if (wiped && o.stage === 'client') c.requirements.push(o);
+        } else if (o.stage === 'client' && (o.status === 'provided' || o.status === 'not-required') && !c.requirements.some(x => x.id === o.id)) {
+          c.requirements.push(o); // מסמך שכבר התקבל / סומן "לא נדרש" לא נעלם
         }
       });
     })();
