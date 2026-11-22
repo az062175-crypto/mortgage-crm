@@ -288,6 +288,21 @@
     /* Missing-docs badge */
     .clients-table td:nth-child(10) { flex: 0 0 auto; font-size: 12px; }
 
+    /* Tasks table reuses .clients-table, but its columns differ (status | client | task | edit/delete | task status | stage | banker | assignee | due | created | contact).
+       Card per task: client + due on top, the task title on its own line, then the status buttons and edit/delete. */
+    .clients-table.tasks-table tr { flex-wrap: wrap; row-gap: 6px; }
+    .clients-table.tasks-table td:nth-child(1) { flex: 0 0 auto; }
+    .clients-table.tasks-table td:nth-child(3) { display: block !important; order: 5; flex: 1 1 100%; white-space: normal; font-size: 14px; }
+    .clients-table.tasks-table td:nth-child(5) { display: block !important; order: 6; flex: 1 1 auto; white-space: normal; }
+    .clients-table.tasks-table td:nth-child(5) .task-status-group { display: flex; flex-wrap: wrap; gap: 4px; }
+    .clients-table.tasks-table td:nth-child(4) { display: block !important; order: 7; flex: 0 0 auto; }
+    .clients-table.tasks-table td:nth-child(9) { display: block !important; order: 2; flex: 0 0 auto; }
+    .clients-table.tasks-table td:nth-child(11) { order: 8; flex: 0 0 auto; }
+    .clients-table.tasks-table td:nth-child(6),
+    .clients-table.tasks-table td:nth-child(7),
+    .clients-table.tasks-table td:nth-child(8),
+    .clients-table.tasks-table td:nth-child(10) { display: none !important; }
+
     /* Generic tables — allow horizontal scroll but shrink font */
     table[style*="width:100%"] { font-size: 11px !important; }
     table[style*="width:100%"] th, table[style*="width:100%"] td { padding: 4px !important; white-space: nowrap; }
@@ -605,7 +620,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-19 #AV</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-22 #AW</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -5533,7 +5548,7 @@ function renderTasksTodoSubTab(customOnly) {
         <div class="chip ${tasksFilter.status==='all'?'active':''}" onclick="tasksFilter.status='all';renderTasksTab()">הכל (${counts.all})</div>
       </div>
       ${filtered.length === 0 ? '<div class="empty">אין משימות</div>' : `
-      <table class="clients-table">
+      <table class="clients-table tasks-table">
         <thead><tr>
           <th>סטטוס</th><th>לקוח</th><th>משימה</th><th>ערוך</th><th>סטטוס משימה</th><th>שלב</th><th>בנקאי</th><th>אחראי</th><th>יעד</th><th>נוצר</th><th></th>
         </tr></thead>
