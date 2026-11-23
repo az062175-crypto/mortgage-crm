@@ -5724,8 +5724,14 @@ function renderClientDetail() {
             <button class="btn secondary small" onclick="openOpenItemsPopup('${c.id}')" title="הצג את כל המשימות והמסמכים הפתוחים בתיק" style="background:#dbeafe;border-color:#3b82f6;color:#1e40af">📋 מה פתוח?${(() => { const n = getOpenItemsCount(c); return n ? ' <span style="background:#dc2626;color:#fff;border-radius:999px;padding:0 6px;font-size:11px">'+n+'</span>' : ''; })()}</button>
             <button class="btn secondary small" onclick="refreshClientTasks('${c.id}')" title="רענן משימות אוטומטיות לפי סוג עסקה + רישום נוכחי (לא מוחק משימות שסימנת ✓ או שהוספת ידנית)">🔄 רענן משימות</button>
             <button class="btn secondary small" onclick="openIncomesEditor('${c.id}')" title="ערוך הכנסות חודשיות של הלווים והערבים" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3">💰 ערוך הכנסות</button>
-            <button class="btn secondary small" onclick="printClientForMeeting('${c.id}')" title="הכן דף מסודר להדפסה / PDF לפגישה" style="background:#f0fdf4;border-color:#22c55e;color:#166534">🖨️ הכן לפגישה</button>
-            <button class="btn secondary small" onclick="openBankLetter('${c.id}')" title="הכן מכתב מסודר לבנקאי — להדפסה או לשליחה במייל" style="background:#eff6ff;border-color:#3b82f6;color:#1e40af">📨 מכתב לבנק</button>
+            <span class="prep-wrap" style="display:inline-flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <button class="btn secondary small" onclick="togglePrepButtons('${c.id}')" title="הכנה לפגישה, מכתב לבנק והגשה לבנק" style="background:#f5f3ff;border-color:#8b5cf6;color:#5b21b6">🗂️ הכנות ▾</button>
+              <span id="prepBtns-${c.id}" style="display:${window._prepOpen === c.id ? 'inline-flex' : 'none'};gap:8px;flex-wrap:wrap">
+                <button class="btn secondary small" onclick="printClientForMeeting('${c.id}')" title="הכן דף מסודר להדפסה / PDF לפגישה" style="background:#f0fdf4;border-color:#22c55e;color:#166534">🖨️ הכן לפגישה</button>
+                <button class="btn secondary small" onclick="openBankLetter('${c.id}')" title="הכן מכתב מסודר לבנקאי — להדפסה או לשליחה במייל" style="background:#eff6ff;border-color:#3b82f6;color:#1e40af">📨 מכתב לבנק</button>
+                <button class="btn secondary small" onclick="openBankSubmission('${c.id}')" title="הכן הגשה לבנק" style="background:#fff7ed;border-color:#f97316;color:#9a3412">🏦 הכן הגשה לבנק</button>
+              </span>
+            </span>
             <button class="btn secondary small" onclick="orderNesach('${c.id}')" title="פותח את gov.il בדפדפן, ממלא את הפרטים אוטומטית, מחכה שתשלם, ומסמן בוצע" style="background:#fef3c7;border-color:#f59e0b;color:#78350f">📄 הזמן נסח</button>
             <button class="btn danger small" onclick="deleteClient('${c.id}')">מחק</button>
           </div>
@@ -11111,6 +11117,18 @@ function _showNefakhInstallInstructions() {
   `);
 }
 
+function togglePrepButtons(cid) {
+  var el = document.getElementById('prepBtns-' + cid); if (!el) return;
+  var open = el.style.display === 'none';
+  el.style.display = open ? 'inline-flex' : 'none';
+  window._prepOpen = open ? cid : null;
+}
+function openBankSubmission(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
+  var ov = document.createElement('div'); ov.className = 'modal-overlay'; ov.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center';
+  ov.innerHTML = '<div class="modal" style="background:#fff;border-radius:14px;padding:24px;max-width:420px;width:92%;direction:rtl"><h2 class="modal-title">🏦 הכן הגשה לבנק — ' + escapeHtml(c.name || '') + '</h2><p style="color:#64748b">העמוד הזה עדיין ריק. התוכן יתווסף בהמשך.</p><div style="text-align:left"><button class="btn" onclick="this.closest(\'.modal-overlay\').remove()">סגור</button></div></div>';
+  document.body.appendChild(ov);
+}
 function openBankLetter(clientId) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
