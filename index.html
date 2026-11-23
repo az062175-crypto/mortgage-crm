@@ -11145,20 +11145,21 @@ function openBankSubmission(cid) {
 
   /* 1. פרטים אישיים */
   var pers = [];
-  var person = function (title, b) {
+  var person = function (title, b, primary) {
     pers.push(H(title));
-    pers.push(R('שם', b.name || ''));
-    pers.push(R('ת"ז', b.idNumber || ''));
+    var fb = function (k) { return b[k] || (primary ? c[k] : '') || ''; };
+    pers.push(R('שם', b.name || (primary ? c.name : '') || ''));
+    pers.push(R('ת"ז', fb('idNumber')));
     pers.push(R('תאריך לידה', fd(b.dob)));
     pers.push(R('תאריך הנפקת ת"ז', fd(b.idIssueDate)));
-    pers.push(R('נייד', b.phone || ''));
-    pers.push(R('מייל', b.email || ''));
+    pers.push(R('נייד', fb('phone')));
+    pers.push(R('מייל', fb('email')));
     pers.push(R('סוג העסקה', (b.employmentTypes || [b.employmentType].filter(Boolean)).join(', ')));
     pers.push(R('מקום עבודה', Array.isArray(b.employers) ? b.employers.join(', ') : (b.employers || '')));
     var banks = (Array.isArray(b.bankAccounts) ? b.bankAccounts : []).map(function (x) { return (x && x.bank || '').toString().trim(); }).filter(Boolean);
     pers.push(R('בנקים', banks.join(', ')));
   };
-  (c.borrowers || []).forEach(function (b, i) { person('לווה ' + (i + 1) + (b.name ? ' — ' + b.name : ''), b); });
+  (c.borrowers || []).forEach(function (b, i) { person('לווה ' + (i + 1) + (b.name ? ' — ' + b.name : ''), b, i === 0); });
   (c.guarantors || []).forEach(function (g, i) { person('ערב ' + (i + 1) + (g.name ? ' — ' + g.name : ''), g); });
   sections.push({ t: '👤 פרטים אישיים', rows: pers });
 
