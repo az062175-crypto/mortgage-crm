@@ -23685,6 +23685,7 @@ async function signHome() {
     '<h3 style="margin:0 0 8px">מסמך חדש לחתימה</h3>' +
     '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">בחר קובץ PDF או תמונה. בשלב הבא תסמן עם העכבר איפה תופיע החתימה, התאריך, השם, ת"ז והכתובת.</div>' +
     '<input type="file" id="signFile" accept="application/pdf,image/png,image/jpeg" onchange="signPick(this)">' +
+    '<div style="margin-top:10px"><button class="btn small secondary" onclick="signMailOpen()" style="background:#eff6ff;border-color:#93c5fd;color:#1e40af">📧 בחר קובץ מתוך מייל</button></div>' +
     '<div id="signPickMsg" style="margin-top:8px;font-size:13px;color:var(--muted)"></div></div>' +
     '<div id="signList" style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px"><h3 style="margin:0 0 8px">מסמכים שנשלחו ללקוח</h3><div style="color:var(--muted);font-size:13px">טוען…</div></div>';
   signLoadList();
@@ -23857,20 +23858,121 @@ async function signPick(inp) {
   var msg = document.getElementById('signPickMsg');
   if (f.size > 12 * 1024 * 1024) { msg.textContent = 'הקובץ גדול מדי (מעל 12MB). כווץ אותו ונסה שוב.'; return; }
   msg.textContent = 'טוען…';
+  try { await signLoadBytes(new Uint8Array(await f.arrayBuffer()), f.type, f.name, msg); }
+  catch (e) { msg.textContent = 'לא הצלחתי לפתוח את הקובץ. ' + (e && e.message ? e.message : ''); }
+}
+// טעינת מסמך (PDF או תמונה) לעורך הסימון. משותף להעלאה מהמחשב ולבחירה מתוך מייל.
+async function signLoadBytes(buf, mime, name, msg) {
+  await signLibs();
+  if (/^image\//.test(mime)) {
+    var pdf = await PDFLib.PDFDocument.create();
+    var img = mime === 'image/png' ? await pdf.embedPng(buf) : await pdf.embedJpg(buf);
+    var w = 595.28, h = Math.min(1400, w * img.height / img.width);
+    var pg = pdf.addPage([w, h]); pg.drawImage(img, { x: 0, y: 0, width: w, height: h });
+    buf = await pdf.save();
+  } else if (mime !== 'application/pdf' && !/\.pdf$/i.test(name || '')) { if (msg) msg.textContent = 'נתמכים רק PDF או תמונה (PNG/JPG).'; return; }
+  SIGNX.bytes = buf; SIGNX.title = String(name || 'מסמך').replace(/\.[^.]+$/, '');
+  SIGNX.fields = []; SIGNX.sel = null; SIGNX.tool = 'signature'; SIGNX.replaces = null; SIGNX.style = null;
+  await signEditor();
+}
+
+/* ---------- בחירת קובץ מצורף מתוך מייל (Gmail, קריאה בלבד) ---------- */
+var SMAIL = { items: [], next: '', q: '', busy: false };
+function signMailToken() {
+  return new Promise(function (resolve, reject) {
+    var exp = parseInt(localStorage.getItem('gmail_ro_expiry') || '0', 10);
+    if (Date.now() < exp - 30000) return resolve(localStorage.getItem('gmail_ro_token'));
+    if (!window.google || !google.accounts || !google.accounts.oauth2) return reject(new Error('Google Sign-in לא נטען. רענן את הדף.'));
+    var tc = google.accounts.oauth2.initTokenClient({
+      client_id: GMAIL_CLIENT_ID, scope: 'https://www.googleapis.com/auth/gmail.readonly',
+      callback: function (r) {
+        if (r && r.access_token) { localStorage.setItem('gmail_ro_token', r.access_token); localStorage.setItem('gmail_ro_expiry', String(Date.now() + r.expires_in * 1000)); resolve(r.access_token); }
+        else reject(new Error('לא אושרה הרשאת קריאת מייל'));
+      },
+      error_callback: function (e) { reject(new Error('לא אושרה הרשאת קריאת מייל' + (e && e.type ? ' (' + e.type + ')' : ''))); }
+    });
+    tc.requestAccessToken({ prompt: '' });
+  });
+}
+async function signMailApi(path) {
+  var go = function (tk) { return fetch('https://gmail.googleapis.com/gmail/v1/users/me/' + path, { headers: { Authorization: 'Bearer ' + tk } }); };
+  var r = await go(await signMailToken());
+  if (r.status === 401) { localStorage.removeItem('gmail_ro_token'); localStorage.removeItem('gmail_ro_expiry'); r = await go(await signMailToken()); }
+  if (!r.ok) throw new Error('Gmail ' + r.status + ' ' + (await r.text()).slice(0, 160));
+  return r.json();
+}
+function signMailParts(p, out) {
+  if (!p) return out;
+  if (p.filename && p.body && p.body.attachmentId) out.push(p);
+  (p.parts || []).forEach(function (x) { signMailParts(x, out); });
+  return out;
+}
+async function signMailOpen() {
+  var body = document.getElementById('signBody'); if (!body) return;
+  var c = signClient();
+  var em = c.email || ((c.borrowers || []).find(function (b) { return b.email; }) || {}).email || '';
+  var box = document.getElementById('signMailBox');
+  if (!box) { box = document.createElement('div'); box.id = 'signMailBox'; body.insertBefore(box, document.getElementById('signList')); }
+  box.style.cssText = 'background:#fff;border:1px solid #93c5fd;border-radius:12px;padding:16px;margin-bottom:16px';
+  box.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><h3 style="margin:0;flex:1">📧 קבצים מצורפים במיילים</h3><button class="btn small secondary" onclick="document.getElementById(\'signMailBox\').remove()">סגור</button></div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<input id="signMailQ" placeholder="חיפוש במיילים: שם, נושא, שולח…" style="flex:1;min-width:180px;padding:8px;border:1px solid var(--border);border-radius:8px" onkeydown="if(event.key===\'Enter\')signMailSearch()">' +
+      '<button class="btn small" onclick="signMailSearch()">חפש</button>' +
+      (em ? '<button class="btn small secondary" onclick="signMailQuick(\'' + escapeAttr(em) + '\')" title="מיילים שהלקוח שלח או קיבל">של הלקוח</button>' : '') +
+      '<button class="btn small secondary" onclick="signMailQuick(\'\')">הכל</button></div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">מוצגים רק מיילים עם קובץ PDF או תמונה. בחירה בקובץ פותחת אותו לסימון חתימה, כמו קובץ שהועלה מהמחשב.</div>' +
+    '<div id="signMailList" style="color:var(--muted);font-size:13px">מתחבר ל-Gmail…</div>';
+  SMAIL = { items: [], next: '', q: '', busy: false };
+  signMailSearch();
+}
+function signMailQuick(q) { var i = document.getElementById('signMailQ'); if (i) i.value = q ? 'from:' + q + ' OR to:' + q : ''; signMailSearch(); }
+async function signMailSearch(more) {
+  var list = document.getElementById('signMailList'); if (!list || SMAIL.busy) return;
+  SMAIL.busy = true;
+  if (!more) { SMAIL.q = (document.getElementById('signMailQ').value || '').trim(); SMAIL.items = []; SMAIL.next = ''; list.textContent = 'מחפש…'; }
   try {
-    await signLibs();
-    var buf = new Uint8Array(await f.arrayBuffer());
-    if (/^image\//.test(f.type)) {
-      var pdf = await PDFLib.PDFDocument.create();
-      var img = f.type === 'image/png' ? await pdf.embedPng(buf) : await pdf.embedJpg(buf);
-      var w = 595.28, h = Math.min(1400, w * img.height / img.width);
-      var pg = pdf.addPage([w, h]); pg.drawImage(img, { x: 0, y: 0, width: w, height: h });
-      buf = await pdf.save();
-    } else if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { msg.textContent = 'נתמכים רק PDF או תמונה (PNG/JPG).'; return; }
-    SIGNX.bytes = buf; SIGNX.title = f.name.replace(/\.[^.]+$/, '');
-    SIGNX.fields = []; SIGNX.sel = null; SIGNX.tool = 'signature'; SIGNX.replaces = null; SIGNX.style = null;
-    await signEditor();
-  } catch (e) { msg.textContent = 'לא הצלחתי לפתוח את הקובץ. ' + (e && e.message ? e.message : ''); }
+    var gq = (SMAIL.q ? '(' + SMAIL.q + ') ' : '') + 'has:attachment (filename:pdf OR filename:jpg OR filename:jpeg OR filename:png)';
+    var res = await signMailApi('messages?maxResults=15&q=' + encodeURIComponent(gq) + (more && SMAIL.next ? '&pageToken=' + SMAIL.next : ''));
+    SMAIL.next = res.nextPageToken || '';
+    var fp = 'body(attachmentId,size),filename,mimeType';
+    var fields = encodeURIComponent('id,internalDate,payload(headers,' + fp + ',parts(' + fp + ',parts(' + fp + ',parts(' + fp + '))))');
+    var msgs = await Promise.all((res.messages || []).map(function (m) { return signMailApi('messages/' + m.id + '?format=full&fields=' + fields); }));
+    msgs.forEach(function (m) {
+      var hd = {}; ((m.payload && m.payload.headers) || []).forEach(function (h) { hd[h.name.toLowerCase()] = h.value; });
+      var atts = signMailParts(m.payload, []).filter(function (a) {
+        var okType = /pdf|image\/(png|jpe?g)/i.test(a.mimeType || '') || /\.(pdf|png|jpe?g)$/i.test(a.filename || '');
+        return okType && !(/^image\//.test(a.mimeType || '') && (a.body.size || 0) < 15000);
+      });
+      if (atts.length) SMAIL.items.push({ id: m.id, subject: hd.subject || '(ללא נושא)', from: hd.from || '', at: Number(m.internalDate) || 0, atts: atts });
+    });
+    var h = '';
+    SMAIL.items.forEach(function (it, i) {
+      h += '<div style="border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-top:6px"><div style="font-weight:700">' + escapeHtml(it.subject) + '</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">' + escapeHtml(it.from) + ' · ' + new Date(it.at).toLocaleDateString('he-IL') + '</div>' +
+        it.atts.map(function (a, j) { return '<button class="btn small secondary" style="margin:2px 4px 2px 0" onclick="signMailPick(' + i + ',' + j + ')">📎 ' + escapeHtml(a.filename) + ' (' + Math.max(1, Math.round((a.body.size || 0) / 1024)) + 'KB)</button>'; }).join('') + '</div>';
+    });
+    if (!SMAIL.items.length) h = '<div style="color:var(--muted)">לא נמצאו מיילים עם קבצים מתאימים.</div>';
+    if (SMAIL.next) h += '<div style="margin-top:8px"><button class="btn small secondary" onclick="signMailSearch(true)">טען עוד</button></div>';
+    list.innerHTML = h;
+  } catch (e) {
+    list.innerHTML = '<div style="color:#b91c1c">' + escapeHtml(e && e.message ? e.message : 'שגיאה') + '</div>';
+  }
+  SMAIL.busy = false;
+}
+async function signMailPick(i, j) {
+  var it = SMAIL.items[i], a = it && it.atts[j]; if (!a) return;
+  var list = document.getElementById('signMailList');
+  if ((a.body.size || 0) > 12 * 1024 * 1024) { alert('הקובץ גדול מדי (מעל 12MB).'); return; }
+  var note = document.createElement('div'); note.style.cssText = 'margin-top:8px;font-size:13px;color:var(--muted)'; note.textContent = 'מוריד את הקובץ מהמייל…';
+  if (list) list.prepend(note);
+  try {
+    var r = await signMailApi('messages/' + it.id + '/attachments/' + a.body.attachmentId);
+    var b64 = String(r.data || '').replace(/-/g, '+').replace(/_/g, '/');
+    var bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (var k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
+    var mime = /pdf/i.test(a.mimeType || '') || /\.pdf$/i.test(a.filename || '') ? 'application/pdf' : (/png/i.test(a.mimeType || '') || /\.png$/i.test(a.filename || '') ? 'image/png' : 'image/jpeg');
+    await signLoadBytes(bytes, mime, a.filename, note);
+  } catch (e) { note.style.color = '#b91c1c'; note.textContent = 'לא הצלחתי לפתוח את הקובץ. ' + (e && e.message ? e.message : ''); }
 }
 
 /* ---------- עורך: סימון מיקומים ---------- */
