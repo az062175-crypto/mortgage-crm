@@ -12661,7 +12661,7 @@ function openNewClientModal(editClient, warningMessage) {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span style="background:#3b82f6;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px">לווה 1</span>
             <span id="b1Title" style="font-weight:600;font-size:13px;color:#1e3a8a">פרטי הבעל</span>
-            <button type="button" class="btn small secondary" style="margin-inline-start:auto" onclick="idScanPick(1)" title="העלאת תמונת ת&quot;ז — חד-פעמי, התמונה לא נשמרת">📷 מלא מת"ז</button><input type="file" id="idScanFile1" accept="image/*" multiple style="display:none" onchange="idScanRun(1, this)">
+            <button type="button" class="btn small secondary" style="margin-inline-start:auto" onclick="idScanPick(1)" title="העלאת תמונת ת&quot;ז — קריאה מקומית, חד-פעמית; התמונה לא נשמרת ולא יוצאת מהמכשיר">📷 מלא מת"ז</button><input type="file" id="idScanFile1" accept="image/*" multiple style="display:none" onchange="idScanRun(1, this)">
           </div>
           <div id="idScanPanel1"></div>
           <div class="form-row">
@@ -12685,7 +12685,7 @@ function openNewClientModal(editClient, warningMessage) {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span style="background:#a855f7;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px">לווה 2</span>
             <span style="font-weight:600;font-size:13px;color:#6b21a8">פרטי בת הזוג</span>
-            <button type="button" class="btn small secondary" style="margin-inline-start:auto" onclick="idScanPick(2)" title="העלאת תמונת ת&quot;ז — חד-פעמי, התמונה לא נשמרת">📷 מלא מת"ז</button><input type="file" id="idScanFile2" accept="image/*" multiple style="display:none" onchange="idScanRun(2, this)">
+            <button type="button" class="btn small secondary" style="margin-inline-start:auto" onclick="idScanPick(2)" title="העלאת תמונת ת&quot;ז — קריאה מקומית, חד-פעמית; התמונה לא נשמרת ולא יוצאת מהמכשיר">📷 מלא מת"ז</button><input type="file" id="idScanFile2" accept="image/*" multiple style="display:none" onchange="idScanRun(2, this)">
           </div>
           <div id="idScanPanel2"></div>
           <div class="form-row">
@@ -13282,7 +13282,7 @@ function openNewClientModal(editClient, warningMessage) {
 
 // Auto-fill the spouse's family name from the husband's — only if the user hasn't typed a different
 // value there manually. Keeping the field fully editable (user can override at any time).
-// ===== מילוי פרטי לווה מתמונת ת"ז (חד-פעמי — התמונה לא נשמרת, שדות מלאים לא נדרסים) =====
+// ===== מילוי פרטי לווה מתמונת ת"ז — OCR מקומי בדפדפן (חינם; התמונה לא יוצאת מהמכשיר ולא נשמרת; שדות מלאים לא נדרסים) =====
 var _idScanFound = {};
 function idScanPick(n) { var f = document.getElementById('idScanFile' + n); if (f) f.click(); }
 function _idChecksumOk(id) {
@@ -13291,72 +13291,168 @@ function _idChecksumOk(id) {
   for (var i = 0; i < 9; i++) { var d = Number(id[i]) * (i % 2 ? 2 : 1); sum += d > 9 ? d - 9 : d; }
   return sum % 10 === 0;
 }
-function _idToJpeg(file) {
-  return new Promise(function (res, rej) {
-    var url = URL.createObjectURL(file), im = new Image();
-    im.onload = function () {
-      var k = Math.min(1, 1600 / Math.max(im.width, im.height));
-      var cv = document.createElement('canvas');
-      cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
-      cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
-      URL.revokeObjectURL(url);
-      res(cv.toDataURL('image/jpeg', 0.85));
-    };
-    im.onerror = function () { URL.revokeObjectURL(url); rej(new Error('bad image')); };
-    im.src = url;
-  });
-}
 function _idFmtDate(v) { return v ? v.split('-').reverse().join('/') : ''; }
 function _idScanMsg(n, html, color) {
   var el = document.getElementById('idScanPanel' + n);
   if (el) el.innerHTML = '<div style="margin:0 0 8px;padding:8px 10px;border-radius:8px;font-size:12px;background:#fff;border:1px solid var(--border);color:' + (color || 'var(--text)') + '">' + html + '</div>';
 }
+function _idLoadTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+  return new Promise(function (res, rej) {
+    var sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    sc.onload = res; sc.onerror = function () { rej(new Error('load')); };
+    document.head.appendChild(sc);
+  });
+}
+// Preparing the photo for OCR: upscale, grayscale, stretch contrast.
+function _idPrep(file) {
+  return new Promise(function (res, rej) {
+    var url = URL.createObjectURL(file), im = new Image();
+    im.onload = function () {
+      var longest = Math.max(im.width, im.height);
+      var k = longest < 1800 ? 1800 / longest : Math.min(1, 2400 / longest);
+      var cv = document.createElement('canvas');
+      cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+      var ctx = cv.getContext('2d');
+      ctx.drawImage(im, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      var img = ctx.getImageData(0, 0, cv.width, cv.height), d = img.data, hist = new Array(256).fill(0), i;
+      for (i = 0; i < d.length; i += 4) { var g = Math.round(d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114); d[i] = d[i + 1] = d[i + 2] = g; hist[g]++; }
+      var total = d.length / 4, acc = 0, lo = 0, hi = 255;
+      for (i = 0; i < 256; i++) { acc += hist[i]; if (acc > total * 0.02) { lo = i; break; } }
+      acc = 0;
+      for (i = 255; i >= 0; i--) { acc += hist[i]; if (acc > total * 0.02) { hi = i; break; } }
+      var span = Math.max(1, hi - lo);
+      for (i = 0; i < d.length; i += 4) { var v = Math.max(0, Math.min(255, Math.round((d[i] - lo) * 255 / span))); d[i] = d[i + 1] = d[i + 2] = v; }
+      ctx.putImageData(img, 0, 0);
+      res(cv);
+    };
+    im.onerror = function () { URL.revokeObjectURL(url); rej(new Error('bad image')); };
+    im.src = url;
+  });
+}
+function _idIsoDate(d, m, y) {
+  d = Number(d); m = Number(m); y = Number(y);
+  if (y < 100) return '';
+  if (y < 1900 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return '';
+  return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+// Turns raw OCR text (main = Hebrew+English pass, digits = digits-only pass) into the fields.
+function _idParse(main, digits) {
+  var out = { firstName: '', familyName: '', idNumber: '', dob: '', issueDate: '' };
+  var all = (main || '') + '\n' + (digits || '');
+  var today = new Date().toISOString().slice(0, 10);
+  // ---- ID number ----
+  var cands = [];
+  all.split('\n').forEach(function (line) {
+    var compact = line.replace(/[^\d]/g, '');
+    if (/\d{1,2}[.,\/\-]\d{1,2}[.,\/\-]\d{4}/.test(line) && compact.length < 12) return; // a date line
+    var tok = line.match(/(?:^|\s)\d{8,9}(?=\s|$)/g) || [];
+    tok.forEach(function (t) { cands.push(t.trim()); });
+    var m = line.match(/\d[\d\s]{6,12}\d/g) || [];
+    m.forEach(function (t) { var c = t.replace(/\s/g, ''); if (c.length >= 8 && c.length <= 9) cands.push(c); });
+    if (compact.length >= 8 && compact.length <= 9) cands.push(compact);
+  });
+  var norm = cands.map(function (c) { return c.padStart(9, '0'); });
+  out.idNumber = norm.filter(_idChecksumOk)[0] || norm[0] || '';
+  // ---- dates ----
+  var dates = [];
+  var re = /(\d{1,2})\s*[.,\/\-]\s*(\d{1,2})\s*[.,\/\-]\s*(\d{4})/g, mm;
+  var lines = all.split('\n');
+  lines.forEach(function (line) {
+    re.lastIndex = 0;
+    while ((mm = re.exec(line))) {
+      var iso = _idIsoDate(mm[1], mm[2], mm[3]);
+      if (iso) dates.push({ iso: iso, label: /לידה|birth/i.test(line) ? 'dob' : (/הנפק|issue/i.test(line) ? 'issue' : (/תוקף|expir|valid/i.test(line) ? 'exp' : '')) });
+    }
+  });
+  var seen = {};
+  dates = dates.filter(function (x) { if (seen[x.iso]) return false; seen[x.iso] = 1; return true; });
+  var byLabel = function (l) { var f = dates.filter(function (x) { return x.label === l; })[0]; return f ? f.iso : ''; };
+  out.dob = byLabel('dob');
+  out.issueDate = byLabel('issue');
+  var rest = dates.filter(function (x) { return x.label !== 'exp' && x.iso <= today && x.iso !== out.dob && x.iso !== out.issueDate; }).map(function (x) { return x.iso; }).sort();
+  if (!out.dob && rest.length) out.dob = rest.shift();
+  if (!out.issueDate && rest.length) out.issueDate = rest.pop();
+  if (out.dob && out.issueDate && out.issueDate < out.dob) { var t = out.dob; out.dob = out.issueDate; out.issueDate = t; }
+  // ---- names ----
+  var heb = function (t) { return (t || '').replace(/[^\u05D0-\u05EA\s'\-]/g, ' ').replace(/\s+/g, ' ').trim(); };
+  var stop = /^(מדינת|ישראל|תעודת|זהות|שם|פרטי|משפחה|מספר|תאריך|לידה|הנפקה|תוקף|עד|מין|זכר|נקבה|ארץ|כתובת|רשות|האוכלוסין|והגירה|משרד|הפנים|דרכון|ספח|תושב|אזרח)$/;
+  var cleanName = function (t) { return heb(t).split(' ').filter(function (w) { return w.length > 1 && !stop.test(w); }).join(' '); };
+  var nextHeb = function (i) { for (var j = i + 1; j < Math.min(i + 3, lines.length); j++) { var c = cleanName(lines[j]); if (c) return c; } return ''; };
+  lines.forEach(function (line, i) {
+    if (!out.familyName && /שם\s*משפחה|משפחה/.test(line)) out.familyName = cleanName(line.replace(/.*משפחה/, '')) || nextHeb(i);
+    if (!out.firstName && /שם\s*פרטי|פרטי/.test(line)) out.firstName = cleanName(line.replace(/.*פרטי/, '')) || nextHeb(i);
+  });
+  if (!out.familyName || !out.firstName) {
+    var guess = lines.map(cleanName).filter(function (c) { return c && c.length >= 2 && c.length <= 20 && c.split(' ').length <= 2; });
+    if (!out.familyName && guess[0]) out.familyName = guess[0];
+    if (!out.firstName && guess[1]) out.firstName = guess[1];
+  }
+  return out;
+}
 async function idScanRun(n, input) {
   var files = Array.prototype.slice.call(input.files || [], 0, 3);
   input.value = '';
   if (!files.length) return;
-  if (!SB || !SB.token) { _idScanMsg(n, 'צריך להיות מחובר לענן (Supabase) כדי לקרוא תעודת זהות.', '#b91c1c'); return; }
-  _idScanMsg(n, '⏳ קורא את התעודה…');
+  var w1 = null, w2 = null;
   try {
-    var images = await Promise.all(files.map(_idToJpeg));
-    var resp = await fetch('/api/id-scan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SB.token },
-      body: JSON.stringify({ images: images })
-    });
-    images = null;
-    var data = await resp.json().catch(function () { return {}; });
-    if (!resp.ok) { _idScanMsg(n, '⚠️ ' + escapeHtml(data.message || ('הקריאה נכשלה (' + resp.status + ')')), '#b91c1c'); return; }
-    _idScanFound[n] = data;
-    _idScanShow(n);
+    _idScanMsg(n, '⏳ טוען מנוע קריאה (בפעם הראשונה לוקח עד דקה, אחר כך מהיר)…');
+    await _idLoadTesseract();
+    var logger = function (m) { if (m && m.status && typeof m.progress === 'number') _idScanMsg(n, '⏳ ' + escapeHtml(m.status) + ' ' + Math.round(m.progress * 100) + '%'); };
+    w1 = await Tesseract.createWorker('heb+eng', 1, { logger: logger });
+    w2 = await Tesseract.createWorker('eng', 1, {});
+    await w2.setParameters({ tessedit_char_whitelist: '0123456789./-, ', tessedit_pageseg_mode: '6' });
+    var main = '', digits = '';
+    for (var i = 0; i < files.length; i++) {
+      _idScanMsg(n, '⏳ קורא תמונה ' + (i + 1) + ' מתוך ' + files.length + '…');
+      var cv = await _idPrep(files[i]);
+      main += '\n' + (await w1.recognize(cv)).data.text;
+      digits += '\n' + (await w2.recognize(cv)).data.text;
+      cv.width = cv.height = 0; // release the pixels
+    }
+    var found = _idParse(main, digits);
+    main = digits = '';
+    if (!found.idNumber && !found.dob && !found.issueDate && !found.firstName && !found.familyName) {
+      _idScanMsg(n, '⚠️ לא זיהיתי פרטים בתמונה. נסה צילום ישר, חד ומואר, בלי השתקפויות.', '#b91c1c');
+    } else {
+      _idScanFound[n] = found;
+      _idScanShow(n);
+    }
   } catch (e) {
-    _idScanMsg(n, '⚠️ לא הצלחתי לקרוא את התמונה. נסה צילום חד יותר.', '#b91c1c');
+    _idScanMsg(n, '⚠️ הקריאה נכשלה (' + escapeHtml(String(e && e.message || e)) + '). בדוק חיבור לאינטרנט — נדרש להורדת מנוע הקריאה בפעם הראשונה.', '#b91c1c');
+  } finally {
+    try { if (w1) await w1.terminate(); if (w2) await w2.terminate(); } catch (e2) {}
   }
 }
 function _idScanShow(n) {
   var d = _idScanFound[n] || {};
   var rows = [
-    ['שם פרטי', 'fFirst' + n, d.firstName, d.firstName],
-    ['שם משפחה', 'fFamily' + n, d.familyName, d.familyName],
-    ['מספר זהות', 'fId' + n, d.idNumber, d.idNumber],
-    ['תאריך לידה', 'fDob' + n, d.dob, _idFmtDate(d.dob)],
-    ['תאריך הנפקה', 'fIdIssue' + n, d.issueDate, _idFmtDate(d.issueDate)]
+    ['שם פרטי', 'fFirst' + n, d.firstName, 'text'],
+    ['שם משפחה', 'fFamily' + n, d.familyName, 'text'],
+    ['מספר זהות', 'fId' + n, d.idNumber, 'text'],
+    ['תאריך לידה', 'fDob' + n, d.dob, 'date'],
+    ['תאריך הנפקה', 'fIdIssue' + n, d.issueDate, 'date']
   ];
-  var warn = (d.idNumber && !_idChecksumOk(d.idNumber)) ? '<div style="color:#b45309;margin-bottom:6px">⚠️ מספר הזהות לא עובר בדיקת ספרת ביקורת — בדוק מול התעודה.</div>' : '';
-  var html = '<div style="margin:0 0 8px;padding:10px;border-radius:8px;background:#fff;border:1px solid #93c5fd;font-size:12px"><div style="font-weight:700;margin-bottom:6px">נמצא בתעודה (סמן מה למלא):</div>' + warn;
+  var warn = (d.idNumber && !_idChecksumOk(d.idNumber)) ? '<div style="color:#b45309;margin-bottom:6px">⚠️ מספר הזהות לא עובר בדיקת ספרת ביקורת — תקן לפי התעודה לפני המילוי.</div>' : '';
+  var html = '<div style="margin:0 0 8px;padding:10px;border-radius:8px;background:#fff;border:1px solid #93c5fd;font-size:12px"><div style="font-weight:700;margin-bottom:2px">נמצא בתעודה — אפשר לתקן לפני המילוי:</div>'
+    + '<div style="color:var(--muted);margin-bottom:6px">הקריאה נעשית במחשב שלך; התמונה לא נשלחת ולא נשמרת.</div>' + warn;
   var any = false;
   rows.forEach(function (row, i) {
     var el = document.getElementById(row[1]);
     var cur = el ? String(el.value || '').trim() : '';
-    var found = row[2];
-    var shown = row[3];
-    var state, checked = false, disabled = true;
-    if (!found) state = '<span style="color:var(--muted)">לא נמצא בתמונה</span>';
-    else if (cur && cur === found) state = '<span style="color:var(--muted)">זהה למה שקיים</span>';
-    else if (cur) state = '<span style="color:#b45309">כבר מולא (' + escapeHtml(el.type === 'date' ? _idFmtDate(cur) : cur) + ') — לא ידרס</span>';
-    else { state = '<span style="color:#16a34a">יתמלא</span>'; checked = true; disabled = false; any = true; }
-    html += '<label style="display:flex;gap:8px;align-items:center;padding:3px 0"><input type="checkbox" id="idScanChk' + n + '_' + i + '" ' + (checked ? 'checked ' : '') + (disabled ? 'disabled ' : '') + '>'
-      + '<span style="min-width:90px;font-weight:600">' + row[0] + '</span><span style="min-width:110px">' + escapeHtml(shown || '—') + '</span>' + state + '</label>';
+    var found = row[2] || '';
+    var state, checked = false, locked = true;
+    if (cur && found && cur === found) state = '<span style="color:var(--muted)">זהה למה שקיים</span>';
+    else if (cur) state = '<span style="color:#b45309">כבר מולא (' + escapeHtml(row[3] === 'date' ? _idFmtDate(cur) : cur) + ') — לא ידרס</span>';
+    else if (!found) { state = '<span style="color:var(--muted)">לא נמצא — אפשר להקליד</span>'; locked = false; }
+    else { state = '<span style="color:#16a34a">יתמלא</span>'; checked = true; locked = false; }
+    if (!locked) any = true;
+    html += '<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><input type="checkbox" id="idScanChk' + n + '_' + i + '" ' + (checked ? 'checked ' : '') + (locked ? 'disabled ' : '') + '>'
+      + '<span style="min-width:84px;font-weight:600">' + row[0] + '</span>'
+      + '<input id="idScanVal' + n + '_' + i + '" type="' + row[3] + '" value="' + escapeAttr(found) + '" ' + (locked ? 'disabled ' : '') + 'style="width:150px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px" oninput="document.getElementById(\'idScanChk' + n + '_' + i + '\').checked=!!this.value">'
+      + state + '</div>';
   });
   html += '<div style="display:flex;gap:6px;margin-top:8px">'
     + (any ? '<button type="button" class="btn small" onclick="idScanApply(' + n + ')">✓ מלא את המסומנים</button>' : '')
@@ -13365,14 +13461,16 @@ function _idScanShow(n) {
   if (el2) el2.innerHTML = html;
 }
 function idScanApply(n) {
-  var d = _idScanFound[n] || {};
-  var fields = [['fFirst' + n, d.firstName], ['fFamily' + n, d.familyName], ['fId' + n, d.idNumber], ['fDob' + n, d.dob], ['fIdIssue' + n, d.issueDate]];
-  fields.forEach(function (f, i) {
+  var ids = ['fFirst' + n, 'fFamily' + n, 'fId' + n, 'fDob' + n, 'fIdIssue' + n];
+  ids.forEach(function (id, i) {
     var chk = document.getElementById('idScanChk' + n + '_' + i);
-    var el = document.getElementById(f[0]);
-    if (!chk || !chk.checked || !el || !f[1]) return;
+    var valEl = document.getElementById('idScanVal' + n + '_' + i);
+    var el = document.getElementById(id);
+    if (!chk || !chk.checked || !valEl || !el) return;
+    var v = String(valEl.value || '').trim();
+    if (!v) return;
     if (String(el.value || '').trim()) return; // never overwrite
-    el.value = f[1];
+    el.value = v;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   });
