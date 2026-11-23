@@ -13762,13 +13762,13 @@ function idGeminiSetup(n) {
   try { state.settings = state.settings || {}; if (k.trim()) state.settings.geminiKey = k.trim(); else delete state.settings.geminiKey; localStorage.removeItem('idGeminiKey'); save(); } catch (e) {}
   _idScanPreview(n);
 }
-async function _idGeminiRead(canvases, key) {
-  var parts = [{ text: 'This is an Israeli ID card (teudat zehut), possibly smart-card, photo or scan. Read the holder details exactly as printed. Return JSON only with keys: firstName (Hebrew), familyName (Hebrew), idNumber (digits only, 9 digits, keep leading zeros), dob (yyyy-mm-dd, date of birth), issueDate (yyyy-mm-dd, date of issue). Use empty string for anything not visible or unreadable. Do not guess.' }];
+async function _idGeminiOnce(canvases, key, variant) {
+  var parts = [{ text: (variant ? 'Independent second reading. Read digit by digit, character by character. ' : '') + 'This is an Israeli ID card (teudat zehut), possibly smart-card, photo or scan. Read the holder details exactly as printed. Return JSON only with keys: firstName (Hebrew), familyName (Hebrew), idNumber (digits only, 9 digits, keep leading zeros), dob (yyyy-mm-dd, date of birth), issueDate (yyyy-mm-dd, date of issue). Use empty string for anything not visible or unreadable. Do not guess.' }];
   canvases.forEach(function (cv) {
-    var k = Math.min(1, 1800 / Math.max(cv.width, cv.height)), c = document.createElement('canvas');
+    var k = Math.min(1, (variant ? 1400 : 1800) / Math.max(cv.width, cv.height)), c = document.createElement('canvas');
     c.width = Math.round(cv.width * k); c.height = Math.round(cv.height * k);
     c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height);
-    parts.push({ inline_data: { mime_type: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.9).split(',')[1] } });
+    parts.push({ inline_data: { mime_type: 'image/jpeg', data: c.toDataURL('image/jpeg', variant ? 0.8 : 0.9).split(',')[1] } });
     c.width = c.height = 0;
   });
   var body = JSON.stringify({ contents: [{ parts: parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } });
@@ -13787,6 +13787,7 @@ async function _idGeminiRead(canvases, key) {
     if (!ml.models) errs.push('list:' + (ml.error ? ml.error.status || ml.error.code : '?'));
   } catch (e0) { errs.push('list:fail'); }
   if (!models.length) models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+  if (variant && models.length > 1) models = models.slice(variant).concat(models.slice(0, variant)); // a different model for the second opinion
   var order = models.concat(models.slice(0, 3)); // second round for the first few after a short pause
   for (var mi = 0; mi < order.length; mi++) {
     if (mi === models.length) await new Promise(function (ok) { setTimeout(ok, 3000); });
@@ -13814,6 +13815,30 @@ async function _idGeminiRead(canvases, key) {
   return { firstName: String(d.firstName || '').trim(), familyName: String(d.familyName || '').trim(), idNumber: id,
     dob: iso(d.dob), issueDate: iso(d.issueDate), _unsure: { idNumber: !!id && (idFixed || !_idChecksumOk(id)) }, _conf: {}, _idw: {}, _idwm: {} };
 }
+
+// Double check: two independent readings (different model, image size and wording); disagreements are flagged.
+async function _idGeminiRead(canvases, key) {
+  var rs = await Promise.allSettled([_idGeminiOnce(canvases, key, 0), _idGeminiOnce(canvases, key, 1)]);
+  var a = rs[0].status === 'fulfilled' ? rs[0].value : null, b = rs[1].status === 'fulfilled' ? rs[1].value : null;
+  if (!a && !b) throw rs[0].reason;
+  if (!a || !b) { var one = a || b; one._single = true; one._unsure.firstName = one._unsure.familyName = one._unsure.dob = one._unsure.issueDate = true; return one; }
+  var out = { _unsure: {}, _conf: {}, _idw: {}, _idwm: {} }, diffs = [];
+  var lab = { firstName: 'שם פרטי', familyName: 'שם משפחה', idNumber: 'מספר זהות', dob: 'תאריך לידה', issueDate: 'תאריך הנפקה' };
+  var norm = function (v) { return String(v || '').replace(/\s+/g, ' ').trim(); };
+  ['firstName', 'familyName', 'dob', 'issueDate', 'idNumber'].forEach(function (k) {
+    var x = norm(a[k]), y = norm(b[k]);
+    if (k === 'idNumber' && x !== y) { // the checksum breaks the tie
+      var xv = _idChecksumOk(x), yv = _idChecksumOk(y);
+      out[k] = (yv && !xv) ? y : x; out._unsure[k] = true; diffs.push(lab[k] + ': ' + x + ' / ' + y); return;
+    }
+    out[k] = x || y;
+    if (x && y && x !== y) { out._unsure[k] = true; diffs.push(lab[k] + ': ' + x + ' / ' + y); }
+    else if (!x || !y) out._unsure[k] = true;
+    else out._unsure[k] = (k === 'idNumber') ? (!_idChecksumOk(x) || !!a._unsure.idNumber || !!b._unsure.idNumber) : false;
+  });
+  out._diffs = diffs;
+  return out;
+}
 async function idScanRead(n) {
   var canvases = _idPending[n];
   if (!canvases || !canvases.length) return;
@@ -13836,7 +13861,7 @@ async function idScanRead(n) {
     _idScanMsg(n, '⏳ קורא עם Gemini…');
     try {
       var gf = await _idGeminiRead(canvases, gkey);
-      if (gf.idNumber || gf.dob || gf.issueDate || gf.firstName || gf.familyName) { _idScanFound[n] = gf; gf._note = '✅ נקרא באמצעות Gemini.'; _idScanShow(n); return; }
+      if (gf.idNumber || gf.dob || gf.issueDate || gf.firstName || gf.familyName) { _idScanFound[n] = gf; gf._note = gf._single ? '⚠️ נקרא ב-Gemini בקריאה אחת בלבד (השנייה נכשלה), לכן הכול מסומן לבדיקה.' : (gf._diffs && gf._diffs.length ? '⚠️ בדיקה כפולה: שתי קריאות של Gemini לא הסכימו על: ' + gf._diffs.join(' | ') + '. בדקי מול התעודה.' : '✅ בדיקה כפולה: שתי קריאות נפרדות של Gemini הסכימו.'); _idScanShow(n); return; }
       _idScanMsg(n, '⚠️ Gemini לא זיהה פרטים בתמונה. נסי לחתוך/לסובב ולקרוא שוב. <a href="#" onclick="_idGeminiOff=true;idScanRead(' + n + ');return false">קריאה מקומית (איטית ופחות מדויקת)</a>', '#b91c1c');
       return;
     } catch (ge) { _idScanMsg(n, '⚠️ Gemini נכשל (' + escapeHtml(String(ge && ge.message || ge)) + '). בדקי שהמפתח נכון (🔑 חבר Gemini) ויש אינטרנט. <a href="#" onclick="_idGeminiOff=true;idScanRead(' + n + ');return false">קריאה מקומית (איטית ופחות מדויקת)</a>', '#b91c1c'); return; }
