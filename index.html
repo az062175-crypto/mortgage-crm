@@ -13779,19 +13779,22 @@ async function _idGeminiRead(canvases, key) {
   var models = [], res = null, lastErr = '', errs = [];
   try { // only models this key can really use
     var ml = await (await tfetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(key), {}, 10000)).json();
-    var all = (ml.models || []).filter(function (m) { return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0 && /gemini/.test(m.name) && !/image|tts|live|embedding|robotics|computer|audio|thinking|exp/.test(m.name); }).map(function (m) { return m.name.replace('models/', ''); });
-    var rank = function (n) { return (/latest/.test(n) ? 0 : 5) + (/lite/.test(n) ? 3 : 0) + (/preview/.test(n) ? 4 : 0) + (/pro/.test(n) ? 6 : 0) + (/flash/.test(n) ? 0 : 8); };
+    var all = (ml.models || []).filter(function (m) { return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0 && /gemini/.test(m.name) && !/image|tts|live|embedding|robotics|computer|audio|thinking|exp|omni|deep|nano|learnlm|gemma/.test(m.name); }).map(function (m) { return m.name.replace('models/', ''); });
+    var stable = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'];
+    var rank = function (n) { var si = stable.indexOf(n); if (si >= 0) return -10 + si; return (/latest/.test(n) ? 0 : 5) + (/lite/.test(n) ? 3 : 0) + (/preview/.test(n) ? 4 : 0) + (/pro/.test(n) ? 6 : 0) + (/flash/.test(n) ? 0 : 8); };
     all.sort(function (a, b) { return rank(a) - rank(b) || (a < b ? 1 : -1); });
-    models = all.slice(0, 5);
+    models = all.slice(0, 5); stable.forEach(function (st) { if (models.indexOf(st) < 0 && all.indexOf(st) >= 0) models.push(st); });
     if (!ml.models) errs.push('list:' + (ml.error ? ml.error.status || ml.error.code : '?'));
   } catch (e0) { errs.push('list:fail'); }
   if (!models.length) models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'];
-  for (var mi = 0; mi < models.length; mi++) {
+  var order = models.concat(models.slice(0, 3)); // second round for the first few after a short pause
+  for (var mi = 0; mi < order.length; mi++) {
+    if (mi === models.length) await new Promise(function (ok) { setTimeout(ok, 3000); });
     try {
-      res = await tfetch('https://generativelanguage.googleapis.com/v1beta/models/' + models[mi] + ':generateContent?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body }, 25000);
+      res = await tfetch('https://generativelanguage.googleapis.com/v1beta/models/' + order[mi] + ':generateContent?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body }, 25000);
       if (res.ok) break;
-      lastErr = String(res.status); errs.push(models[mi] + ':' + res.status);
-    } catch (e1) { lastErr = 'timeout'; res = null; errs.push(models[mi] + ':timeout'); }
+      lastErr = String(res.status); errs.push(order[mi] + ':' + res.status);
+    } catch (e1) { lastErr = 'timeout'; res = null; errs.push(order[mi] + ':timeout'); }
   }
   if (!res || !res.ok) throw new Error('Gemini ' + lastErr + ' [' + errs.join(' ') + '] - ' + (lastErr === '429' ? 'המכסה החינמית מלאה, נסי בעוד דקה' : 'השרת של גוגל עמוס או לא מגיב, נסי שוב בעוד רגע'));
   var j = await res.json(), txt = (((j.candidates || [])[0] || {}).content || {}).parts;
