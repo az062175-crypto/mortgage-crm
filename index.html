@@ -13793,7 +13793,7 @@ async function idScanRead(n) {
     _idScanMsg(n, '⏳ קורא עם Gemini…');
     try {
       var gf = await _idGeminiRead(canvases, gkey);
-      if (gf.idNumber || gf.dob || gf.issueDate || gf.firstName || gf.familyName) { _idScanFound[n] = gf; gf._note = ''; _idScanShow(n); return; }
+      if (gf.idNumber || gf.dob || gf.issueDate || gf.firstName || gf.familyName) { _idScanFound[n] = gf; gf._note = '✅ נקרא באמצעות Gemini.'; _idScanShow(n); return; }
       _idScanMsg(n, '⚠️ Gemini לא זיהה פרטים בתמונה. נסי לחתוך/לסובב ולקרוא שוב. <a href="#" onclick="_idGeminiOff=true;idScanRead(' + n + ');return false">קריאה מקומית (איטית ופחות מדויקת)</a>', '#b91c1c');
       return;
     } catch (ge) { _idScanMsg(n, '⚠️ Gemini נכשל (' + escapeHtml(String(ge && ge.message || ge)) + '). בדקי שהמפתח נכון (🔑 חבר Gemini) ויש אינטרנט. <a href="#" onclick="_idGeminiOff=true;idScanRead(' + n + ');return false">קריאה מקומית (איטית ופחות מדויקת)</a>', '#b91c1c'); return; }
@@ -13851,7 +13851,7 @@ async function idScanRead(n) {
       _idScanMsg(n, '⚠️ לא זיהיתי פרטים בקובץ. נסה לחתוך את הקצוות סביב התעודה, לסובב אותה, או צילום ישר, חד ומואר בלי השתקפויות. <a href="#" onclick="_idScanPreview(' + n + ');return false">חזרה לחיתוך וסיבוב</a>', '#b91c1c');
     } else {
       _idScanFound[n] = found;
-      _idScanFound[n]._note = best.note;
+      _idScanFound[n]._note = (best.note ? best.note + ' ' : '') + '⚠️ נקרא בקורא המקומי ולא ב-Gemini' + (gkey ? '.' : ' (המפתח לא מחובר: לחצי "🔑 חבר Gemini" בחלונית החיתוך, ואחרי החיבור הכפתור יראה "Gemini פעיל").');
       _idScanShow(n);
     }
   } catch (e) {
