@@ -13464,10 +13464,65 @@ function _idParse(main, digits) {
   }
   return out;
 }
+var _idPending = {};
+function _idRotateCanvas(cv, deg) {
+  var out = document.createElement('canvas'), swap = deg === 90 || deg === 270;
+  out.width = swap ? cv.height : cv.width; out.height = swap ? cv.width : cv.height;
+  var ctx = out.getContext('2d');
+  ctx.translate(out.width / 2, out.height / 2);
+  ctx.rotate(deg * Math.PI / 180);
+  ctx.drawImage(cv, -cv.width / 2, -cv.height / 2);
+  return out;
+}
+function _idThumb(cv) {
+  var k = Math.min(1, 260 / Math.max(cv.width, cv.height)), t = document.createElement('canvas');
+  t.width = Math.max(1, Math.round(cv.width * k)); t.height = Math.max(1, Math.round(cv.height * k));
+  t.getContext('2d').drawImage(cv, 0, 0, t.width, t.height);
+  return t.toDataURL('image/jpeg', 0.6);
+}
+// Step 1: open the files and show previews with rotate buttons (so an upside-down card can be turned before reading).
 async function idScanRun(n, input) {
   var files = Array.prototype.slice.call(input.files || [], 0, 6);
   input.value = '';
   if (!files.length) return;
+  try {
+    _idScanMsg(n, '⏳ פותח את הקבצים…');
+    _idPending[n] = await _idFilesToCanvases(files, 4);
+    _idScanPreview(n);
+  } catch (e) {
+    _idScanMsg(n, '⚠️ ' + escapeHtml(String(e && e.message || e)), '#b91c1c');
+  }
+}
+function _idScanPreview(n) {
+  var pages = _idPending[n] || [];
+  var btn = 'type="button" class="btn small secondary" style="padding:2px 8px;font-size:12px"';
+  var html = '<div style="margin:0 0 8px;padding:10px;border-radius:8px;background:#fff;border:1px solid #93c5fd;font-size:12px">'
+    + '<div style="font-weight:700;margin-bottom:2px">בדוק שהתעודה ישרה — אפשר לסובב לפני הקריאה:</div>'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0">';
+  pages.forEach(function (cv, i) {
+    html += '<div style="text-align:center"><div style="width:270px;height:200px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;border:1px solid var(--border);border-radius:6px"><img src="' + _idThumb(cv) + '" style="max-width:260px;max-height:190px"></div>'
+      + '<div style="display:flex;gap:4px;justify-content:center;margin-top:4px">'
+      + '<button ' + btn + ' onclick="idScanRotate(' + n + ',' + i + ',270)" title="סובב שמאלה">⟲ 90°</button>'
+      + '<button ' + btn + ' onclick="idScanRotate(' + n + ',' + i + ',180)" title="הפוך (180°)">⇅ הפוך</button>'
+      + '<button ' + btn + ' onclick="idScanRotate(' + n + ',' + i + ',90)" title="סובב ימינה">⟳ 90°</button></div></div>';
+  });
+  html += '</div><div style="display:flex;gap:6px"><button type="button" class="btn small" onclick="idScanRead(' + n + ')">🔍 קרא את התעודה</button>'
+    + '<button type="button" class="btn small secondary" onclick="idScanCancel(' + n + ')">ביטול</button></div></div>';
+  var el = document.getElementById('idScanPanel' + n);
+  if (el) el.innerHTML = html;
+}
+function idScanRotate(n, i, deg) {
+  var pages = _idPending[n];
+  if (!pages || !pages[i]) return;
+  var old = pages[i];
+  pages[i] = _idRotateCanvas(old, deg);
+  old.width = old.height = 0;
+  _idScanPreview(n);
+}
+// Step 2: OCR on the (possibly rotated) pages.
+async function idScanRead(n) {
+  var canvases = _idPending[n];
+  if (!canvases || !canvases.length) return;
   var w1 = null, w2 = null;
   try {
     _idScanMsg(n, '⏳ טוען מנוע קריאה (בפעם הראשונה לוקח עד דקה, אחר כך מהיר)…');
@@ -13476,23 +13531,46 @@ async function idScanRun(n, input) {
     w1 = await Tesseract.createWorker('heb+eng', 1, { logger: logger });
     w2 = await Tesseract.createWorker('eng', 1, {});
     await w2.setParameters({ tessedit_char_whitelist: '0123456789./-, ', tessedit_pageseg_mode: '6' });
-    var main = '', digits = '';
-    _idScanMsg(n, '⏳ פותח את הקבצים…');
-    var canvases = await _idFilesToCanvases(files, 4);
-    for (var i = 0; i < canvases.length; i++) {
-      _idScanMsg(n, '⏳ קורא עמוד/תמונה ' + (i + 1) + ' מתוך ' + canvases.length + '…');
-      var cv = canvases[i];
-      main += '\n' + (await w1.recognize(cv)).data.text;
-      digits += '\n' + (await w2.recognize(cv)).data.text;
-      cv.width = cv.height = 0; // release the pixels
+    var readAll = async function (pages, label) {
+      var main = '', digits = '';
+      for (var i = 0; i < pages.length; i++) {
+        _idScanMsg(n, '⏳ ' + label + ' — עמוד/תמונה ' + (i + 1) + ' מתוך ' + pages.length + '…');
+        main += '\n' + (await w1.recognize(pages[i])).data.text;
+        digits += '\n' + (await w2.recognize(pages[i])).data.text;
+      }
+      return _idParse(main, digits);
+    };
+    // How "complete and sensible" a reading is. A card read upside-down can still yield a checksum-valid ID by luck
+    // (e.g. 000000018 ↔ 810000000), so valid dates weigh as much as the ID.
+    var score = function (f) {
+      return (_idChecksumOk(f.idNumber) ? 2 : 0) + (f.dob ? 2 : 0) + (f.issueDate ? 2 : 0) + (f.firstName ? 1 : 0) + (f.familyName ? 1 : 0);
+    };
+    var found = await readAll(canvases, 'קורא');
+    var autoNote = '';
+    if (score(found) < 6) {
+      // Weak result — maybe the card is upside-down / sideways. Try the other orientations and keep the best.
+      var best = { found: found, score: score(found), pages: canvases, label: '' };
+      var tries = [[180, 'הפוכה'], [90, 'מסובבת שמאלה'], [270, 'מסובבת ימינה']];
+      for (var t = 0; t < tries.length && best.score < 6; t++) {
+        var rotated = canvases.map(function (cv) { return _idRotateCanvas(cv, tries[t][0]); });
+        var f2 = await readAll(rotated, 'בודק אם התעודה ' + tries[t][1]);
+        if (score(f2) > best.score) {
+          if (best.pages !== canvases) best.pages.forEach(function (cv) { cv.width = cv.height = 0; });
+          best = { found: f2, score: score(f2), pages: rotated, label: tries[t][1] };
+        } else rotated.forEach(function (cv) { cv.width = cv.height = 0; });
+      }
+      if (best.pages !== canvases) {
+        canvases.forEach(function (cv) { cv.width = cv.height = 0; });
+        _idPending[n] = canvases = best.pages;
+        found = best.found;
+        autoNote = 'התעודה הייתה ' + best.label + ' — סובבתי אותה אוטומטית (אפשר לסובב ידנית ב"סובב וקרא שוב").';
+      }
     }
-    canvases = null;
-    var found = _idParse(main, digits);
-    main = digits = '';
     if (!found.idNumber && !found.dob && !found.issueDate && !found.firstName && !found.familyName) {
-      _idScanMsg(n, '⚠️ לא זיהיתי פרטים בקובץ. נסה צילום ישר, חד ומואר, בלי השתקפויות, או PDF ברור.', '#b91c1c');
+      _idScanMsg(n, '⚠️ לא זיהיתי פרטים בקובץ. נסה לסובב את התעודה (אם היא הפוכה או שוכבת), או צילום ישר, חד ומואר, או PDF ברור. <a href="#" onclick="_idScanPreview(' + n + ');return false">חזרה לסיבוב</a>', '#b91c1c');
     } else {
       _idScanFound[n] = found;
+      _idScanFound[n]._note = autoNote;
       _idScanShow(n);
     }
   } catch (e) {
@@ -13500,6 +13578,10 @@ async function idScanRun(n, input) {
   } finally {
     try { if (w1) await w1.terminate(); if (w2) await w2.terminate(); } catch (e2) {}
   }
+}
+function _idFreePending(n) {
+  (_idPending[n] || []).forEach(function (cv) { cv.width = cv.height = 0; });
+  delete _idPending[n];
 }
 function _idScanShow(n) {
   var d = _idScanFound[n] || {};
@@ -13510,9 +13592,10 @@ function _idScanShow(n) {
     ['תאריך לידה', 'fDob' + n, d.dob, 'date'],
     ['תאריך הנפקה', 'fIdIssue' + n, d.issueDate, 'date']
   ];
+  var note = d._note ? '<div style="color:#16a34a;margin-bottom:6px">🔄 ' + d._note + '</div>' : '';
   var warn = (d.idNumber && !_idChecksumOk(d.idNumber)) ? '<div style="color:#b45309;margin-bottom:6px">⚠️ מספר הזהות לא עובר בדיקת ספרת ביקורת — תקן לפי התעודה לפני המילוי.</div>' : '';
   var html = '<div style="margin:0 0 8px;padding:10px;border-radius:8px;background:#fff;border:1px solid #93c5fd;font-size:12px"><div style="font-weight:700;margin-bottom:2px">נמצא בתעודה — אפשר לתקן לפני המילוי:</div>'
-    + '<div style="color:var(--muted);margin-bottom:6px">הקריאה נעשית במחשב שלך; הקובץ לא נשלח ולא נשמר.</div>' + warn;
+    + '<div style="color:var(--muted);margin-bottom:6px">הקריאה נעשית במחשב שלך; הקובץ לא נשלח ולא נשמר.</div>' + note + warn;
   var any = false;
   rows.forEach(function (row, i) {
     var el = document.getElementById(row[1]);
@@ -13531,6 +13614,7 @@ function _idScanShow(n) {
   });
   html += '<div style="display:flex;gap:6px;margin-top:8px">'
     + (any ? '<button type="button" class="btn small" onclick="idScanApply(' + n + ')">✓ מלא את המסומנים</button>' : '')
+    + (_idPending[n] ? '<button type="button" class="btn small secondary" onclick="_idScanPreview(' + n + ')">⟳ סובב וקרא שוב</button>' : '')
     + '<button type="button" class="btn small secondary" onclick="idScanCancel(' + n + ')">' + (any ? 'ביטול' : 'סגור') + '</button></div></div>';
   var el2 = document.getElementById('idScanPanel' + n);
   if (el2) el2.innerHTML = html;
@@ -13552,6 +13636,7 @@ function idScanApply(n) {
   idScanCancel(n);
 }
 function idScanCancel(n) {
+  _idFreePending(n);
   delete _idScanFound[n];
   var el = document.getElementById('idScanPanel' + n);
   if (el) el.innerHTML = '';
