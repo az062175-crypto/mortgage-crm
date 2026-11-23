@@ -13767,16 +13767,24 @@ async function _idGeminiRead(canvases, key) {
     var ac = new AbortController(), t = setTimeout(function () { ac.abort(); }, ms); opt = opt || {}; opt.signal = ac.signal;
     return fetch(url, opt).finally(function () { clearTimeout(t); });
   };
-  var models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-2.5-flash-lite'];
-  var res = null, lastErr = '';
+  var models = [], res = null, lastErr = '', errs = [];
+  try { // only models this key can really use
+    var ml = await (await tfetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(key), {}, 10000)).json();
+    var all = (ml.models || []).filter(function (m) { return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0 && /gemini/.test(m.name) && !/image|tts|live|embedding|robotics|computer|audio|thinking|exp/.test(m.name); }).map(function (m) { return m.name.replace('models/', ''); });
+    var rank = function (n) { return (/latest/.test(n) ? 0 : 5) + (/lite/.test(n) ? 3 : 0) + (/preview/.test(n) ? 4 : 0) + (/pro/.test(n) ? 6 : 0) + (/flash/.test(n) ? 0 : 8); };
+    all.sort(function (a, b) { return rank(a) - rank(b) || (a < b ? 1 : -1); });
+    models = all.slice(0, 5);
+    if (!ml.models) errs.push('list:' + (ml.error ? ml.error.status || ml.error.code : '?'));
+  } catch (e0) { errs.push('list:fail'); }
+  if (!models.length) models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'];
   for (var mi = 0; mi < models.length; mi++) {
     try {
       res = await tfetch('https://generativelanguage.googleapis.com/v1beta/models/' + models[mi] + ':generateContent?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body }, 25000);
       if (res.ok) break;
-      lastErr = String(res.status);
-    } catch (e1) { lastErr = 'timeout'; res = null; }
+      lastErr = String(res.status); errs.push(models[mi] + ':' + res.status);
+    } catch (e1) { lastErr = 'timeout'; res = null; errs.push(models[mi] + ':timeout'); }
   }
-  if (!res || !res.ok) throw new Error('Gemini ' + lastErr + ' - ' + (lastErr === '429' ? 'המכסה החינמית מלאה, נסי בעוד דקה' : 'השרת של גוגל עמוס או לא מגיב, נסי שוב בעוד רגע'));
+  if (!res || !res.ok) throw new Error('Gemini ' + lastErr + ' [' + errs.join(' ') + '] - ' + (lastErr === '429' ? 'המכסה החינמית מלאה, נסי בעוד דקה' : 'השרת של גוגל עמוס או לא מגיב, נסי שוב בעוד רגע'));
   var j = await res.json(), txt = (((j.candidates || [])[0] || {}).content || {}).parts;
   txt = txt && txt[0] && txt[0].text || '';
   var d = JSON.parse(txt.replace(/^```json|```$/g, ''));
