@@ -13607,7 +13607,8 @@ function _idScanPreview(n) {
       + '</div></div>';
   });
   html += '<div style="display:flex;gap:6px"><button type="button" class="btn small" onclick="idScanRead(' + n + ')">🔍 קרא את התעודה</button>'
-    + '<button type="button" class="btn small secondary" onclick="idScanCancel(' + n + ')">ביטול</button></div></div>';
+    + '<button type="button" class="btn small secondary" onclick="idScanCancel(' + n + ')">ביטול</button>'
+    + '<button type="button" class="btn small secondary" onclick="idGeminiSetup(' + n + ')" title="קריאה מדויקת יותר דרך Gemini">' + (_idGeminiKey() ? '🔑 Gemini פעיל' : '🔑 חבר Gemini') + '</button></div></div>';
   var el = document.getElementById('idScanPanel' + n);
   if (el) { el.innerHTML = html; _idBindCrop(n); }
 }
@@ -13742,6 +13743,38 @@ function idScanRotate(n, i, deg) {
   _idScanPreview(n);
 }
 // Step 2: OCR on the (possibly rotated) pages.
+// ---- Gemini reader (optional; key kept only in this browser's localStorage) ----
+function _idGeminiKey() { try { return localStorage.getItem('idGeminiKey') || ''; } catch (e) { return ''; } }
+function idGeminiSetup(n) {
+  var cur = _idGeminiKey();
+  var k = prompt('הדבק מפתח Gemini API (חינם ב-aistudio.google.com/apikey).\nהמפתח נשמר רק בדפדפן הזה. כשיש מפתח, התמונה נשלחת לגוגל לקריאה.\nלהסרה: השאר ריק ואשר.', cur);
+  if (k === null) return;
+  try { if (k.trim()) localStorage.setItem('idGeminiKey', k.trim()); else localStorage.removeItem('idGeminiKey'); } catch (e) {}
+  _idScanPreview(n);
+}
+async function _idGeminiRead(canvases, key) {
+  var parts = [{ text: 'This is an Israeli ID card (teudat zehut), possibly smart-card, photo or scan. Read the holder details exactly as printed. Return JSON only with keys: firstName (Hebrew), familyName (Hebrew), idNumber (digits only, 9 digits, keep leading zeros), dob (yyyy-mm-dd, date of birth), issueDate (yyyy-mm-dd, date of issue). Use empty string for anything not visible or unreadable. Do not guess.' }];
+  canvases.forEach(function (cv) {
+    var k = Math.min(1, 1800 / Math.max(cv.width, cv.height)), c = document.createElement('canvas');
+    c.width = Math.round(cv.width * k); c.height = Math.round(cv.height * k);
+    c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height);
+    parts.push({ inline_data: { mime_type: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.9).split(',')[1] } });
+    c.width = c.height = 0;
+  });
+  var res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(key), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } })
+  });
+  if (!res.ok) throw new Error('Gemini ' + res.status);
+  var j = await res.json(), txt = (((j.candidates || [])[0] || {}).content || {}).parts;
+  txt = txt && txt[0] && txt[0].text || '';
+  var d = JSON.parse(txt.replace(/^```json|```$/g, ''));
+  if (Array.isArray(d)) d = d[0] || {};
+  var iso = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : ''; };
+  var id = String(d.idNumber || '').replace(/\D/g, ''); if (id && id.length < 9) id = id.padStart(9, '0');
+  return { firstName: String(d.firstName || '').trim(), familyName: String(d.familyName || '').trim(), idNumber: id,
+    dob: iso(d.dob), issueDate: iso(d.issueDate), _unsure: { idNumber: !!id && !_idChecksumOk(id) }, _conf: {}, _idw: {}, _idwm: {} };
+}
 async function idScanRead(n) {
   var canvases = _idPending[n];
   if (!canvases || !canvases.length) return;
@@ -13753,6 +13786,14 @@ async function idScanRead(n) {
       if (_idUndo[n + '_' + ci]) _idUndo[n + '_' + ci].width = _idUndo[n + '_' + ci].height = 0;
       _idUndo[n + '_' + ci] = cc; canvases[ci] = cut; delete _idSel[n + '_' + ci];
     }
+  }
+  var gkey = _idGeminiKey();
+  if (gkey) {
+    _idScanMsg(n, '⏳ קורא עם Gemini…');
+    try {
+      var gf = await _idGeminiRead(canvases, gkey);
+      if (gf.idNumber || gf.dob || gf.issueDate || gf.firstName || gf.familyName) { _idScanFound[n] = gf; gf._note = ''; _idScanShow(n); return; }
+    } catch (ge) { _idScanMsg(n, '⚠️ Gemini נכשל (' + escapeHtml(String(ge && ge.message || ge)) + '). עובר לקריאה המקומית…', '#b91c1c'); }
   }
   var w1 = null, w2 = null;
   try {
