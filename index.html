@@ -13411,57 +13411,139 @@ function _idIsoDate(d, m, y) {
   return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
 }
 // Turns raw OCR text (main = Hebrew+English pass, digits = digits-only pass) into the fields.
-function _idParse(main, digits) {
-  var out = { firstName: '', familyName: '', idNumber: '', dob: '', issueDate: '' };
+function _idParse(main, digits, words) {
+  var out = { firstName: '', familyName: '', idNumber: '', dob: '', issueDate: '', _unsure: {}, _conf: {}, _idw: {}, _idwm: {} };
   var all = (main || '') + '\n' + (digits || '');
-  var today = new Date().toISOString().slice(0, 10);
-  // ---- ID number ----
-  var cands = [];
-  all.split('\n').forEach(function (line) {
-    var compact = line.replace(/[^\d]/g, '');
-    if (/\d{1,2}[.,\/\-]\d{1,2}[.,\/\-]\d{4}/.test(line) && compact.length < 12) return; // a date line
-    var tok = line.match(/(?:^|\s)\d{8,9}(?=\s|$)/g) || [];
-    tok.forEach(function (t) { cands.push(t.trim()); });
-    var m = line.match(/\d[\d\s]{6,12}\d/g) || [];
-    m.forEach(function (t) { var c = t.replace(/\s/g, ''); if (c.length >= 8 && c.length <= 9) cands.push(c); });
-    if (compact.length >= 8 && compact.length <= 9) cands.push(compact);
-  });
-  var norm = cands.map(function (c) { return c.padStart(9, '0'); });
-  out.idNumber = norm.filter(_idChecksumOk)[0] || norm[0] || '';
-  // ---- dates ----
-  var dates = [];
-  var re = /(\d{1,2})\s*[.,\/\-]\s*(\d{1,2})\s*[.,\/\-]\s*(\d{4})/g, mm;
-  var lines = all.split('\n');
+  var today = new Date().toISOString().slice(0, 10), thisYear = Number(today.slice(0, 4));
+  // ---- ID number candidates (digits-only pass reads left-to-right as printed; the Hebrew pass can reorder digit groups) ----
+  var collectIds = function (text, bucket) {
+    String(text || '').split('\n').forEach(function (line) {
+      var compact = line.replace(/[^\d]/g, ''), found = [];
+      if (/\d{1,2}\s*[.,\/\-]\s*\d{1,2}\s*[.,\/\-]\s*\d{4}/.test(line) && compact.length < 12) return; // a date line
+      (line.match(/(?:^|\s)\d{8,9}(?=\s|$)/g) || []).forEach(function (t) { found.push(t.trim()); });
+      (line.match(/\d[\d\s]{6,12}\d/g) || []).forEach(function (t) { var c = t.replace(/\s/g, ''); if (c.length >= 8 && c.length <= 9) found.push(c); });
+      if (compact.length >= 8 && compact.length <= 9) found.push(compact);
+      found.forEach(function (c) { c = c.padStart(9, '0'); bucket[c] = (bucket[c] || 0) + 1; });
+    });
+  };
+  collectIds(digits, out._idw);
+  collectIds(main, out._idwm);
+  var idScore = function (c) { return (out._idw[c] || 0) * 2 + (out._idwm[c] || 0); };
+  var allIds = Object.keys(out._idw).concat(Object.keys(out._idwm).filter(function (c) { return !(c in out._idw); }));
+  allIds.sort(function (a, b) { return idScore(b) - idScore(a); });
+  out.idNumber = allIds.filter(_idChecksumOk)[0] || allIds[0] || '';
+  out._unsure.idNumber = !_idChecksumOk(out.idNumber) || !(out._idw[out.idNumber] > 0);
+  // ---- dates (labelled, then by plausibility: birth date < issue date, both in the past) ----
+  var dates = [], mm, lines = all.split('\n');
+  var reMain = /(\d{1,2})\s*[.,\/\-]\s*(\d{1,2})\s*[.,\/\-]\s*(\d{4})/g;
   lines.forEach(function (line) {
-    re.lastIndex = 0;
-    while ((mm = re.exec(line))) {
+    reMain.lastIndex = 0;
+    while ((mm = reMain.exec(line))) {
       var iso = _idIsoDate(mm[1], mm[2], mm[3]);
       if (iso) dates.push({ iso: iso, label: /לידה|birth/i.test(line) ? 'dob' : (/הנפק|issue/i.test(line) ? 'issue' : (/תוקף|expir|valid/i.test(line) ? 'exp' : '')) });
     }
   });
   var seen = {};
   dates = dates.filter(function (x) { if (seen[x.iso]) return false; seen[x.iso] = 1; return true; });
+  var plausibleDob = function (iso) { var y = Number(iso.slice(0, 4)); return y >= 1900 && y <= thisYear - 14; };
   var byLabel = function (l) { var f = dates.filter(function (x) { return x.label === l; })[0]; return f ? f.iso : ''; };
-  out.dob = byLabel('dob');
-  out.issueDate = byLabel('issue');
+  var labelledDob = byLabel('dob'), labelledIssue = byLabel('issue');
+  out.dob = labelledDob && plausibleDob(labelledDob) ? labelledDob : '';
+  out.issueDate = labelledIssue && labelledIssue <= today ? labelledIssue : '';
   var rest = dates.filter(function (x) { return x.label !== 'exp' && x.iso <= today && x.iso !== out.dob && x.iso !== out.issueDate; }).map(function (x) { return x.iso; }).sort();
-  if (!out.dob && rest.length) out.dob = rest.shift();
-  if (!out.issueDate && rest.length) out.issueDate = rest.pop();
-  if (out.dob && out.issueDate && out.issueDate < out.dob) { var t = out.dob; out.dob = out.issueDate; out.issueDate = t; }
+  if (!out.dob) { var d0 = rest.filter(plausibleDob)[0]; if (d0) { out.dob = d0; rest.splice(rest.indexOf(d0), 1); } }
+  if (!out.issueDate && rest.length) {
+    var floorYear = out.dob ? Number(out.dob.slice(0, 4)) + 14 : 1995;
+    var i0 = rest.filter(function (x) { return Number(x.slice(0, 4)) >= floorYear; }).pop();
+    if (i0) out.issueDate = i0;
+  }
+  if (out.dob && out.issueDate && Number(out.issueDate.slice(0, 4)) < Number(out.dob.slice(0, 4)) + 14) out.issueDate = ''; // impossible pair → noise
+  var strong = dates.length >= 3; // card shows birth + issue + expiry → three dates read = trustworthy
+  out._unsure.dob = !!out.dob && !labelledDob && !strong;
+  out._unsure.issueDate = !!out.issueDate && !labelledIssue && !strong;
   // ---- names ----
   var heb = function (t) { return (t || '').replace(/[^\u05D0-\u05EA\s'\-]/g, ' ').replace(/\s+/g, ' ').trim(); };
-  var stop = /^(מדינת|ישראל|תעודת|זהות|שם|פרטי|משפחה|מספר|תאריך|לידה|הנפקה|תוקף|עד|מין|זכר|נקבה|ארץ|כתובת|רשות|האוכלוסין|והגירה|משרד|הפנים|דרכון|ספח|תושב|אזרח)$/;
+  var stop = /^(מדינת|ישראל|תעודת|זהות|שם|פרטי|משפחה|המשפחה|הפרטי|מספר|תאריך|לידה|הלידה|הנפקה|ההנפקה|תוקף|בתוקף|עד|מין|זכר|נקבה|ארץ|כתובת|רשות|האוכלוסין|והגירה|משרד|הפנים|דרכון|ספח|תושב|אזרח|בטקות|הוית|בקשה|הוטה)$/;
   var cleanName = function (t) { return heb(t).split(' ').filter(function (w) { return w.length > 1 && !stop.test(w); }).join(' '); };
   var nextHeb = function (i) { for (var j = i + 1; j < Math.min(i + 3, lines.length); j++) { var c = cleanName(lines[j]); if (c) return c; } return ''; };
   lines.forEach(function (line, i) {
-    if (!out.familyName && /שם\s*משפחה|משפחה/.test(line)) out.familyName = cleanName(line.replace(/.*משפחה/, '')) || nextHeb(i);
-    if (!out.firstName && /שם\s*פרטי|פרטי/.test(line)) out.firstName = cleanName(line.replace(/.*פרטי/, '')) || nextHeb(i);
+    if (!out.familyName && /שם\s*(ה)?משפחה|משפחה/.test(line)) out.familyName = cleanName(line.replace(/.*משפחה/, '')) || nextHeb(i);
+    if (!out.firstName && /שם\s*(ה)?פרטי|פרטי/.test(line)) out.firstName = cleanName(line.replace(/.*פרטי/, '')) || nextHeb(i);
   });
   if (!out.familyName || !out.firstName) {
     var guess = lines.map(cleanName).filter(function (c) { return c && c.length >= 2 && c.length <= 20 && c.split(' ').length <= 2; });
-    if (!out.familyName && guess[0]) out.familyName = guess[0];
-    if (!out.firstName && guess[1]) out.firstName = guess[1];
+    if (!out.familyName && guess[0]) { out.familyName = guess[0]; out._unsure.familyName = true; }
+    if (!out.firstName && guess[1]) { out.firstName = guess[1]; out._unsure.firstName = true; }
   }
+  var confOf = function (name) {
+    if (!name) return 0;
+    var mn = 100;
+    String(name).split(' ').forEach(function (w) {
+      var best = 0;
+      (words || []).forEach(function (x) { if (x.text && x.text.replace(/[^\u05D0-\u05EA]/g, '') === w && x.confidence > best) best = x.confidence; });
+      if (best < mn) mn = best;
+    });
+    return mn;
+  };
+  out._conf.firstName = confOf(out.firstName); out._conf.familyName = confOf(out.familyName);
+  return out;
+}
+// Several readings (page × image treatment) → one result: names by OCR confidence, ID and dates by vote.
+function _idMerge(list) {
+  var out = { firstName: '', familyName: '', idNumber: '', dob: '', issueDate: '', _unsure: {} };
+  var desc = function (m) { return function (a, b) { return m[b] - m[a]; }; };
+  ['firstName', 'familyName'].forEach(function (k) {
+    var best = null;
+    list.forEach(function (f) { if (f[k] && (!best || (f._conf[k] || 0) > (best._conf[k] || 0))) best = f; });
+    if (best) { out[k] = best[k]; out._unsure[k] = (best._conf[k] || 0) < 75 || !!best._unsure[k]; }
+  });
+  var wd = {}, wm = {};
+  list.forEach(function (f) {
+    Object.keys(f._idw).forEach(function (id) { wd[id] = (wd[id] || 0) + f._idw[id]; });
+    Object.keys(f._idwm).forEach(function (id) { wm[id] = (wm[id] || 0) + f._idwm[id]; });
+  });
+  var total = {}; Object.keys(wd).forEach(function (id) { total[id] = (total[id] || 0) + wd[id] * 2; }); Object.keys(wm).forEach(function (id) { total[id] = (total[id] || 0) + wm[id]; });
+  var ids = Object.keys(total).sort(desc(total)), validIds = ids.filter(_idChecksumOk);
+  out.idNumber = validIds[0] || ids[0] || '';
+  out._unsure.idNumber = !_idChecksumOk(out.idNumber) || !(wd[out.idNumber] > 0);
+  ['dob', 'issueDate'].forEach(function (k) {
+    var cnt = {};
+    list.forEach(function (f) { if (f[k]) cnt[f[k]] = (cnt[f[k]] || 0) + (f._unsure[k] ? 1 : 2); });
+    var top = Object.keys(cnt).sort(desc(cnt))[0];
+    out[k] = top || ''; out._unsure[k] = !!top && cnt[top] < 2;
+  });
+  if (out.dob && out.issueDate && Number(out.issueDate.slice(0, 4)) < Number(out.dob.slice(0, 4)) + 14) out.issueDate = '';
+  return out;
+}
+// A copy of the page prepared for OCR. mode 'bin' = upscale + local (adaptive) black/white — removes the blue gradient,
+// watermark and hologram of ID cards; mode 'gray' = upscale only. Big pages are shrunk to keep OCR fast.
+function _idOcrVariant(cv, mode) {
+  var longest = Math.max(cv.width, cv.height);
+  var k = longest < 2400 ? Math.min(6, 2400 / longest) : (longest > 2800 ? 2800 / longest : 1);
+  var out = document.createElement('canvas');
+  out.width = Math.max(1, Math.round(cv.width * k)); out.height = Math.max(1, Math.round(cv.height * k));
+  var ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(cv, 0, 0, out.width, out.height);
+  if (mode !== 'bin') return out;
+  var W = out.width, H = out.height, img = ctx.getImageData(0, 0, W, H), d = img.data, x, y;
+  var integral = new Float64Array((W + 1) * (H + 1));
+  for (y = 0; y < H; y++) {
+    var rowSum = 0;
+    for (x = 0; x < W; x++) { rowSum += d[(y * W + x) * 4]; integral[(y + 1) * (W + 1) + x + 1] = integral[y * (W + 1) + x + 1] + rowSum; }
+  }
+  var half = Math.max(10, Math.round(Math.min(W, H) / 10));
+  for (y = 0; y < H; y++) {
+    var y0 = Math.max(0, y - half), y1 = Math.min(H - 1, y + half);
+    for (x = 0; x < W; x++) {
+      var x0 = Math.max(0, x - half), x1 = Math.min(W - 1, x + half);
+      var sum = integral[(y1 + 1) * (W + 1) + x1 + 1] - integral[y0 * (W + 1) + x1 + 1] - integral[(y1 + 1) * (W + 1) + x0] + integral[y0 * (W + 1) + x0];
+      var mean = sum / ((x1 - x0 + 1) * (y1 - y0 + 1)), i = (y * W + x) * 4;
+      var v = d[i] < mean * 0.9 ? 0 : 255;
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
   return out;
 }
 var _idPending = {};
@@ -13494,23 +13576,32 @@ function _idThumb(cv) {
   t.getContext('2d').drawImage(cv, 0, 0, t.width, t.height);
   return t.toDataURL('image/jpeg', 0.7);
 }
+function _idSelOf(n, i) { return _idSel[n + '_' + i] || { x0: 0, y0: 0, x1: 1, y1: 1 }; }
+function _idSelIsFull(sel) { return sel.x0 <= 0.005 && sel.y0 <= 0.005 && sel.x1 >= 0.995 && sel.y1 >= 0.995; }
 function _idScanPreview(n) {
   var pages = _idPending[n] || [];
   var btn = 'type="button" class="btn small secondary" style="padding:2px 8px;font-size:12px"';
   var html = '<div style="margin:0 0 8px;padding:10px;border-radius:8px;background:#fff;border:1px solid #93c5fd;font-size:12px">'
-    + '<div style="font-weight:700;margin-bottom:2px">בדוק שהתעודה ישרה, וחתוך את השוליים כדי שתהיה גדולה וברורה:</div>'
-    + '<div style="color:var(--muted)">גרור עם העכבר/האצבע על התמונה כדי לסמן את אזור התעודה, ואז "✂️ חתוך לבחירה".</div>';
+    + '<div style="font-weight:700;margin-bottom:2px">בדוק שהתעודה ישרה, והכנס את הקצוות פנימה כדי שתהיה גדולה וברורה:</div>'
+    + '<div style="color:var(--muted)">גרור כל קצה או פינה של המסגרת פנימה. גרירה בתוך המסגרת מזיזה אותה. אפשר לצייר מסגרת חדשה מחוץ לה.</div>';
   pages.forEach(function (cv, i) {
-    var key = n + '_' + i, hasSel = !!_idSel[key];
+    var key = n + '_' + i;
+    var mark = 'position:absolute;width:10px;height:10px;background:#fff;border:2px solid #2563eb;border-radius:2px;pointer-events:none;';
     html += '<div style="margin:10px 0;text-align:center">'
-      + '<div class="idCropWrap" data-n="' + n + '" data-i="' + i + '" style="position:relative;display:inline-block;max-width:100%;touch-action:none;cursor:crosshair;user-select:none;border:1px solid var(--border);border-radius:6px;background:#f1f5f9">'
-      + '<img src="' + _idThumb(cv) + '" draggable="false" style="display:block;max-width:100%;max-height:480px;pointer-events:none">'
-      + '<div class="idCropSel" style="position:absolute;border:2px dashed #2563eb;background:rgba(37,99,235,.18);display:none;pointer-events:none"></div></div>'
+      + '<div class="idCropWrap" data-n="' + n + '" data-i="' + i + '" style="display:inline-block;max-width:100%;padding:12px;touch-action:none;user-select:none;border:1px solid var(--border);border-radius:6px;background:#e2e8f0;box-sizing:border-box">'
+      + '<div style="position:relative;display:inline-block;max-width:100%;line-height:0">'
+      + '<img src="' + _idThumb(cv) + '" draggable="false" style="display:inline-block;max-width:100%;max-height:480px;pointer-events:none">'
+      + '<div class="idCropSel" style="position:absolute;border:2px solid #2563eb;box-shadow:0 0 0 9999px rgba(15,23,42,.5);pointer-events:none;box-sizing:border-box">'
+      + '<span style="' + mark + 'left:-7px;top:-7px"></span><span style="' + mark + 'right:-7px;top:-7px"></span>'
+      + '<span style="' + mark + 'left:-7px;bottom:-7px"></span><span style="' + mark + 'right:-7px;bottom:-7px"></span>'
+      + '<span style="' + mark + 'left:calc(50% - 5px);top:-7px"></span><span style="' + mark + 'left:calc(50% - 5px);bottom:-7px"></span>'
+      + '<span style="' + mark + 'top:calc(50% - 5px);left:-7px"></span><span style="' + mark + 'top:calc(50% - 5px);right:-7px"></span>'
+      + '</div></div></div>'
       + '<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-top:6px">'
       + '<button ' + btn + ' onclick="idScanRotate(' + n + ',' + i + ',270)" title="סובב שמאלה">⟲ 90°</button>'
       + '<button ' + btn + ' onclick="idScanRotate(' + n + ',' + i + ',180)" title="הפוך (180°)">⇅ הפוך</button>'
       + '<button ' + btn + ' onclick="idScanRotate(' + n + ',' + i + ',90)" title="סובב ימינה">⟳ 90°</button>'
-      + '<button ' + btn + ' id="idCropBtn' + key + '" onclick="idScanCrop(' + n + ',' + i + ')" ' + (hasSel ? '' : 'disabled ') + '>✂️ חתוך לבחירה</button>'
+      + '<button ' + btn + ' onclick="idScanCrop(' + n + ',' + i + ')">✂️ חתוך למסגרת</button>'
       + '<button ' + btn + ' onclick="idScanAutoCrop(' + n + ',' + i + ')" title="מסיר שוליים ריקים">✂️ חתוך שוליים אוטומטית</button>'
       + (_idUndo[key] ? '<button ' + btn + ' onclick="idScanUndoCrop(' + n + ',' + i + ')">↩ בטל חיתוך</button>' : '')
       + '</div></div>';
@@ -13520,36 +13611,68 @@ function _idScanPreview(n) {
   var el = document.getElementById('idScanPanel' + n);
   if (el) { el.innerHTML = html; _idBindCrop(n); }
 }
-// Drag directly on the picture to mark the region (touch + mouse).
+// A crop frame over the picture: drag an edge/corner to pull it in, drag inside to move it, drag outside to draw a new one.
 function _idBindCrop(n) {
   var el = document.getElementById('idScanPanel' + n);
   if (!el) return;
   Array.prototype.forEach.call(el.querySelectorAll('.idCropWrap'), function (wrap) {
-    var i = wrap.getAttribute('data-i'), key = n + '_' + i, img = wrap.querySelector('img'), box = wrap.querySelector('.idCropSel'), start = null;
-    var rel = function (e) {
-      var r = img.getBoundingClientRect();
-      return { x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)) };
+    var i = wrap.getAttribute('data-i'), key = n + '_' + i, img = wrap.querySelector('img'), box = wrap.querySelector('.idCropSel');
+    var drag = null, MIN = 0.05;
+    var clamp = function (v) { return Math.max(0, Math.min(1, v)); };
+    var pos = function (e) { var r = img.getBoundingClientRect(); return { px: e.clientX - r.left, py: e.clientY - r.top, w: r.width, h: r.height }; };
+    var show = function (sel) {
+      box.style.left = (sel.x0 * 100) + '%'; box.style.top = (sel.y0 * 100) + '%';
+      box.style.width = ((sel.x1 - sel.x0) * 100) + '%'; box.style.height = ((sel.y1 - sel.y0) * 100) + '%';
     };
-    var draw = function (a, b) {
-      var x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y), x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y);
-      box.style.display = 'block';
-      box.style.left = (x0 * 100) + '%'; box.style.top = (y0 * 100) + '%';
-      box.style.width = ((x1 - x0) * 100) + '%'; box.style.height = ((y1 - y0) * 100) + '%';
-      return { x0: x0, y0: y0, x1: x1, y1: y1 };
+    var hit = function (p) {
+      var sel = _idSelOf(n, i), tol = 16;
+      var L = Math.abs(p.px - sel.x0 * p.w) < tol, R = Math.abs(p.px - sel.x1 * p.w) < tol;
+      var T = Math.abs(p.py - sel.y0 * p.h) < tol, B = Math.abs(p.py - sel.y1 * p.h) < tol;
+      var inX = p.px > sel.x0 * p.w - tol && p.px < sel.x1 * p.w + tol, inY = p.py > sel.y0 * p.h - tol && p.py < sel.y1 * p.h + tol;
+      var edges = { l: L && inY, r: R && inY, t: T && inX, b: B && inX };
+      if (edges.l || edges.r || edges.t || edges.b) return { mode: 'edge', e: edges };
+      if (p.px > sel.x0 * p.w && p.px < sel.x1 * p.w && p.py > sel.y0 * p.h && p.py < sel.y1 * p.h && !_idSelIsFull(sel)) return { mode: 'move' };
+      return { mode: 'new' };
     };
-    wrap.addEventListener('pointerdown', function (e) { start = rel(e); try { wrap.setPointerCapture(e.pointerId); } catch (x) {} e.preventDefault(); });
-    wrap.addEventListener('pointermove', function (e) { if (start) draw(start, rel(e)); });
-    var finish = function (e) {
-      if (!start) return;
-      var sel = draw(start, rel(e)); start = null;
-      if (sel.x1 - sel.x0 > 0.03 && sel.y1 - sel.y0 > 0.03) {
-        _idSel[key] = sel;
-        var b = document.getElementById('idCropBtn' + key); if (b) b.disabled = false;
-      } else { delete _idSel[key]; box.style.display = 'none'; var b2 = document.getElementById('idCropBtn' + key); if (b2) b2.disabled = true; }
+    var cursorFor = function (h) {
+      if (h.mode === 'move') return 'move';
+      if (h.mode === 'new') return 'crosshair';
+      var e = h.e;
+      if ((e.l && e.t) || (e.r && e.b)) return 'nwse-resize';
+      if ((e.r && e.t) || (e.l && e.b)) return 'nesw-resize';
+      return (e.l || e.r) ? 'ew-resize' : 'ns-resize';
     };
-    wrap.addEventListener('pointerup', finish);
-    wrap.addEventListener('pointercancel', function () { start = null; });
-    if (_idSel[key]) draw({ x: _idSel[key].x0, y: _idSel[key].y0 }, { x: _idSel[key].x1, y: _idSel[key].y1 });
+    show(_idSelOf(n, i));
+    wrap.addEventListener('pointerdown', function (e) {
+      var p = pos(e), h = hit(p), sel = _idSelOf(n, i);
+      drag = { h: h, start: { x: clamp(p.px / p.w), y: clamp(p.py / p.h) }, orig: { x0: sel.x0, y0: sel.y0, x1: sel.x1, y1: sel.y1 } };
+      try { wrap.setPointerCapture(e.pointerId); } catch (x) {}
+      e.preventDefault();
+    });
+    wrap.addEventListener('pointermove', function (e) {
+      var p = pos(e);
+      if (!drag) { wrap.style.cursor = cursorFor(hit(p)); return; }
+      var cx = clamp(p.px / p.w), cy = clamp(p.py / p.h), o = drag.orig, sel = { x0: o.x0, y0: o.y0, x1: o.x1, y1: o.y1 };
+      if (drag.h.mode === 'edge') {
+        var ed = drag.h.e;
+        if (ed.l) sel.x0 = Math.min(cx, o.x1 - MIN);
+        if (ed.r) sel.x1 = Math.max(cx, o.x0 + MIN);
+        if (ed.t) sel.y0 = Math.min(cy, o.y1 - MIN);
+        if (ed.b) sel.y1 = Math.max(cy, o.y0 + MIN);
+      } else if (drag.h.mode === 'move') {
+        var dx = cx - drag.start.x, dy = cy - drag.start.y, w = o.x1 - o.x0, hh = o.y1 - o.y0;
+        sel.x0 = Math.max(0, Math.min(1 - w, o.x0 + dx)); sel.x1 = sel.x0 + w;
+        sel.y0 = Math.max(0, Math.min(1 - hh, o.y0 + dy)); sel.y1 = sel.y0 + hh;
+      } else {
+        sel = { x0: Math.min(drag.start.x, cx), y0: Math.min(drag.start.y, cy), x1: Math.max(drag.start.x, cx), y1: Math.max(drag.start.y, cy) };
+        if (sel.x1 - sel.x0 < MIN) sel.x1 = Math.min(1, sel.x0 + MIN);
+        if (sel.y1 - sel.y0 < MIN) sel.y1 = Math.min(1, sel.y0 + MIN);
+      }
+      _idSel[key] = sel; show(sel);
+    });
+    var end = function () { drag = null; };
+    wrap.addEventListener('pointerup', end);
+    wrap.addEventListener('pointercancel', end);
   });
 }
 // Cut `cv` to a rectangle (pixels) and enlarge it so small cards become readable.
@@ -13574,7 +13697,8 @@ function _idReplacePage(n, i, newCv) {
 }
 function idScanCrop(n, i) {
   var sel = _idSel[n + '_' + i], cv = _idPending[n] && _idPending[n][i];
-  if (!sel || !cv) return;
+  if (!cv) return;
+  if (!sel || _idSelIsFull(sel)) { alert('גרור את הקצוות או הפינות של המסגרת פנימה, ואז לחץ "חתוך למסגרת".'); return; }
   _idReplacePage(n, i, _idCutCanvas(cv, sel.x0 * cv.width, sel.y0 * cv.height, (sel.x1 - sel.x0) * cv.width, (sel.y1 - sel.y0) * cv.height));
 }
 // Find the box that holds the "ink" (everything darker than the paper) and cut to it.
@@ -13621,6 +13745,15 @@ function idScanRotate(n, i, deg) {
 async function idScanRead(n) {
   var canvases = _idPending[n];
   if (!canvases || !canvases.length) return;
+  for (var ci = 0; ci < canvases.length; ci++) { // apply any crop frame the user set but did not press "cut" on
+    var fs = _idSel[n + '_' + ci];
+    if (fs && !_idSelIsFull(fs)) {
+      var cc = canvases[ci];
+      var cut = _idCutCanvas(cc, fs.x0 * cc.width, fs.y0 * cc.height, (fs.x1 - fs.x0) * cc.width, (fs.y1 - fs.y0) * cc.height);
+      if (_idUndo[n + '_' + ci]) _idUndo[n + '_' + ci].width = _idUndo[n + '_' + ci].height = 0;
+      _idUndo[n + '_' + ci] = cc; canvases[ci] = cut; delete _idSel[n + '_' + ci];
+    }
+  }
   var w1 = null, w2 = null;
   try {
     _idScanMsg(n, '⏳ טוען מנוע קריאה (בפעם הראשונה לוקח עד דקה, אחר כך מהיר)…');
@@ -13628,54 +13761,47 @@ async function idScanRead(n) {
     var logger = function (m) { if (m && m.status && typeof m.progress === 'number') _idScanMsg(n, '⏳ ' + escapeHtml(m.status) + ' ' + Math.round(m.progress * 100) + '%'); };
     w1 = await Tesseract.createWorker('heb+eng', 1, { logger: logger });
     w2 = await Tesseract.createWorker('eng', 1, {});
-    await w2.setParameters({ tessedit_char_whitelist: '0123456789./-, ', tessedit_pageseg_mode: '6' });
-    var readAll = async function (pages, label) {
-      var main = '', digits = '';
+    await w2.setParameters({ tessedit_char_whitelist: '0123456789. ', tessedit_pageseg_mode: '6' });
+    var readAll = async function (pages, label, modes) {
+      var chunks = [];
       for (var i = 0; i < pages.length; i++) {
-        _idScanMsg(n, '⏳ ' + label + ' — עמוד/תמונה ' + (i + 1) + ' מתוך ' + pages.length + '…');
-        var src = pages[i], big = Math.max(src.width, src.height), tmp = null;
-        if (big > 2800) { // huge page: shrink a copy for OCR (cropping first keeps full detail)
-          var kk = 2800 / big; tmp = document.createElement('canvas');
-          tmp.width = Math.round(src.width * kk); tmp.height = Math.round(src.height * kk);
-          tmp.getContext('2d').drawImage(src, 0, 0, tmp.width, tmp.height); src = tmp;
+        for (var mi = 0; mi < modes.length; mi++) {
+          _idScanMsg(n, '⏳ ' + label + ' — עמוד/תמונה ' + (i + 1) + ' מתוך ' + pages.length + (modes.length > 1 ? ' (שיטה ' + (mi + 1) + ')' : '') + '…');
+          var src = _idOcrVariant(pages[i], modes[mi]);
+          var a = (await w1.recognize(src)).data, b = (await w2.recognize(src)).data;
+          chunks.push(_idParse(a.text, b.text, a.words));
+          src.width = src.height = 0;
         }
-        main += '\n' + (await w1.recognize(src)).data.text;
-        digits += '\n' + (await w2.recognize(src)).data.text;
-        if (tmp) tmp.width = tmp.height = 0;
       }
-      return _idParse(main, digits);
+      return _idMerge(chunks);
     };
     // How "complete and sensible" a reading is. A card read upside-down can still yield a checksum-valid ID by luck
-    // (e.g. 000000018 ↔ 810000000), so valid dates weigh as much as the ID.
+    // (000000018 ↔ 810000000), so valid, consistent dates weigh as much as the ID; shaky guesses count less.
     var score = function (f) {
-      return (_idChecksumOk(f.idNumber) ? 2 : 0) + (f.dob ? 2 : 0) + (f.issueDate ? 2 : 0) + (f.firstName ? 1 : 0) + (f.familyName ? 1 : 0);
+      var u = f._unsure || {};
+      return (_idChecksumOk(f.idNumber) ? 2 : 0) + (f.dob ? (u.dob ? 1 : 2) : 0) + (f.issueDate ? (u.issueDate ? 1 : 2) : 0)
+        + (f.firstName ? (u.firstName ? 0.5 : 1) : 0) + (f.familyName ? (u.familyName ? 0.5 : 1) : 0);
     };
-    var found = await readAll(canvases, 'קורא');
-    var autoNote = '';
-    if (score(found) < 6) {
-      // Weak result — maybe the card is upside-down / sideways. Try the other orientations and keep the best.
-      var best = { found: found, score: score(found), pages: canvases, label: '' };
+    var best = { found: await readAll(canvases, 'קורא', ['gray', 'bin']), pages: canvases, note: '' };
+    best.score = score(best.found);
+    if (best.score < 6) { // maybe the card is upside-down / sideways
       var tries = [[180, 'הפוכה'], [90, 'מסובבת שמאלה'], [270, 'מסובבת ימינה']];
       for (var t = 0; t < tries.length && best.score < 6; t++) {
         var rotated = canvases.map(function (cv) { return _idRotateCanvas(cv, tries[t][0]); });
-        var f2 = await readAll(rotated, 'בודק אם התעודה ' + tries[t][1]);
-        if (score(f2) > best.score) {
+        var f3 = await readAll(rotated, 'בודק אם התעודה ' + tries[t][1], ['gray', 'bin']);
+        if (score(f3) > best.score) {
           if (best.pages !== canvases) best.pages.forEach(function (cv) { cv.width = cv.height = 0; });
-          best = { found: f2, score: score(f2), pages: rotated, label: tries[t][1] };
+          best = { found: f3, pages: rotated, score: score(f3), note: 'התעודה הייתה ' + tries[t][1] + ' — סובבתי אותה אוטומטית (אפשר לסובב ידנית ב"סובב וקרא שוב").' };
         } else rotated.forEach(function (cv) { cv.width = cv.height = 0; });
       }
-      if (best.pages !== canvases) {
-        canvases.forEach(function (cv) { cv.width = cv.height = 0; });
-        _idPending[n] = canvases = best.pages;
-        found = best.found;
-        autoNote = 'התעודה הייתה ' + best.label + ' — סובבתי אותה אוטומטית (אפשר לסובב ידנית ב"סובב וקרא שוב").';
-      }
+      if (best.pages !== canvases) { canvases.forEach(function (cv) { cv.width = cv.height = 0; }); _idPending[n] = canvases = best.pages; }
     }
+    var found = best.found;
     if (!found.idNumber && !found.dob && !found.issueDate && !found.firstName && !found.familyName) {
-      _idScanMsg(n, '⚠️ לא זיהיתי פרטים בקובץ. נסה לסובב את התעודה (אם היא הפוכה או שוכבת), או צילום ישר, חד ומואר, או PDF ברור. <a href="#" onclick="_idScanPreview(' + n + ');return false">חזרה לסיבוב</a>', '#b91c1c');
+      _idScanMsg(n, '⚠️ לא זיהיתי פרטים בקובץ. נסה לחתוך את הקצוות סביב התעודה, לסובב אותה, או צילום ישר, חד ומואר בלי השתקפויות. <a href="#" onclick="_idScanPreview(' + n + ');return false">חזרה לחיתוך וסיבוב</a>', '#b91c1c');
     } else {
       _idScanFound[n] = found;
-      _idScanFound[n]._note = autoNote;
+      _idScanFound[n]._note = best.note;
       _idScanShow(n);
     }
   } catch (e) {
@@ -13694,37 +13820,40 @@ function _idFreePending(n) {
   delete _idPending[n];
 }
 function _idScanShow(n) {
-  var d = _idScanFound[n] || {};
+  var d = _idScanFound[n] || {}, un = d._unsure || {};
   var rows = [
-    ['שם פרטי', 'fFirst' + n, d.firstName, 'text'],
-    ['שם משפחה', 'fFamily' + n, d.familyName, 'text'],
-    ['מספר זהות', 'fId' + n, d.idNumber, 'text'],
-    ['תאריך לידה', 'fDob' + n, d.dob, 'date'],
-    ['תאריך הנפקה', 'fIdIssue' + n, d.issueDate, 'date']
+    ['שם פרטי', 'fFirst' + n, d.firstName, 'text', un.firstName],
+    ['שם משפחה', 'fFamily' + n, d.familyName, 'text', un.familyName],
+    ['מספר זהות', 'fId' + n, d.idNumber, 'text', un.idNumber],
+    ['תאריך לידה', 'fDob' + n, d.dob, 'date', un.dob],
+    ['תאריך הנפקה', 'fIdIssue' + n, d.issueDate, 'date', un.issueDate]
   ];
   var note = d._note ? '<div style="color:#16a34a;margin-bottom:6px">🔄 ' + d._note + '</div>' : '';
+  var shaky = rows.some(function (row) { return row[2] && row[4]; });
   var warn = (d.idNumber && !_idChecksumOk(d.idNumber)) ? '<div style="color:#b45309;margin-bottom:6px">⚠️ מספר הזהות לא עובר בדיקת ספרת ביקורת — תקן לפי התעודה לפני המילוי.</div>' : '';
   var html = '<div style="margin:0 0 8px;padding:10px;border-radius:8px;background:#fff;border:1px solid #93c5fd;font-size:12px"><div style="font-weight:700;margin-bottom:2px">נמצא בתעודה — אפשר לתקן לפני המילוי:</div>'
-    + '<div style="color:var(--muted);margin-bottom:6px">הקריאה נעשית במחשב שלך; הקובץ לא נשלח ולא נשמר.</div>' + note + warn;
+    + '<div style="color:var(--muted);margin-bottom:6px">הקריאה נעשית במחשב שלך; הקובץ לא נשלח ולא נשמר.</div>' + note + warn
+    + (shaky ? '<div style="color:#b45309;margin-bottom:6px">ערכים עם "לבדיקה" נקראו בביטחון נמוך — לא סומנו למילוי. בדוק מול התעודה, תקן, וסמן.</div>' : '');
   var any = false;
   rows.forEach(function (row, i) {
     var el = document.getElementById(row[1]);
     var cur = el ? String(el.value || '').trim() : '';
-    var found = row[2] || '';
+    var found = row[2] || '', unsure = !!(found && row[4]);
     var state, checked = false, locked = true;
     if (cur && found && cur === found) state = '<span style="color:var(--muted)">זהה למה שקיים</span>';
     else if (cur) state = '<span style="color:#b45309">כבר מולא (' + escapeHtml(row[3] === 'date' ? _idFmtDate(cur) : cur) + ') — לא ידרס</span>';
     else if (!found) { state = '<span style="color:var(--muted)">לא נמצא — אפשר להקליד</span>'; locked = false; }
+    else if (unsure) { state = '<span style="color:#b45309;font-weight:700">לבדיקה</span>'; locked = false; }
     else { state = '<span style="color:#16a34a">יתמלא</span>'; checked = true; locked = false; }
     if (!locked) any = true;
     html += '<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><input type="checkbox" id="idScanChk' + n + '_' + i + '" ' + (checked ? 'checked ' : '') + (locked ? 'disabled ' : '') + '>'
       + '<span style="min-width:84px;font-weight:600">' + row[0] + '</span>'
-      + '<input id="idScanVal' + n + '_' + i + '" type="' + row[3] + '" value="' + escapeAttr(found) + '" ' + (locked ? 'disabled ' : '') + 'style="width:150px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px" oninput="document.getElementById(\'idScanChk' + n + '_' + i + '\').checked=!!this.value">'
+      + '<input id="idScanVal' + n + '_' + i + '" type="' + row[3] + '" value="' + escapeAttr(found) + '" ' + (locked ? 'disabled ' : '') + 'style="width:150px;padding:4px 6px;border:1px solid ' + (unsure ? '#f59e0b' : 'var(--border)') + ';border-radius:6px;font-size:12px" oninput="document.getElementById(\'idScanChk' + n + '_' + i + '\').checked=!!this.value">'
       + state + '</div>';
   });
-  html += '<div style="display:flex;gap:6px;margin-top:8px">'
+  html += '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'
     + (any ? '<button type="button" class="btn small" onclick="idScanApply(' + n + ')">✓ מלא את המסומנים</button>' : '')
-    + (_idPending[n] ? '<button type="button" class="btn small secondary" onclick="_idScanPreview(' + n + ')">⟳ סובב וקרא שוב</button>' : '')
+    + (_idPending[n] ? '<button type="button" class="btn small secondary" onclick="_idScanPreview(' + n + ')">✂️ חתוך / סובב וקרא שוב</button>' : '')
     + '<button type="button" class="btn small secondary" onclick="idScanCancel(' + n + ')">' + (any ? 'ביטול' : 'סגור') + '</button></div></div>';
   var el2 = document.getElementById('idScanPanel' + n);
   if (el2) el2.innerHTML = html;
