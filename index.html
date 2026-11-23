@@ -24183,6 +24183,7 @@ function openSigRequestDialog(cid) {
     '</div>' +
     '<div class="form-group"><label>אימייל הלקוח</label><input type="email" id="sgEmail" dir="ltr" value="' + escapeAttr(email) + '"></div>' +
     '<div class="form-group"><label>כתובת הבנק' + (banker ? ' (' + escapeHtml((banker.bank || '') + (banker.branch ? ' · סניף ' + banker.branch : '')) + ')' : '') + '</label><input type="text" id="sgAddr" value="' + escapeAttr(banker ? (banker.branchAddress || '') : '') + '" placeholder="' + (banker ? 'חסרה כתובת — אפשר למלא כאן, תישמר באיש הקשר של הבנקאי' : 'לא שובץ בנקאי לתיק') + '"></div>' +
+    '<div style="margin-bottom:10px"><button class="btn small" style="background:#fef3c7;color:#78350f" onclick="sigBankerMail(\'' + cid + '\')">📧 מייל לבנקאי — לבדוק איתו את הזמן</button></div>' +
     '<div class="modal-actions">' +
       '<button class="btn" style="background:#16a34a" onclick="sigApprove(\'' + cid + '\')">✅ הבנקאי אישר — שלח ללקוח במייל</button>' +
       '<button class="btn" style="background:#f59e0b" onclick="sigDecline(\'' + cid + '\')">❌ הבנקאי לא יכול — הכן טיוטה עם זמנים חלופיים</button>' +
@@ -24192,6 +24193,15 @@ function openSigRequestDialog(cid) {
 function sigRead() {
   var g = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
   return { date: g('sgDate'), time: g('sgTime'), email: g('sgEmail'), addr: g('sgAddr') };
+}
+async function sigBankerMail(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
+  var v = sigRead();
+  var t = sigCoordTask(c);
+  if (t && /^\d{4}-\d{2}-\d{2}$/.test(v.date) && /^\d{2}:\d{2}$/.test(v.time)) {
+    t.coordination = t.coordination || {}; t.coordination.date = v.date; t.coordination.time = v.time; save();
+  }
+  openSignatureMessageDialog(cid, 'banker', 'email');
 }
 async function sigApprove(cid) {
   var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
