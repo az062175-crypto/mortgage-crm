@@ -11177,7 +11177,7 @@ function orderTashrit(cid) {
       alert('התוסף שלך ישן (גרסה ' + (window._nefakhExtensionVersion || '?') + ') ולא מכיר הזמנת תשריט.\n\nפתח chrome://extensions, לחץ ⟳ על "CRM Nefakh Helper", ואז רענן את ה-CRM (F5).');
       return;
     }
-    window.postMessage({ type: 'ORDER_TASHRIT', payload: { clientId: c.id, clientName: c.name, gush: c.propertyGush || '', helka: c.propertyHelka || '', customerName: c.name, customerEmail: 'a035591712@gmail.com' } }, '*');
+    window.postMessage({ type: 'ORDER_TASHRIT', payload: { clientId: c.id, clientName: c.name, gush: c.propertyGush || '', helka: c.propertyHelka || '', customerName: c.name, customerEmail: 'a035591712@gmail.com', customerPhone: '0528932640' } }, '*');
   }, 500);
 }
 /* ---------- הכן הגשה לבנק: כל נתוני הלקוח בשורות עם העתקה ---------- */
