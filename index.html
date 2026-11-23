@@ -13744,7 +13744,7 @@ function idScanRotate(n, i, deg) {
 }
 // Step 2: OCR on the (possibly rotated) pages.
 // ---- Gemini reader (optional; key kept only in this browser's localStorage) ----
-var _idGeminiOff = false;
+var _idGeminiOff = false, _idGTry = 0;
 function _idGeminiKey() { try { return (state.settings && state.settings.geminiKey) || localStorage.getItem('idGeminiKey') || ''; } catch (e) { return ''; } }
 function idGeminiSetup(n) {
   var cur = _idGeminiKey();
@@ -13762,16 +13762,18 @@ async function _idGeminiRead(canvases, key) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.9).split(',')[1] } });
     c.width = c.height = 0;
   });
+  _idGTry = 0;
   var body = JSON.stringify({ contents: [{ parts: parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } });
   var res = null, models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
   try { var ml = await (await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=' + encodeURIComponent(key))).json(); // models this key can really use
     var avail = (ml.models || []).filter(function (m) { return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0 && /flash/.test(m.name) && !/lite|image|tts|live|thinking|exp|preview/.test(m.name); }).map(function (m) { return m.name.replace('models/', ''); });
     avail.sort().reverse(); models = avail.concat(models, ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite']); } catch (e0) {}
-  for (var mi = 0; mi < models.length && mi < 10; mi++) {
+  for (var mi = 0; mi < 12; mi++) {
+    if (mi >= models.length) { if (mi === models.length && res && res.status >= 500) await new Promise(function (ok) { setTimeout(ok, 2500); }); mi = 0; models = models.slice(0, 4); if (++_idGTry > 2) break; }
     res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + models[mi] + ':generateContent?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body });
-    if (res.ok || (res.status !== 404 && res.status !== 400 && res.status !== 429)) break;
+    if (res.ok || (res.status !== 404 && res.status !== 400 && res.status !== 429 && res.status < 500)) break;
   }
-  if (!res.ok) throw new Error('Gemini ' + res.status + (res.status === 429 ? ' - מכסה חינמית מלאה או שהפרויקט ללא מכסה. נסי שוב בעוד דקה, או צרי מפתח בפרויקט חדש' : ''));
+  if (!res.ok) throw new Error('Gemini ' + res.status + (res.status >= 500 ? ' - השרת של גוגל עמוס כרגע. נסי שוב בעוד רגע' : res.status === 429 ? ' - מכסה חינמית מלאה או שהפרויקט ללא מכסה. נסי שוב בעוד דקה, או צרי מפתח בפרויקט חדש' : ''));
   var j = await res.json(), txt = (((j.candidates || [])[0] || {}).content || {}).parts;
   txt = txt && txt[0] && txt[0].text || '';
   var d = JSON.parse(txt.replace(/^```json|```$/g, ''));
