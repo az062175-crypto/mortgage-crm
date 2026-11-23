@@ -13584,9 +13584,15 @@ function _idScanPreview(n) {
   var html = '<div style="margin:0 0 8px;padding:10px;border-radius:8px;background:#fff;border:1px solid #93c5fd;font-size:12px">'
     + '<div style="font-weight:700;margin-bottom:2px">בדוק שהתעודה ישרה, והכנס את הקצוות פנימה כדי שתהיה גדולה וברורה:</div>'
     + '<div style="color:var(--muted)">גרור כל קצה או פינה של המסגרת פנימה. גרירה בתוך המסגרת מזיזה אותה. אפשר לצייר מסגרת חדשה מחוץ לה.</div>';
+  if (pages.length > 1) {
+    html += '<div style="margin:8px 0;padding:8px;background:#eff6ff;border-radius:6px"><b>בחר איזה עמוד לקרוא (' + pages.length + ' עמודים בקובץ):</b><div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">';
+    pages.forEach(function (c, i) { html += '<button ' + btn + ' onclick="idPageOnly(' + n + ',' + i + ')">רק עמוד ' + (i + 1) + '</button>'; });
+    html += '<button ' + btn + ' onclick="idPageOnly(' + n + ',-1)">כל העמודים</button></div></div>';
+  }
   pages.forEach(function (cv, i) {
     var key = n + '_' + i;
     var mark = 'position:absolute;width:10px;height:10px;background:#fff;border:2px solid #2563eb;border-radius:2px;pointer-events:none;';
+    if (pages.length > 1 && _idPageOff[key]) { html += '<div style="margin:6px 0;color:var(--muted);text-align:center">עמוד ' + (i + 1) + ' — מדולג (<a href="#" onclick="idPageToggle(' + n + ',' + i + ',true);return false">קרא גם אותו</a>)</div>'; return; }
     html += '<div style="margin:10px 0;text-align:center">'
       + (pages.length > 1 ? '<label style="display:inline-flex;gap:6px;align-items:center;font-weight:700;margin-bottom:4px;cursor:pointer"><input type="checkbox" ' + (_idPageOff[key] ? '' : 'checked') + ' onchange="idPageToggle(' + n + ',' + i + ',this.checked)"> קרא עמוד ' + (i + 1) + ' מתוך ' + pages.length + '</label>' : '')
       + '<div class="idCropWrap" data-n="' + n + '" data-i="' + i + '" style="display:inline-block;max-width:100%;overflow:hidden;padding:12px;touch-action:none;user-select:none;border:1px solid var(--border);border-radius:6px;background:#e2e8f0;box-sizing:border-box">'
@@ -13745,7 +13751,8 @@ function idScanRotate(n, i, deg) {
 }
 // Step 2: OCR on the (possibly rotated) pages.
 // ---- Gemini reader (optional; key kept only in this browser's localStorage) ----
-function idPageToggle(n, i, on) { _idPageOff[n + '_' + i] = !on; }
+function idPageToggle(n, i, on) { _idPageOff[n + '_' + i] = !on; _idScanPreview(n); }
+function idPageOnly(n, only) { (_idPending[n] || []).forEach(function (c, i) { _idPageOff[n + '_' + i] = (only >= 0 && i !== only); }); _idScanPreview(n); }
 var _idGeminiOff = false, _idGTry = 0, _idPageOff = {};
 function _idGeminiKey() { try { return (state.settings && state.settings.geminiKey) || localStorage.getItem('idGeminiKey') || ''; } catch (e) { return ''; } }
 function idGeminiSetup(n) {
