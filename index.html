@@ -13588,6 +13588,7 @@ function _idScanPreview(n) {
     var key = n + '_' + i;
     var mark = 'position:absolute;width:10px;height:10px;background:#fff;border:2px solid #2563eb;border-radius:2px;pointer-events:none;';
     html += '<div style="margin:10px 0;text-align:center">'
+      + (pages.length > 1 ? '<label style="display:inline-flex;gap:6px;align-items:center;font-weight:700;margin-bottom:4px;cursor:pointer"><input type="checkbox" ' + (_idPageOff[key] ? '' : 'checked') + ' onchange="idPageToggle(' + n + ',' + i + ',this.checked)"> קרא עמוד ' + (i + 1) + ' מתוך ' + pages.length + '</label>' : '')
       + '<div class="idCropWrap" data-n="' + n + '" data-i="' + i + '" style="display:inline-block;max-width:100%;padding:12px;touch-action:none;user-select:none;border:1px solid var(--border);border-radius:6px;background:#e2e8f0;box-sizing:border-box">'
       + '<div style="position:relative;display:inline-block;max-width:100%;line-height:0">'
       + '<img src="' + _idThumb(cv) + '" draggable="false" style="display:inline-block;max-width:100%;max-height:480px;pointer-events:none">'
@@ -13744,7 +13745,8 @@ function idScanRotate(n, i, deg) {
 }
 // Step 2: OCR on the (possibly rotated) pages.
 // ---- Gemini reader (optional; key kept only in this browser's localStorage) ----
-var _idGeminiOff = false, _idGTry = 0;
+function idPageToggle(n, i, on) { _idPageOff[n + '_' + i] = !on; }
+var _idGeminiOff = false, _idGTry = 0, _idPageOff = {};
 function _idGeminiKey() { try { return (state.settings && state.settings.geminiKey) || localStorage.getItem('idGeminiKey') || ''; } catch (e) { return ''; } }
 function idGeminiSetup(n) {
   var cur = _idGeminiKey();
@@ -13813,6 +13815,11 @@ async function idScanRead(n) {
       if (_idUndo[n + '_' + ci]) _idUndo[n + '_' + ci].width = _idUndo[n + '_' + ci].height = 0;
       _idUndo[n + '_' + ci] = cc; canvases[ci] = cut; delete _idSel[n + '_' + ci];
     }
+  }
+  if (canvases.length > 1) { // only the pages the user ticked
+    var picked = canvases.filter(function (c, pi) { return !_idPageOff[n + '_' + pi]; });
+    if (!picked.length) { alert('סמני לפחות עמוד אחד לקריאה.'); return; }
+    canvases = picked;
   }
   var gkey = _idGeminiOff ? '' : _idGeminiKey();
   if (gkey) {
