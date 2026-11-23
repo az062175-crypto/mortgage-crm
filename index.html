@@ -13950,21 +13950,22 @@ function _idScanShow(n) {
   var shaky = rows.some(function (row) { return row[2] && row[4]; });
   var warn = (d.idNumber && !_idChecksumOk(d.idNumber)) ? '<div style="color:#b45309;margin-bottom:6px">⚠️ מספר הזהות לא עובר בדיקת ספרת ביקורת — תקן לפי התעודה לפני המילוי.</div>' : '';
   var html = '<div style="margin:0 0 8px;padding:10px;border-radius:8px;background:#fff;border:1px solid #93c5fd;font-size:12px"><div style="font-weight:700;margin-bottom:2px">נמצא בתעודה — אפשר לתקן לפני המילוי:</div>'
-    + '<div style="color:var(--muted);margin-bottom:6px">הקריאה נעשית במחשב שלך; הקובץ לא נשלח ולא נשמר.</div>' + note + warn
+    + '<div style="color:var(--muted);margin-bottom:6px">' + ((d._note || '').indexOf('Gemini') >= 0 ? 'התמונה נשלחה לגוגל (Gemini) לקריאה בלבד; היא לא נשמרת אצלנו.' : 'הקריאה נעשית במחשב שלך; הקובץ לא נשלח ולא נשמר.') + '</div>' + note + warn
     + (shaky ? '<div style="color:#b45309;margin-bottom:6px">ערכים עם "לבדיקה" נקראו בביטחון נמוך — לא סומנו למילוי. בדוק מול התעודה, תקן, וסמן.</div>' : '');
   var any = false;
   rows.forEach(function (row, i) {
     var el = document.getElementById(row[1]);
     var cur = el ? String(el.value || '').trim() : '';
     var found = row[2] || '', unsure = !!(found && row[4]);
-    var state, checked = false, locked = true;
+    var state, checked = false, locked = true, repl = false;
     if (cur && found && cur === found) state = '<span style="color:var(--muted)">זהה למה שקיים</span>';
+    else if (cur && found) { state = '<span style="color:#b45309">כבר מולא (' + escapeHtml(row[3] === 'date' ? _idFmtDate(cur) : cur) + ') — שונה מהתעודה. סמני כדי להחליף</span>'; locked = false; repl = true; }
     else if (cur) state = '<span style="color:#b45309">כבר מולא (' + escapeHtml(row[3] === 'date' ? _idFmtDate(cur) : cur) + ') — לא ידרס</span>';
     else if (!found) { state = '<span style="color:var(--muted)">לא נמצא — אפשר להקליד</span>'; locked = false; }
     else if (unsure) { state = '<span style="color:#b45309;font-weight:700">לבדיקה</span>'; locked = false; }
     else { state = '<span style="color:#16a34a">יתמלא</span>'; checked = true; locked = false; }
     if (!locked) any = true;
-    html += '<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><input type="checkbox" id="idScanChk' + n + '_' + i + '" ' + (checked ? 'checked ' : '') + (locked ? 'disabled ' : '') + '>'
+    html += '<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><input type="checkbox" id="idScanChk' + n + '_' + i + '" ' + (repl ? 'data-repl="1" ' : '') + (checked ? 'checked ' : '') + (locked ? 'disabled ' : '') + '>'
       + '<span style="min-width:84px;font-weight:600">' + row[0] + '</span>'
       + '<input id="idScanVal' + n + '_' + i + '" type="' + row[3] + '" value="' + escapeAttr(found) + '" ' + (locked ? 'disabled ' : '') + 'style="width:150px;padding:4px 6px;border:1px solid ' + (unsure ? '#f59e0b' : 'var(--border)') + ';border-radius:6px;font-size:12px" oninput="document.getElementById(\'idScanChk' + n + '_' + i + '\').checked=!!this.value">'
       + state + '</div>';
@@ -13985,7 +13986,7 @@ function idScanApply(n) {
     if (!chk || !chk.checked || !valEl || !el) return;
     var v = String(valEl.value || '').trim();
     if (!v) return;
-    if (String(el.value || '').trim()) return; // never overwrite
+    if (String(el.value || '').trim() && !chk.getAttribute('data-repl')) return; // overwrite only when the user ticked replace on a differing field
     el.value = v;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
