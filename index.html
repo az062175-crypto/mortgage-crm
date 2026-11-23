@@ -5724,14 +5724,7 @@ function renderClientDetail() {
             <button class="btn secondary small" onclick="openOpenItemsPopup('${c.id}')" title="הצג את כל המשימות והמסמכים הפתוחים בתיק" style="background:#dbeafe;border-color:#3b82f6;color:#1e40af">📋 מה פתוח?${(() => { const n = getOpenItemsCount(c); return n ? ' <span style="background:#dc2626;color:#fff;border-radius:999px;padding:0 6px;font-size:11px">'+n+'</span>' : ''; })()}</button>
             <button class="btn secondary small" onclick="refreshClientTasks('${c.id}')" title="רענן משימות אוטומטיות לפי סוג עסקה + רישום נוכחי (לא מוחק משימות שסימנת ✓ או שהוספת ידנית)">🔄 רענן משימות</button>
             <button class="btn secondary small" onclick="openIncomesEditor('${c.id}')" title="ערוך הכנסות חודשיות של הלווים והערבים" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3">💰 ערוך הכנסות</button>
-            <span class="prep-wrap" style="display:inline-flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <button class="btn secondary small" onclick="togglePrepButtons('${c.id}')" title="הכנה לפגישה, מכתב לבנק והגשה לבנק" style="background:#f5f3ff;border-color:#8b5cf6;color:#5b21b6">🗂️ הכנות ▾</button>
-              <span id="prepBtns-${c.id}" style="display:${window._prepOpen === c.id ? 'inline-flex' : 'none'};gap:8px;flex-wrap:wrap">
-                <button class="btn secondary small" onclick="printClientForMeeting('${c.id}')" title="הכן דף מסודר להדפסה / PDF לפגישה" style="background:#f0fdf4;border-color:#22c55e;color:#166534">🖨️ הכן לפגישה</button>
-                <button class="btn secondary small" onclick="openBankLetter('${c.id}')" title="הכן מכתב מסודר לבנקאי — להדפסה או לשליחה במייל" style="background:#eff6ff;border-color:#3b82f6;color:#1e40af">📨 מכתב לבנק</button>
-                <button class="btn secondary small" onclick="openBankSubmission('${c.id}')" title="הכן הגשה לבנק" style="background:#fff7ed;border-color:#f97316;color:#9a3412">🏦 הכן הגשה לבנק</button>
-              </span>
-            </span>
+            <button class="btn secondary small" onclick="openPrepDialog('${c.id}')" title="הכנה לפגישה, מכתב לבנק והגשה לבנק" style="background:#f5f3ff;border-color:#8b5cf6;color:#5b21b6">🗂️ הכנות</button>
             <button class="btn secondary small" onclick="orderNesach('${c.id}')" title="פותח את gov.il בדפדפן, ממלא את הפרטים אוטומטית, מחכה שתשלם, ומסמן בוצע" style="background:#fef3c7;border-color:#f59e0b;color:#78350f">📄 הזמן נסח</button>
             <button class="btn danger small" onclick="deleteClient('${c.id}')">מחק</button>
           </div>
@@ -11117,11 +11110,23 @@ function _showNefakhInstallInstructions() {
   `);
 }
 
-function togglePrepButtons(cid) {
-  var el = document.getElementById('prepBtns-' + cid); if (!el) return;
-  var open = el.style.display === 'none';
-  el.style.display = open ? 'inline-flex' : 'none';
-  window._prepOpen = open ? cid : null;
+function openPrepDialog(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
+  var old = document.getElementById('prepDialog'); if (old) old.remove();
+  var ov = document.createElement('div'); ov.id = 'prepDialog';
+  ov.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center';
+  ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+  var row = function (fn, ico, title, sub, bg, bd, col) {
+    return '<button onclick="document.getElementById(\'prepDialog\').remove();' + fn + '(\'' + cid + '\')" style="display:flex;align-items:center;gap:12px;width:100%;text-align:right;padding:14px 16px;margin-top:10px;border-radius:12px;border:1.5px solid ' + bd + ';background:' + bg + ';color:' + col + ';cursor:pointer;font:inherit">' +
+      '<span style="font-size:26px">' + ico + '</span><span><div style="font-weight:700;font-size:16px">' + title + '</div><div style="font-size:12px;opacity:.8">' + sub + '</div></span></button>';
+  };
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:22px;max-width:420px;width:92%;direction:rtl">' +
+    '<div style="display:flex;align-items:center"><h2 style="margin:0;flex:1;font-size:18px">🗂️ מה להכין? — ' + escapeHtml(c.name || '') + '</h2><button class="btn small secondary" onclick="document.getElementById(\'prepDialog\').remove()">✕</button></div>' +
+    row('printClientForMeeting', '🖨️', 'הכן לפגישה', 'דף מסודר להדפסה / PDF', '#f0fdf4', '#22c55e', '#166534') +
+    row('openBankLetter', '📨', 'מכתב לבנק', 'מכתב לבנקאי, להדפסה או במייל', '#eff6ff', '#3b82f6', '#1e40af') +
+    row('openBankSubmission', '🏦', 'הכן הגשה לבנק', 'חבילת הגשה לבנק', '#fff7ed', '#f97316', '#9a3412') +
+    '</div>';
+  document.body.appendChild(ov);
 }
 function openBankSubmission(cid) {
   var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
