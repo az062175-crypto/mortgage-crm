@@ -23105,7 +23105,8 @@ async function portalPullSent() {
     rows.forEach(function (x) { next[x.token] = x.client_sent || {}; });
     var changed = JSON.stringify(next) !== JSON.stringify(PORTAL.sent);
     PORTAL.sent = next;
-    if (portalApplyPhones(next)) { save(); changed = true; }
+    var _sw = false; state.clients.forEach(function (c) { try { if (sigApplyToTask(c)) _sw = true; } catch (e) {} });
+    if (portalApplyPhones(next) || _sw) { save(); changed = true; }
     if (PORTAL.newSig && PORTAL.newSig.length) { var _ns = PORTAL.newSig; PORTAL.newSig = []; try { sigNotify(_ns); } catch (e) {} }
     if (changed && currentTab === 'detail') renderClientDetail();
   } catch (e) {}
@@ -24111,7 +24112,7 @@ async function signCreate() {
 /* ===== בקשת מועד חתימה מהפורטל: הלקוח בוחר זמן, היועץ מאשר ונשלח אליו מייל ===== */
 function sigCoordTask(c) { return (c.tasks || []).find(function (t) { return t.stage === 'signature' && t.title === 'תיאום חתימות'; }); }
 function sigApplyToTask(c) {
-  var r = c.sigReq; if (!r || r.status !== 'pending') return false;
+  var r = c.sigReq; if (!r || (r.status !== 'pending' && r.status !== 'approved') || !r.at) return false;
   var t = sigCoordTask(c); if (!t) return false;
   if (t.clientFilled === r.reqAt) return false;
   t.coordination = t.coordination || { date: '', time: '' };
