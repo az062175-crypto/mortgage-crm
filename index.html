@@ -3905,6 +3905,7 @@ function renderControlBoard() {
         <div style="font-size:15px;line-height:1.6;color:#e2e8f0">${briefing}</div>
       </div>
 
+      ${typeof sigPendingPanelHtml === 'function' ? sigPendingPanelHtml() : ''}
       <div class="ctl-two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
 
         <!-- 1. עשה עכשיו -->
@@ -6801,6 +6802,7 @@ function taskItemHtml(c, t) {
     if (!t.coordination) t.coordination = { date: '', time: '' };
     inlineExtra = `<div style="margin-top:8px;padding:10px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px">
       <div style="font-size:11px;color:#4338ca;font-weight:700;margin-bottom:6px">🗓️ מועד חתימה</div>
+      ${(c.sigReq && c.sigReq.status === 'pending') ? `<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:6px 10px;margin-bottom:8px;font-size:12px;font-weight:700;color:#92400e;display:flex;gap:8px;align-items:center;flex-wrap:wrap">👤 הלקוח מילא את הזמן · ממתין לאישור הבנקאי <button class="btn small" onclick="openSigRequestDialog('${c.id}')" style="background:#16a34a;color:#fff">✅ בדוק ואשר</button></div>` : ((c.sigReq && c.sigReq.status === 'approved') ? `<div style="background:#dcfce7;border-radius:8px;padding:6px 10px;margin-bottom:8px;font-size:12px;font-weight:700;color:#166534">✅ אושר ונשלח ללקוח</div>` : '')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
         <div><label style="font-size:11px;color:var(--muted)">תאריך</label><input type="date" value="${escapeAttr(t.coordination.date||'')}" onchange="setSignatureCoordDate('${c.id}','${t.id}',this.value)" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:6px"></div>
         <div><label style="font-size:11px;color:var(--muted)">שעה</label><input type="text" placeholder="HH:MM" maxlength="5" value="${escapeAttr(t.coordination.time||'')}" oninput="onSignatureTimeInput(event,'${c.id}','${t.id}')" onkeydown="onSignatureTimeKey(event)" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:6px;font-family:monospace;text-align:center"></div>
@@ -15700,6 +15702,7 @@ function seedSignatureStageTasks(client) {
       });
     }
   });
+  try { if (typeof sigApplyToTask === 'function') sigApplyToTask(client); } catch (e) {}
   // "הקמת הרשאה" task — with institution code based on client's bank
   {
     const banker = client.bankerId ? state.settings.bankers.find(b => b.id === client.bankerId) : null;
@@ -23059,7 +23062,13 @@ function portalSnapshot(c) {
     if (!String(b.phone || '').trim()) phones.push({ id: 'phone:' + i, name: nm });
     else if (pf['phone:' + i]) phones.push({ id: 'phone:' + i, name: nm, done: true }); // הלקוח מילא והתקבל — יורד למטה עם ✓ בוצע
   });
-  return { v: 1, phones: [], forms: portalForms(c), appr: appr, execs: execs, progress: prog, summary: summary, name: portalGreetName(c, first), stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
+  var sig = null;
+  if (c.stage === 'approval' || c.stage === 'bank' || (c.sigReq && c.sigReq.status === 'approved')) {
+    var sr = c.sigReq || {};
+    sig = { key: 'sig:time', cid: c.id, hook: (state.settings && state.settings.signHookUrl) || SIGN_HOOK_DEFAULT,
+      ask: sr.status !== 'approved', status: sr.status || '', at: sr.status === 'approved' ? (sr.at || '') : '' };
+  }
+  return { v: 1, sig: sig, phones: [], forms: portalForms(c), appr: appr, execs: execs, progress: prog, summary: summary, name: portalGreetName(c, first), stage: by[c.stage] ? c.stage : 'execution', stages: stages, doneCount: doneCount, done: done };
 }
 
 async function portalFetch(path, opts) {
@@ -23096,10 +23105,11 @@ async function portalPullSent() {
     var changed = JSON.stringify(next) !== JSON.stringify(PORTAL.sent);
     PORTAL.sent = next;
     if (portalApplyPhones(next)) { save(); changed = true; }
+    if (PORTAL.newSig && PORTAL.newSig.length) { var _ns = PORTAL.newSig; PORTAL.newSig = []; try { sigNotify(_ns); } catch (e) {} }
     if (changed && currentTab === 'detail') renderClientDetail();
   } catch (e) {}
 }
-function portalSentCount(c) { return c.portalToken ? Object.keys(PORTAL.sent[c.portalToken] || {}).filter(function (k) { return k.indexOf('phone:') !== 0 && k.indexOf('f:') !== 0; }).length : 0; }
+function portalSentCount(c) { return c.portalToken ? Object.keys(PORTAL.sent[c.portalToken] || {}).filter(function (k) { return k.indexOf('phone:') !== 0 && k.indexOf('f:') !== 0 && k !== 'sig:time'; }).length : 0; }
 // מספרי נייד שהלקוח הזין בפורטל: נכנסים לתיק רק אם השדה ריק (לא דורסים מידע קיים)
 function portalApplyPhones(sentByToken) {
   var any = false;
@@ -23107,6 +23117,16 @@ function portalApplyPhones(sentByToken) {
     var s = c.portalToken && sentByToken[c.portalToken]; if (!s) return;
     var touched = false;
     Object.keys(s).forEach(function (k) {
+      if (k === 'sig:time') {
+        var sv = String(s[k] || '');
+        if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(sv)) return;
+        var sr0 = c.sigReq;
+        if (sr0 && sr0.reqAt === sv && !(sr0.status === 'declined' && sr0.cleared)) return;
+        c.sigReq = { reqAt: sv, at: sv, status: 'pending', askedAt: now() };
+        sigApplyToTask(c);
+        PORTAL.newSig = (PORTAL.newSig || []).concat([c.id]);
+        any = true; return;
+      }
       if (k.indexOf('f:') === 0) {
         var sp = portalFieldSpecs(c).find(function (x) { return x.key === k; });
         if (!sp) return;
@@ -24085,5 +24105,152 @@ async function signCreate() {
 }
 </script>
 
+
+<script>
+/* ===== בקשת מועד חתימה מהפורטל: הלקוח בוחר זמן, היועץ מאשר ונשלח אליו מייל ===== */
+function sigCoordTask(c) { return (c.tasks || []).find(function (t) { return t.stage === 'signature' && t.title === 'תיאום חתימות'; }); }
+function sigApplyToTask(c) {
+  var r = c.sigReq; if (!r || r.status !== 'pending') return false;
+  var t = sigCoordTask(c); if (!t) return false;
+  if (t.clientFilled === r.reqAt) return false;
+  t.coordination = t.coordination || { date: '', time: '' };
+  t.coordination.date = r.at.slice(0, 10); t.coordination.time = r.at.slice(11);
+  t.clientFilled = r.reqAt;
+  return true;
+}
+function sigClientEmail(c) {
+  var e = c.email || ''; if (e) return e;
+  var b = (c.borrowers || []).find(function (x) { return x.email; });
+  return b ? b.email : '';
+}
+function sigFmt(at) {
+  var m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})$/.exec(at || ''); if (!m) return at || '';
+  var days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+  var d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return 'יום ' + days[d.getDay()] + ', ' + m[3] + '/' + m[2] + '/' + m[1] + ' בשעה ' + m[4];
+}
+function sigSuggest(at) {
+  var m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})$/.exec(at || '');
+  var base = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(), tm = m ? m[4] : '10:00';
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var cand = [];
+  for (var i = -2; i <= 6; i++) {
+    if (!i) continue;
+    var x = new Date(base); x.setDate(x.getDate() + i);
+    if (x > today && x.getDay() !== 5 && x.getDay() !== 6) cand.push(x);
+  }
+  cand.sort(function (a, b) { return Math.abs(a - base) - Math.abs(b - base) || a - b; });
+  cand = cand.slice(0, 4).sort(function (a, b) { return a - b; });
+  var pad = function (n) { return ('0' + n).slice(-2); };
+  return cand.map(function (x) { return sigFmt(x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()) + ' ' + tm); });
+}
+function sigPendingPanelHtml() {
+  var list = state.clients.filter(function (c) { return c.sigReq && c.sigReq.status === 'pending'; });
+  if (!list.length) return '';
+  return '<div class="panel" style="border:2px solid #16a34a;margin-bottom:16px"><h2 class="panel-title" style="color:#166534">🗓️ לקוחות ביקשו מועד חתימה (' + list.length + ')</h2>' +
+    list.map(function (c) {
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;margin-top:6px">' +
+        '<div><b>' + escapeHtml(c.name || '') + '</b><div style="font-size:12px;color:#166534">ביקש/ה: ' + escapeHtml(sigFmt(c.sigReq.at)) + ' · ממתין לבדיקה מול הבנקאי</div></div>' +
+        '<button class="btn small" style="background:#16a34a;color:#fff" onclick="openSigRequestDialog(\'' + c.id + '\')">✅ בדוק ואשר</button></div>';
+    }).join('') + '</div>';
+}
+function sigNotify(ids) {
+  ids.forEach(function (id) {
+    var c = state.clients.find(function (x) { return x.id === id; }); if (!c) return;
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;background:#166534;color:#fff;padding:12px 18px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-weight:700;display:flex;gap:12px;align-items:center;max-width:92vw';
+    d.innerHTML = '<span>🗓️ ' + escapeHtml(c.name || '') + ' ביקש/ה מועד חתימה: ' + escapeHtml(sigFmt(c.sigReq.at)) + '</span>' +
+      '<button style="background:#fff;color:#166534;border:none;border-radius:8px;padding:5px 12px;font-weight:700;cursor:pointer">בדוק ואשר</button>' +
+      '<span style="cursor:pointer;opacity:.8" title="סגור">✕</span>';
+    d.children[1].onclick = function () { d.remove(); openSigRequestDialog(id); };
+    d.children[2].onclick = function () { d.remove(); };
+    document.body.appendChild(d);
+    setTimeout(function () { if (d.parentNode) d.remove(); }, 30000);
+  });
+  if (currentTab === 'control' && typeof renderControlBoard === 'function') renderControlBoard();
+  if (currentTab === 'detail') renderClientDetail();
+}
+function openSigRequestDialog(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c || !c.sigReq) return;
+  var banker = c.bankerId ? state.settings.bankers.find(function (b) { return b.id === c.bankerId; }) : null;
+  var at = c.sigReq.at || '', email = sigClientEmail(c);
+  showModal(
+    '<h2 class="modal-title">🗓️ מועד חתימה — ' + escapeHtml(c.name || '') + '</h2>' +
+    '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:13px">הלקוח ביקש: <b>' + escapeHtml(sigFmt(c.sigReq.reqAt)) + '</b></div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div class="form-group"><label>תאריך (ניתן לשנות)</label><input type="date" id="sgDate" value="' + escapeAttr(at.slice(0, 10)) + '"></div>' +
+      '<div class="form-group"><label>שעה</label><input type="time" id="sgTime" value="' + escapeAttr(at.slice(11)) + '"></div>' +
+    '</div>' +
+    '<div class="form-group"><label>אימייל הלקוח</label><input type="email" id="sgEmail" dir="ltr" value="' + escapeAttr(email) + '"></div>' +
+    '<div class="form-group"><label>כתובת הבנק' + (banker ? ' (' + escapeHtml((banker.bank || '') + (banker.branch ? ' · סניף ' + banker.branch : '')) + ')' : '') + '</label><input type="text" id="sgAddr" value="' + escapeAttr(banker ? (banker.branchAddress || '') : '') + '" placeholder="' + (banker ? 'חסרה כתובת — אפשר למלא כאן, תישמר באיש הקשר של הבנקאי' : 'לא שובץ בנקאי לתיק') + '"></div>' +
+    '<div class="modal-actions">' +
+      '<button class="btn" style="background:#16a34a" onclick="sigApprove(\'' + cid + '\')">✅ הבנקאי אישר — שלח ללקוח במייל</button>' +
+      '<button class="btn" style="background:#f59e0b" onclick="sigDecline(\'' + cid + '\')">❌ הבנקאי לא יכול — הכן טיוטה עם זמנים חלופיים</button>' +
+      '<button class="btn secondary" onclick="closeModal()">סגור</button>' +
+    '</div>');
+}
+function sigRead() {
+  var g = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  return { date: g('sgDate'), time: g('sgTime'), email: g('sgEmail'), addr: g('sgAddr') };
+}
+async function sigApprove(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
+  var v = sigRead();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v.date) || !/^\d{2}:\d{2}$/.test(v.time)) { alert('נא למלא תאריך ושעה.'); return; }
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v.email)) { alert('אין אימייל תקין ללקוח.'); return; }
+  var banker = c.bankerId ? state.settings.bankers.find(function (b) { return b.id === c.bankerId; }) : null;
+  var at = v.date + ' ' + v.time;
+  var first = String(((c.borrowers || [])[0] || {}).name || c.name || '').trim().split(/\s+/)[0];
+  var bankLine = banker ? 'בנק ' + (banker.bank || '') + (banker.branch ? ' · סניף ' + banker.branch : '') : '';
+  var body = greetingByHour() + (first ? ' ' + first : '') + ',\n\n' +
+    'ב"ה הבנקאי אישר את הזמן שביקשת להגיע לחתימות:\n' + sigFmt(at) + '\n\n' +
+    (bankLine ? 'מקום: ' + bankLine + '\n' : '') + (v.addr ? 'כתובת: ' + v.addr + '\n' : '') +
+    '\nנא להצטייד בתעודת זהות + ספח מקוריים.\n\nבהצלחה,\nיצחק כהן';
+  try {
+    await gmailSendMessageWithAttachments({ to: v.email, subject: 'אישור מועד חתימות', bodyText: body, attachments: [] });
+  } catch (e) { alert('השליחה נכשלה: ' + (e && e.message || e)); return; }
+  if (banker && v.addr && v.addr !== (banker.branchAddress || '')) banker.branchAddress = v.addr;
+  c.sigReq.status = 'approved'; c.sigReq.at = at; c.sigReq.approvedAt = now();
+  var t = sigCoordTask(c);
+  if (t) { t.coordination = t.coordination || {}; t.coordination.date = v.date; t.coordination.time = v.time; t.history = t.history || []; t.history.push({ status: t.status || 'active', at: now(), note: 'אושר ונשלח ללקוח' }); }
+  save(); closeModal();
+  if (currentTab === 'control') renderControlBoard(); else if (currentTab === 'detail') renderClientDetail();
+  alert('המייל נשלח ללקוח.');
+}
+async function sigDecline(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
+  var v = sigRead();
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v.email)) { alert('אין אימייל תקין ללקוח.'); return; }
+  var first = String(((c.borrowers || [])[0] || {}).name || c.name || '').trim().split(/\s+/)[0];
+  var url = c.portalToken ? PORTAL_URL + '?t=' + c.portalToken : '';
+  var body = greetingByHour() + (first ? ' ' + first : '') + ',\n\n' +
+    'הבנקאי לא יכול בזמן שביקשת.\nלהלן זמנים קרובים לבחירתך:\n' + sigSuggest(c.sigReq.reqAt).map(function (x) { return '• ' + x; }).join('\n') + '\n\n' +
+    (url ? 'אפשר לבחור את הזמן המתאים בקישור האישי שלך:\n' + url + '\n\n' : '') + 'בברכה,\nיצחק כהן';
+  try {
+    await gmailCreateDraftWithAttachments({ to: v.email, subject: 'מועד חתימות', bodyText: body, attachments: [] });
+  } catch (e) { alert('יצירת הטיוטה נכשלה: ' + (e && e.message || e)); return; }
+  c.sigReq.status = 'declined'; c.sigReq.cleared = false;
+  try {
+    await portalFetch('/rest/v1/rpc/portal_clear_sent', { method: 'POST', body: JSON.stringify({ p_token: c.portalToken, p_req: 'sig:time' }) });
+    if (PORTAL.sent[c.portalToken]) delete PORTAL.sent[c.portalToken]['sig:time'];
+    c.sigReq.cleared = true;
+  } catch (e) {}
+  save(); closeModal();
+  if (currentTab === 'control') renderControlBoard(); else if (currentTab === 'detail') renderClientDetail();
+  alert('נוצרה טיוטה ב-Gmail עם זמנים חלופיים. אפשר לערוך ולשלוח. ללקוח ייפתח בפורטל חלון לבחירת זמן חדש.');
+}
+// קישור מהמייל: ?sig=<מזהה לקוח> פותח את החלון לאישור
+(function () {
+  var m = /[?&]sig=([^&]+)/.exec(location.search); if (!m) return;
+  var id = decodeURIComponent(m[1]), n = 0;
+  var iv = setInterval(function () {
+    if (++n > 160) { clearInterval(iv); return; }
+    if (typeof state !== 'undefined' && state.clients && state.clients.some(function (x) { return x.id === id; })) {
+      clearInterval(iv);
+      setTimeout(function () { var c = state.clients.find(function (x) { return x.id === id; }); if (c && c.sigReq) { openClient(id); setTimeout(function () { openSigRequestDialog(id); }, 400); } }, 600);
+    }
+  }, 500);
+})();
+</script>
 </body>
 </html>

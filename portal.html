@@ -458,5 +458,63 @@ async function sgnDownload(id,btn){
 }
 if(TOKEN){sgnLoad();setInterval(function(){if(!document.hidden)sgnLoad();},60000);}
 </script>
+
+<script>
+/* ===== מועד חתימה: חלון צף בשלב "אישור" ===== */
+var SIG={dismiss:false,busy:false};
+(function(){var _r=render;render=function(){_r();try{sigDraw();}catch(e){}};})();
+function sigFmt(v){
+  var m=/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})$/.exec(v||'');if(!m)return v||'';
+  var days=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'],dt=new Date(+m[1],+m[2]-1,+m[3]);
+  return 'יום '+days[dt.getDay()]+', '+m[3]+'/'+m[2]+'/'+m[1]+' בשעה '+m[4];
+}
+function sigDraw(){
+  var d=S.data,sg=d&&d.sig,app=document.getElementById('app'),old=document.getElementById('sigCard'),mo=document.getElementById('sigModal');
+  if(old)old.remove();
+  if(!sg||!app){if(mo)mo.remove();return;}
+  var sent=S.sent&&S.sent[sg.key],html='',modal=false;
+  if(sg.status==='approved'&&sg.at)html='<div class="appr">✅ הבנקאי אישר את מועד החתימה: <b>'+esc(sigFmt(sg.at))+'</b></div>';
+  else if(sent)html='<div class="card top"><h2><span class="tag me">📅 מועד חתימה</span></h2><div class="item sent"><div class="nm">ביקשת לחתום: '+esc(sigFmt(sent))+'</div><div class="note">⏳ אבדוק עם הבנקאי אם זה אפשרי ואחזור אליך</div></div></div>';
+  else if(sg.ask){
+    html='<div class="card top alert"><h2><span class="tag me">📅 מועד חתימה</span></h2>'+(sg.status==='declined'?'<div class="note" style="margin:0 0 8px">הבנקאי לא יכול בזמן שביקשת. אפשר לבחור זמן אחר.</div>':'')+'<div class="act"><button class="send" onclick="sigOpen()">בחר מועד לחתימה</button></div></div>';
+    modal=!SIG.dismiss;
+  }
+  if(html){var w=document.createElement('div');w.id='sigCard';w.innerHTML=html;var first=app.querySelector('.card.top')||app.querySelector('.card');app.insertBefore(w,first||null);}
+  if(!modal&&mo)mo.remove();
+  if(modal&&!mo){
+    var t=new Date(),pad=function(n){return ('0'+n).slice(-2);},min=t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate());
+    var o=document.createElement('div');o.id='sigModal';
+    o.style.cssText='position:fixed;inset:0;z-index:80;background:rgba(40,25,20,.5);display:flex;align-items:center;justify-content:center;padding:16px';
+    o.innerHTML='<div style="background:#fff;border-radius:20px;max-width:420px;width:100%;padding:24px 22px;box-shadow:0 20px 60px rgba(0,0,0,.35)">'+
+      '<div style="font-size:34px;text-align:center">📅</div>'+
+      '<h2 style="margin:6px 0 4px;text-align:center;font-size:22px;color:var(--text)">מתי תרצו לבוא לחתימות?</h2>'+
+      (sg.status==='declined'?'<div style="text-align:center;color:#b4302a;font-weight:700;margin-bottom:6px">הבנקאי לא יכול בזמן שביקשת. אפשר לבחור זמן אחר.</div>':'')+
+      '<div class="sub" style="text-align:center;margin-bottom:14px">בחרו תאריך ושעה שנוחים לכם. אבדוק מול הבנקאי אם זה אפשרי ואחזור אליכם.</div>'+
+      '<label style="font-size:14px;color:var(--muted)">תאריך</label><input id="sgD" type="date" min="'+min+'" style="width:100%;padding:11px;border:1px solid var(--border);border-radius:10px;font-size:17px;font-family:inherit;margin:2px 0 10px">'+
+      '<label style="font-size:14px;color:var(--muted)">שעה</label><input id="sgT" type="time" value="10:00" style="width:100%;padding:11px;border:1px solid var(--border);border-radius:10px;font-size:17px;font-family:inherit;margin:2px 0 14px">'+
+      '<button class="send" style="width:100%" onclick="sigSend()">שלח ליועץ</button>'+
+      '<div style="text-align:center;margin-top:10px"><button class="link" onclick="sigClose()">אחר כך</button></div></div>';
+    document.body.appendChild(o);
+  }
+}
+function sigOpen(){SIG.dismiss=false;sigDraw();}
+function sigClose(){SIG.dismiss=true;var m=document.getElementById('sigModal');if(m)m.remove();}
+async function sigSend(){
+  if(SIG.busy)return;
+  var dv=(document.getElementById('sgD')||{}).value||'',tv=(document.getElementById('sgT')||{}).value||'';
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dv)||!/^\d{2}:\d{2}$/.test(tv)){alert('נא לבחור תאריך ושעה.');return;}
+  var p=dv.split('-'),when=new Date(+p[0],+p[1]-1,+p[2],+tv.slice(0,2),+tv.slice(3));
+  if(when<new Date()){alert('נא לבחור מועד עתידי.');return;}
+  SIG.busy=true;
+  try{
+    var key=S.data.sig.key,r=await rpc('portal_set_input',{p_token:TOKEN,p_key:key,p_val:dv+' '+tv});
+    if(r&&typeof r==='object'&&r[key]!==undefined)S.sent=r;else throw new Error('x');
+    var m=document.getElementById('sigModal');if(m)m.remove();
+    render();
+    try{if(S.data.sig.hook)fetch(S.data.sig.hook,{method:'POST',mode:'no-cors',body:JSON.stringify({a:'sigtime',token:TOKEN})});}catch(e){}
+  }catch(e){alert('השליחה לא נשמרה. נסה שוב.');}
+  SIG.busy=false;
+}
+</script>
 </body>
 </html>
