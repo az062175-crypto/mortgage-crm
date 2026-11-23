@@ -13762,18 +13762,21 @@ async function _idGeminiRead(canvases, key) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.9).split(',')[1] } });
     c.width = c.height = 0;
   });
-  _idGTry = 0;
   var body = JSON.stringify({ contents: [{ parts: parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } });
-  var res = null, models = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-  try { var ml = await (await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=' + encodeURIComponent(key))).json(); // models this key can really use
-    var avail = (ml.models || []).filter(function (m) { return (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0 && /flash/.test(m.name) && !/lite|image|tts|live|thinking|exp|preview/.test(m.name); }).map(function (m) { return m.name.replace('models/', ''); });
-    avail.sort().reverse(); models = avail.concat(models, ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite']); } catch (e0) {}
-  for (var mi = 0; mi < 12; mi++) {
-    if (mi >= models.length) { if (mi === models.length && res && res.status >= 500) await new Promise(function (ok) { setTimeout(ok, 2500); }); mi = 0; models = models.slice(0, 4); if (++_idGTry > 2) break; }
-    res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + models[mi] + ':generateContent?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body });
-    if (res.ok || (res.status !== 404 && res.status !== 400 && res.status !== 429 && res.status < 500)) break;
+  var tfetch = function (url, opt, ms) {
+    var ac = new AbortController(), t = setTimeout(function () { ac.abort(); }, ms); opt = opt || {}; opt.signal = ac.signal;
+    return fetch(url, opt).finally(function () { clearTimeout(t); });
+  };
+  var models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-2.5-flash-lite'];
+  var res = null, lastErr = '';
+  for (var mi = 0; mi < models.length; mi++) {
+    try {
+      res = await tfetch('https://generativelanguage.googleapis.com/v1beta/models/' + models[mi] + ':generateContent?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body }, 25000);
+      if (res.ok) break;
+      lastErr = String(res.status);
+    } catch (e1) { lastErr = 'timeout'; res = null; }
   }
-  if (!res.ok) throw new Error('Gemini ' + res.status + (res.status >= 500 ? ' - השרת של גוגל עמוס כרגע. נסי שוב בעוד רגע' : res.status === 429 ? ' - מכסה חינמית מלאה או שהפרויקט ללא מכסה. נסי שוב בעוד דקה, או צרי מפתח בפרויקט חדש' : ''));
+  if (!res || !res.ok) throw new Error('Gemini ' + lastErr + ' - ' + (lastErr === '429' ? 'המכסה החינמית מלאה, נסי בעוד דקה' : 'השרת של גוגל עמוס או לא מגיב, נסי שוב בעוד רגע'));
   var j = await res.json(), txt = (((j.candidates || [])[0] || {}).content || {}).parts;
   txt = txt && txt[0] && txt[0].text || '';
   var d = JSON.parse(txt.replace(/^```json|```$/g, ''));
