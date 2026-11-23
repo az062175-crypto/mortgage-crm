@@ -11128,11 +11128,174 @@ function openPrepDialog(cid) {
     '</div>';
   document.body.appendChild(ov);
 }
+/* ---------- הכן הגשה לבנק: כל נתוני הלקוח בשורות עם העתקה ---------- */
 function openBankSubmission(cid) {
   var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
-  var ov = document.createElement('div'); ov.className = 'modal-overlay'; ov.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center';
-  ov.innerHTML = '<div class="modal" style="background:#fff;border-radius:14px;padding:24px;max-width:420px;width:92%;direction:rtl"><h2 class="modal-title">🏦 הכן הגשה לבנק — ' + escapeHtml(c.name || '') + '</h2><p style="color:#64748b">העמוד הזה עדיין ריק. התוכן יתווסף בהמשך.</p><div style="text-align:left"><button class="btn" onclick="this.closest(\'.modal-overlay\').remove()">סגור</button></div></div>';
-  document.body.appendChild(ov);
+  var banker = c.bankerId ? state.settings.bankers.find(function (b) { return b.id === c.bankerId; }) : null;
+  var fd = function (v) { if (!v) return ''; var m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[3] + '/' + m[2] + '/' + m[1]; m = String(v).match(/^(\d{4})-(\d{2})$/); return m ? m[2] + '/' + m[1] : String(v); };
+  var num = function (v) { var n = Number(v); return (v === '' || v == null || isNaN(n) || n === 0) ? '' : String(Math.round(n * 100) / 100); };
+  var money = function (v) { var n = Number(v); return (isNaN(n) || !n) ? '' : fmtMoney(n); };
+  var R = function (label, show, copy) { return { l: label, v: show == null ? '' : String(show), c: copy == null ? (show == null ? '' : String(show)) : String(copy) }; };
+  var H = function (t) { return { h: t }; };
+  var M = function (label, v) { return R(label, money(v), num(v)); };
+  var sections = [];
+
+  /* 1. פרטים אישיים */
+  var pers = [];
+  var person = function (title, b) {
+    pers.push(H(title));
+    pers.push(R('שם', b.name || ''));
+    pers.push(R('ת"ז', b.idNumber || ''));
+    pers.push(R('תאריך לידה', fd(b.dob)));
+    pers.push(R('תאריך הנפקת ת"ז', fd(b.idIssueDate)));
+    pers.push(R('נייד', b.phone || ''));
+    pers.push(R('מייל', b.email || ''));
+    pers.push(R('סוג העסקה', (b.employmentTypes || [b.employmentType].filter(Boolean)).join(', ')));
+    pers.push(R('מקום עבודה', Array.isArray(b.employers) ? b.employers.join(', ') : (b.employers || '')));
+    var banks = (Array.isArray(b.bankAccounts) ? b.bankAccounts : []).map(function (x) { return (x && x.bank || '').toString().trim(); }).filter(Boolean);
+    pers.push(R('בנקים', banks.join(', ')));
+  };
+  (c.borrowers || []).forEach(function (b, i) { person('לווה ' + (i + 1) + (b.name ? ' — ' + b.name : ''), b); });
+  (c.guarantors || []).forEach(function (g, i) { person('ערב ' + (i + 1) + (g.name ? ' — ' + g.name : ''), g); });
+  sections.push({ t: '👤 פרטים אישיים', rows: pers });
+
+  /* 2. הכנסות והתחייבויות */
+  var inc = [];
+  var jobs = function (people, roleFn) {
+    people.forEach(function (p, pi) {
+      var rows = [];
+      (Array.isArray(p.jobIncomes) ? p.jobIncomes : []).forEach(function (j) {
+        var months = Array.isArray(j.months) ? j.months.filter(function (m) { return m.amount > 0; }) : [];
+        if (!months.length) return;
+        var monthly;
+        if (_isYearlyType(j.type)) {
+          var sa = 0, sd = 0;
+          months.forEach(function (m) { if (m.inAvg !== false) { sa += Number(m.amount || 0); sd += Math.max(1, Number(m.mDiv) || 12); } });
+          monthly = sd > 0 ? Math.round(sa / sd) : 0;
+        } else { monthly = Math.round(months.reduce(function (t, m) { return t + Number(m.amount || 0); }, 0) / months.length); }
+        if (monthly > 0) rows.push(M((j.type || 'הכנסה') + (j.employer ? ' · ' + j.employer : '') + ' (חודשי)', monthly));
+      });
+      if (rows.length) { inc.push(H(roleFn(p, pi))); rows.forEach(function (r) { inc.push(r); }); }
+    });
+  };
+  jobs(c.borrowers || [], function (b, i) { return 'הכנסות לווה ' + (i + 1) + (b.name ? ' — ' + b.name : ''); });
+  jobs(c.guarantors || [], function (g, i) { return 'הכנסות ערב ' + (i + 1) + (g.name ? ' — ' + g.name : ''); });
+  var gFull = getGuarantorsIncomeMonthly(c);
+  inc.push(H('סיכום הכנסות'));
+  inc.push(M('סה"כ הכנסת לווים', getBorrowersIncomeMonthly(c)));
+  if (gFull) { inc.push(M('סה"כ הכנסת ערבים (100%)', gFull)); inc.push(M('הכנסת ערבים לחישוב (50%)', Math.round(gFull * GUARANTOR_INCOME_WEIGHT))); }
+  inc.push(M('סה"כ הכנסה חודשית לחישוב', getMonthlyIncomeGross(c)));
+  var obs = Array.isArray(c.obligations) ? c.obligations : [];
+  if (obs.length) {
+    inc.push(H('התחייבויות והלוואות קיימות'));
+    obs.forEach(function (o) {
+      var own = (o.owner === undefined || o.owner === null || o.owner === '') ? 'כללי' : (_ownerLabelFromId(c, o.owner) || '');
+      var nm = (o.label || 'הלוואה') + (own ? ' (' + own + ')' : '');
+      if (o.balance) inc.push(M(nm + ' · יתרת חוב', o.balance));
+      if (o.monthly) inc.push(M(nm + ' · החזר חודשי', o.monthly));
+      if (o.endDate) inc.push(R(nm + ' · תאריך סיום', fd(o.endDate)));
+    });
+    var cl = classifyObligations(c);
+    inc.push(M('סה"כ החזרים חודשיים הנכללים ביחס', cl.inRatio.reduce(function (t, o) { return t + (Number(o.monthly) || 0); }, 0)));
+  }
+  sections.push({ t: '💰 הכנסות והתחייבויות', rows: inc });
+
+  /* 3. סוג עסקה */
+  var purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
+  var deal = [H('פרטי העסקה')];
+  deal.push(R('מטרת ההלוואה', purposes.join(', ')));
+  deal.push(R('עיר', c.propertyCity || ''));
+  deal.push(R('רחוב ומספר', c.propertyAddress || ''));
+  deal.push(R('בניין', c.propertyBuilding || ''));
+  deal.push(R('דירה', c.propertyApartment || ''));
+  deal.push(R('גוש', c.propertyGush || ''));
+  deal.push(R('חלקה', c.propertyHelka || ''));
+  deal.push(R('תת חלקה', c.propertyTatHelka || ''));
+  deal.push(M('מחיר חוזה', c.propertyValue));
+  deal.push(M('שווי שמאי', c.appraiserValue));
+  deal.push(M('שווי הנכס לחישוב', ltvDenom(c)));
+  deal.push(M('סכום הלוואה מבוקש', c.loanAmount));
+  var fp = financingPct(c); deal.push(R('אחוז מימון', fp !== null && fp !== undefined ? fp + '%' : '', fp !== null && fp !== undefined ? fp : ''));
+  deal.push(R('סוג דירה', APARTMENT_LABEL[c.apartmentType] || ''));
+  deal.push(R('סוג רישום', (REGISTRATION_DOCS[c.registrationType] || {}).label || ''));
+  deal.push(R('תאריך יעד', fd(c.targetDate)));
+  deal.push(R('תאריך חתימת חוזה', fd(c.contractSignDate)));
+  deal.push(R('תאריך תשלום', fd(c.contractPaymentDate)));
+  if (banker) deal.push(R('בנקאי מטפל', [banker.name, banker.bank, banker.branch ? 'סניף ' + banker.branch : ''].filter(Boolean).join(' · ')));
+  var dd = c.dealDetails || {};
+  var add = function (k, v) { if (v) deal.push(R(k, v)); };
+  var contact = function (nm, ph, em) { return [nm, ph, em].filter(Boolean).join(' · '); };
+  if (dd.secondHand) {
+    var sh = dd.secondHand;
+    var sellers = Array.isArray(sh.sellers) && sh.sellers.length ? sh.sellers : [{ name: sh.sellerName, phone: sh.sellerPhone, email: sh.sellerEmail }];
+    deal.push(H('יד שנייה — צדדים'));
+    sellers.forEach(function (x, i) { add('מוכר ' + (i + 1), contact(x.name, x.phone, x.email)); });
+    add('עו"ד קונה', contact(sh.buyerLawyer, sh.buyerLawyerPhone, sh.buyerLawyerEmail));
+    add('עו"ד מוכר', contact(sh.sellerLawyer, sh.sellerLawyerPhone, sh.sellerLawyerEmail));
+  }
+  [['firstHand', 'יד ראשונה — צדדים'], ['mchirLm', 'מחיר למשתכן — צדדים']].forEach(function (k) {
+    var f = dd[k[0]]; if (!f) return;
+    deal.push(H(k[1]));
+    add('קבלן', contact(f.contractor, f.contractorPhone, ''));
+    add('עו"ד קונה', contact(f.buyerLawyer, f.buyerLawyerPhone, f.buyerLawyerEmail));
+    add('עו"ד קבלן', contact(f.contractorLawyer, f.contractorLawyerPhone, f.contractorLawyerEmail));
+  });
+  var tracks = c.loanComposition && c.loanComposition.tracks ? c.loanComposition.tracks : {};
+  var filled = LOAN_TRACKS.filter(function (tr) { return tracks[tr.id] && Number(tracks[tr.id].amount) > 0; });
+  if (filled.length) {
+    var ta = 0, tm = 0;
+    filled.forEach(function (tr) {
+      var d = tracks[tr.id], m = calcMonthlyPayment(Number(d.amount) || 0, Number(d.rate) || 0, Number(d.years) || 0);
+      ta += Number(d.amount) || 0; tm += m;
+      deal.push(H('מסלול: ' + tr.label));
+      deal.push(M('סכום', d.amount));
+      deal.push(R('שנים', d.years || '', d.years || ''));
+      deal.push(R('ריבית', d.rate ? d.rate + '%' : '', d.rate || ''));
+      deal.push(M('החזר חודשי', Math.round(m)));
+    });
+    deal.push(H('סיכום הרכב ההלוואה'));
+    deal.push(M('סה"כ סכום מסלולים', Math.round(ta)));
+    deal.push(M('סה"כ החזר חודשי', Math.round(tm)));
+  }
+  if (c.notes && c.notes.trim()) { deal.push(H('הערות')); deal.push(R('הערות', c.notes.trim())); }
+  sections.push({ t: '🏠 סוג עסקה', rows: deal });
+
+  var render = function (data) {
+    var body = document.getElementById('app');
+    var cp = function (txt, btn) {
+      var done = function () { var o = btn.textContent; btn.textContent = '✓'; btn.classList.add('ok'); setTimeout(function () { btn.textContent = o; btn.classList.remove('ok'); }, 900); };
+      var fb = function () { var t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); done(); } catch (e) { } t.remove(); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, fb); else fb();
+    };
+    data.sections.forEach(function (sec) {
+      var box = document.createElement('div'); box.className = 'sec';
+      var h = document.createElement('h2'); h.textContent = sec.t; box.appendChild(h);
+      sec.rows.forEach(function (r) {
+        var d = document.createElement('div');
+        if (r.h) { d.className = 'sub'; d.textContent = r.h; box.appendChild(d); return; }
+        d.className = 'row' + (r.c ? '' : ' empty');
+        var l = document.createElement('span'); l.className = 'l'; l.textContent = r.l;
+        var v = document.createElement('span'); v.className = 'v'; v.textContent = r.v || '—';
+        d.appendChild(l); d.appendChild(v);
+        if (r.c) { var b = document.createElement('button'); b.textContent = '📋'; b.title = 'העתק'; b.onclick = function () { cp(r.c, b); }; d.appendChild(b); }
+        box.appendChild(d);
+      });
+      body.appendChild(box);
+    });
+  };
+  var css = 'body{font-family:"Segoe UI",Arial,sans-serif;background:#f1f5f9;margin:0;padding:20px;color:#0f172a;direction:rtl}' +
+    '.wrap{max-width:760px;margin:0 auto}h1{margin:0 0 4px;color:#9a3412;font-size:22px}.subt{color:#64748b;font-size:13px;margin-bottom:16px}' +
+    '.sec{background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:6px 16px 12px;margin-bottom:18px}.sec h2{font-size:17px;color:#1e40af;border-bottom:2px solid #e2e8f0;padding:10px 0 8px;margin:0 0 4px}' +
+    '.sub{background:#eff6ff;color:#1e40af;font-weight:700;font-size:13px;padding:6px 10px;border-radius:8px;margin:12px 0 2px}' +
+    '.row{display:flex;align-items:center;gap:10px;padding:6px 4px;border-bottom:1px solid #f1f5f9}.row:hover{background:#fafaf9}' +
+    '.l{width:230px;flex:none;color:#64748b;font-size:13px}.v{flex:1;font-size:15px;font-weight:600;word-break:break-word;white-space:pre-wrap}.empty .v{color:#cbd5e1;font-weight:400}' +
+    'button{flex:none;border:1px solid #cbd5e1;background:#f8fafc;border-radius:8px;width:36px;height:30px;cursor:pointer;font-size:15px}button:hover{background:#e0e7ff;border-color:#818cf8}button.ok{background:#16a34a;color:#fff;border-color:#16a34a}' +
+    '@media(max-width:560px){.l{width:110px}}';
+  var json = JSON.stringify({ sections: sections }).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  var html = '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>הגשה לבנק — ' + escapeHtml(c.name || '') + '</title><style>' + css + '</style></head><body><div class="wrap"><h1>🏦 הגשה לבנק — ' + escapeHtml(c.name || '') + '</h1><div class="subt">לחיצה על 📋 בסוף שורה מעתיקה את הערך. סכומים מועתקים כמספר נקי.</div><div id="app"></div></div><script>(' + render.toString() + ')(' + json + ');<\/script></body></html>';
+  var w = window.open('', '_blank');
+  if (!w) { alert('הדפדפן חסם את פתיחת הלשונית. אשר חלונות קופצים לאתר ונסה שוב.'); return; }
+  w.document.write(html); w.document.close();
 }
 function openBankLetter(clientId) {
   const c = state.clients.find(x => x.id === clientId);
