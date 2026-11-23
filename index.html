@@ -13490,7 +13490,7 @@ function _idParse(main, digits, words) {
 }
 // Several readings (page × image treatment) → one result: names by OCR confidence, ID and dates by vote.
 function _idMerge(list) {
-  var out = { firstName: '', familyName: '', idNumber: '', dob: '', issueDate: '', _unsure: {} };
+  var out = { firstName: '', familyName: '', idNumber: '', dob: '', issueDate: '', _unsure: {}, _chunks: list };
   var desc = function (m) { return function (a, b) { return m[b] - m[a]; }; };
   ['firstName', 'familyName'].forEach(function (k) {
     var best = null;
@@ -13519,7 +13519,7 @@ function _idMerge(list) {
 // watermark and hologram of ID cards; mode 'gray' = upscale only. Big pages are shrunk to keep OCR fast.
 function _idOcrVariant(cv, mode) {
   var longest = Math.max(cv.width, cv.height);
-  var k = longest < 2400 ? Math.min(6, 2400 / longest) : (longest > 2800 ? 2800 / longest : 1);
+  var k = longest < 1700 ? Math.min(5, 1700 / longest) : (longest > 2000 ? 2000 / longest : 1);
   var out = document.createElement('canvas');
   out.width = Math.max(1, Math.round(cv.width * k)); out.height = Math.max(1, Math.round(cv.height * k));
   var ctx = out.getContext('2d');
@@ -13759,8 +13759,8 @@ async function idScanRead(n) {
     _idScanMsg(n, '⏳ טוען מנוע קריאה (בפעם הראשונה לוקח עד דקה, אחר כך מהיר)…');
     await _idLoadTesseract();
     var logger = function (m) { if (m && m.status && typeof m.progress === 'number') _idScanMsg(n, '⏳ ' + escapeHtml(m.status) + ' ' + Math.round(m.progress * 100) + '%'); };
-    w1 = await Tesseract.createWorker('heb+eng', 1, { logger: logger });
-    w2 = await Tesseract.createWorker('eng', 1, {});
+    var ws = await Promise.all([Tesseract.createWorker('heb+eng', 1, { logger: logger }), Tesseract.createWorker('eng', 1, {})]);
+    w1 = ws[0]; w2 = ws[1];
     await w2.setParameters({ tessedit_char_whitelist: '0123456789. ', tessedit_pageseg_mode: '6' });
     var readAll = async function (pages, label, modes) {
       var chunks = [];
@@ -13768,7 +13768,7 @@ async function idScanRead(n) {
         for (var mi = 0; mi < modes.length; mi++) {
           _idScanMsg(n, '⏳ ' + label + ' — עמוד/תמונה ' + (i + 1) + ' מתוך ' + pages.length + (modes.length > 1 ? ' (שיטה ' + (mi + 1) + ')' : '') + '…');
           var src = _idOcrVariant(pages[i], modes[mi]);
-          var a = (await w1.recognize(src)).data, b = (await w2.recognize(src)).data;
+          var ab = await Promise.all([w1.recognize(src), w2.recognize(src)]), a = ab[0].data, b = ab[1].data;
           chunks.push(_idParse(a.text, b.text, a.words));
           src.width = src.height = 0;
         }
@@ -13782,13 +13782,18 @@ async function idScanRead(n) {
       return (_idChecksumOk(f.idNumber) ? 2 : 0) + (f.dob ? (u.dob ? 1 : 2) : 0) + (f.issueDate ? (u.issueDate ? 1 : 2) : 0)
         + (f.firstName ? (u.firstName ? 0.5 : 1) : 0) + (f.familyName ? (u.familyName ? 0.5 : 1) : 0);
     };
-    var best = { found: await readAll(canvases, 'קורא', ['gray', 'bin']), pages: canvases, note: '' };
+    var best = { found: await readAll(canvases, 'קורא', ['bin']), pages: canvases, note: '' };
     best.score = score(best.found);
-    if (best.score < 6) { // maybe the card is upside-down / sideways
+    if (best.score < 7.5) { // second opinion only when the first reading is not clean
+      var f2 = await readAll(canvases, 'בדיקה נוספת', ['gray']);
+      var both = _idMerge(best.found._chunks.concat(f2._chunks));
+      best.found = score(both) >= score(best.found) ? both : best.found; best.score = score(best.found);
+    }
+    if (best.score < 4) { // maybe the card is upside-down / sideways
       var tries = [[180, 'הפוכה'], [90, 'מסובבת שמאלה'], [270, 'מסובבת ימינה']];
       for (var t = 0; t < tries.length && best.score < 6; t++) {
         var rotated = canvases.map(function (cv) { return _idRotateCanvas(cv, tries[t][0]); });
-        var f3 = await readAll(rotated, 'בודק אם התעודה ' + tries[t][1], ['gray', 'bin']);
+        var f3 = await readAll(rotated, 'בודק אם התעודה ' + tries[t][1], ['bin']);
         if (score(f3) > best.score) {
           if (best.pages !== canvases) best.pages.forEach(function (cv) { cv.width = cv.height = 0; });
           best = { found: f3, pages: rotated, score: score(f3), note: 'התעודה הייתה ' + tries[t][1] + ' — סובבתי אותה אוטומטית (אפשר לסובב ידנית ב"סובב וקרא שוב").' };
