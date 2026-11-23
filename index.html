@@ -13791,8 +13791,16 @@ async function _idGeminiRead(canvases, key) {
   if (Array.isArray(d)) d = d[0] || {};
   var iso = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : ''; };
   var id = String(d.idNumber || '').replace(/\D/g, ''); if (id && id.length < 9) id = id.padStart(9, '0');
+  var idFixed = false;
+  if (id && !_idChecksumOk(id)) { // a dropped/shifted digit is the usual slip: try shifting, then one wrong digit
+    var cand = [], dg = '0123456789';
+    for (var q = 0; q < 10; q++) { if (id.charAt(0) === '0') cand.push(id.slice(1) + dg[q]); cand.push(dg[q] + id.slice(0, 8)); }
+    cand = cand.filter(function (c, i) { return c.length === 9 && _idChecksumOk(c) && cand.indexOf(c) === i; });
+    if (cand.length === 1) { id = cand[0]; idFixed = true; }
+    else { var one = []; for (var pi = 0; pi < 9; pi++) for (var q2 = 0; q2 < 10; q2++) { var c2 = id.slice(0, pi) + dg[q2] + id.slice(pi + 1); if (c2 !== id && _idChecksumOk(c2)) one.push(c2); } if (one.length === 1) { id = one[0]; idFixed = true; } }
+  }
   return { firstName: String(d.firstName || '').trim(), familyName: String(d.familyName || '').trim(), idNumber: id,
-    dob: iso(d.dob), issueDate: iso(d.issueDate), _unsure: { idNumber: !!id && !_idChecksumOk(id) }, _conf: {}, _idw: {}, _idwm: {} };
+    dob: iso(d.dob), issueDate: iso(d.issueDate), _unsure: { idNumber: !!id && (idFixed || !_idChecksumOk(id)) }, _conf: {}, _idw: {}, _idwm: {} };
 }
 async function idScanRead(n) {
   var canvases = _idPending[n];
