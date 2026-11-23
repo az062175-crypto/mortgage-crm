@@ -620,7 +620,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-22 #AW</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-23 #AX</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -19560,9 +19560,15 @@ async function bkDirReady(ask) {
   } catch (e) { return null; }
 }
 
+// Phones/tablets: no automatic daily backup (it downloads a file on every open there). A manual backup still works.
+function _bkIsMobile() {
+  try { return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (matchMedia('(pointer:coarse)').matches && innerWidth < 1024); } catch (e) { return false; }
+}
+
 async function bkRun(force) {
   try {
     if (!state || !Array.isArray(state.clients) || !state.clients.length) return;
+    if (!force && _bkIsMobile()) return;
     const today = _bkStamp();
     let last = ''; try { last = localStorage.getItem('mortgage_crm_lastDailyBackup') || ''; } catch (e) {}
     if (!force && last === today) return;
@@ -19696,7 +19702,7 @@ function bkPanelHtml() {
     <div class="panel" style="margin-bottom:14px">
       <h2 class="panel-title">💾 גיבוי יומי אוטומטי</h2>
       <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:10px">
-        פעם ביום, כשהמערכת פתוחה, נשמר לבד קובץ גיבוי מלא של כל הנתונים. בלי לחיצה.<br>
+        פעם ביום, כשהמערכת פתוחה במחשב, נשמר לבד קובץ גיבוי מלא של כל הנתונים. בלי לחיצה. (בטלפון ובטאבלט אין גיבוי אוטומטי.)<br>
         בחר תיקיית גיבוי פעם אחת (מומלץ תיקייה ב-Google Drive). בלי תיקייה, הקובץ יורד לתיקיית ההורדות.
       </div>
       <div id="bkStatus" style="font-size:13px;margin-bottom:10px"></div>
