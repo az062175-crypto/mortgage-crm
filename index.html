@@ -11145,7 +11145,7 @@ function openOrdersDialog(cid) {
     '<div style="display:flex;align-items:center"><h2 style="margin:0;flex:1;font-size:18px">📄 מה להזמין? — ' + escapeHtml(c.name || '') + '</h2><button class="btn small secondary" onclick="document.getElementById(\'ordersDialog\').remove()">✕</button></div>' +
     row('orderNesach', '📄', 'הזמן נסח', 'פותח gov.il וממלא את הפרטים אוטומטית') +
     row('orderIyunim', '🔍', 'הזמן עיונים', 'הזמנת עיון בתיק') +
-    row('orderTashrit', '🏢', 'הזמן תשריט בית משותף', 'הזמנת תשריט בית משותף') +
+    row('orderTashrit', '🏢', 'הזמן תשריט בית משותף', 'פותח את אתר הזמנת מסמכי בתים משותפים וממלא גוש וחלקה') +
     '</div>';
   document.body.appendChild(ov);
 }
@@ -11158,7 +11158,22 @@ function _orderPending(cid, what) {
   alert('הזמנת ' + what + ' עדיין לא מחוברת לאתר ההזמנות.\nגוש ' + c.propertyGush + ' · חלקה ' + c.propertyHelka + (c.propertyTatHelka ? ' · תת חלקה ' + c.propertyTatHelka : ''));
 }
 function orderIyunim(cid) { _orderPending(cid, 'עיונים'); }
-function orderTashrit(cid) { _orderPending(cid, 'תשריט בית משותף'); }
+function orderTashrit(cid) {
+  const c = state.clients.find(x => x.id === cid); if (!c) return;
+  const missing = [];
+  if (!c.propertyGush) missing.push('גוש');
+  if (!c.propertyHelka) missing.push('חלקה');
+  if (missing.length) { alert('חסרים נתונים ללקוח: ' + missing.join(', ') + '.\nערוך את הלקוח והוסף את הפרטים.'); return; }
+  _nefakhExtensionReady = false;
+  window.postMessage({ type: 'NEFAKH_HELPER_PING' }, '*');
+  setTimeout(() => {
+    if (!_nefakhExtensionReady) {
+      if (confirm('תוסף Chrome "CRM Nefakh Helper" לא מותקן או שצריך לרענן אותו (גרסה 1.3.0).\n\nלהציג הוראות?')) _showNefakhInstallInstructions();
+      return;
+    }
+    window.postMessage({ type: 'ORDER_TASHRIT', payload: { clientId: c.id, clientName: c.name, gush: c.propertyGush || '', helka: c.propertyHelka || '', customerName: c.name, customerEmail: 'a035591712@gmail.com' } }, '*');
+  }, 500);
+}
 /* ---------- הכן הגשה לבנק: כל נתוני הלקוח בשורות עם העתקה ---------- */
 function openBankSubmission(cid) {
   var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
