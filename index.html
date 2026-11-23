@@ -2081,6 +2081,7 @@ function newClient(data) {
     employmentType: data.employmentType || borrowers[0].employmentType || 'שכיר',
     incomeTypes: data.incomeTypes || borrowers[0].incomeTypes || [],
     bankerId: data.bankerId || '',
+    bankerId2: data.bankerId2 || '',
     sourceCategory: data.sourceCategory || '',
     sourceNotes: data.sourceNotes || '',
     propertyValue: data.propertyValue || 0,
@@ -4107,7 +4108,7 @@ function _dashFilteredClients() {
       const purposes = (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []);
       if (!purposes.includes(dashFilter.dealType)) return false;
     }
-    if (dashFilter.bankerId && c.bankerId !== dashFilter.bankerId) return false;
+    if (dashFilter.bankerId && c.bankerId !== dashFilter.bankerId && c.bankerId2 !== dashFilter.bankerId) return false;
     if (dashFilter.appraiserId && !((c.sentToAppraiserIds||[]).includes(dashFilter.appraiserId))) return false;
     return true;
   });
@@ -4883,7 +4884,7 @@ function renderClientsList() {
     // Empty array = all stages (default). Otherwise only include if client's stage is in the list.
     if (stagesFilter.length > 0 && !stagesFilter.includes(c.stage)) return false;
     if (bankerFilter === '__none__') { if (c.bankerId) return false; }
-    else if (bankerFilter && c.bankerId !== bankerFilter) return false;
+    else if (bankerFilter && c.bankerId !== bankerFilter && c.bankerId2 !== bankerFilter) return false;
     if (reqFilter === 'missing') {
       const pending = c.requirements.filter(r => r.status === 'pending').length;
       if (pending === 0) return false;
@@ -5685,6 +5686,7 @@ function renderClientDetail() {
             <span class="badge">${escapeHtml(c.purpose||'לא הוגדר')}</span>
             <span class="badge">${escapeHtml(c.employmentType)}</span>
             ${banker ? `<span class="badge" style="background:#dcfce7;color:#166534">🏦 ${escapeHtml(banker.name)}${banker.bank?' · '+escapeHtml(banker.bank):''}</span>` : ''}
+            ${(() => { const b2 = c.bankerId2 ? state.settings.bankers.find(b => b.id === c.bankerId2) : null; return b2 ? `<span class="badge" style="background:#fef9c3;color:#854d0e" title="בנקאי שני במקביל">🏦 ${escapeHtml(b2.name)}${b2.bank?' · '+escapeHtml(b2.bank):''}</span>` : ''; })()}
             <label class="badge" style="cursor:pointer;background:${c.requiresAppraisal?'#ccfbf1':'#f1f5f9'};color:${c.requiresAppraisal?'#0f766e':'var(--muted)'}">
               <input type="checkbox" ${c.requiresAppraisal?'checked':''} onchange="toggleAppraisal('${c.id}')" style="margin-inline-end:4px"> דורש שמאות
             </label>
@@ -9235,12 +9237,12 @@ function approvedRegEditManually() {
 
 function openBankerUpdateThenAdvance(clientId) {
   const c = state.clients.find(x => x.id === clientId);
-  const preSelectedId = (c.submittedToBankerIds && c.submittedToBankerIds[0]) || c.bankerId || '';
+  const preSelectedId = (c.bankerId2 ? '' : ((c.submittedToBankerIds && c.submittedToBankerIds[0]) || c.bankerId || ''));
   showModal(`
     <h2 class="modal-title">בנקאי מטפל</h2>
     <p style="color:var(--muted);font-size:13px;margin:0 0 10px">עדכן את הבנקאי שאישר את התיק. לאחר האישור — הלקוח יעבור לשלב "בטחונות בנק".</p>
     <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmApprovingBanker('${clientId}');}">
-      ${state.settings.bankers.map(b => `
+      ${state.settings.bankers.filter(b => !(c.bankerId && c.bankerId2) || b.id === c.bankerId || b.id === c.bankerId2).map(b => `
         <label style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background=''">
           <input type="radio" name="approvingBanker" value="${b.id}" ${b.id===preSelectedId?'checked':''} style="accent-color:var(--accent)" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmApprovingBanker('${clientId}');}">
           <span><strong>${escapeHtml(b.name)}</strong> · ${escapeHtml(b.bank||'')}${b.branch?' · '+escapeHtml(b.branch):''}</span>
@@ -9264,6 +9266,7 @@ function confirmApprovingBanker(clientId) {
   if (!bankerId) { alert('בחר בנקאי'); return; }
   const c = state.clients.find(x => x.id === clientId);
   c.bankerId = bankerId;
+  c.bankerId2 = ''; // אחרי אישור נשאר רק הבנקאי שאישר
   // Also record in the most recent approval
   if (c.approvals && c.approvals.length) {
     const b = state.settings.bankers.find(x => x.id === bankerId);
@@ -13007,6 +13010,11 @@ function openNewClientModal(editClient, warningMessage) {
           <option value="">— ללא —</option>
           ${state.settings.bankers.map(b => `<option value="${b.id}">${escapeHtml(b.name)}${b.bank?' · '+escapeHtml(b.bank):''}${b.branch?' · '+escapeHtml(b.branch):''}</option>`).join('')}
         </select>
+        <label style="margin-top:8px">בנקאי שני במקביל (אופציונלי)</label>
+        <select id="fBanker2">
+          <option value="">— ללא —</option>
+          ${state.settings.bankers.map(b => `<option value="${b.id}">${escapeHtml(b.name)}${b.bank?' · '+escapeHtml(b.bank):''}${b.branch?' · '+escapeHtml(b.branch):''}</option>`).join('')}
+        </select>
       </div>
       <div class="form-group">
         <label>הערות</label>
@@ -13180,6 +13188,7 @@ function openNewClientModal(editClient, warningMessage) {
     }
     if (document.getElementById('fRegistrationType')) document.getElementById('fRegistrationType').value = c.registrationType || '';
     document.getElementById('fBanker').value = c.bankerId || '';
+    if (document.getElementById('fBanker2')) document.getElementById('fBanker2').value = c.bankerId2 || '';
     if (document.getElementById('fSourceCategory')) document.getElementById('fSourceCategory').value = c.sourceCategory || '';
     if (document.getElementById('fSourceNotes')) document.getElementById('fSourceNotes').value = c.sourceNotes || '';
     document.getElementById('fNotes').value = c.notes || '';
@@ -15431,6 +15440,7 @@ function submitNewClient() {
     purpose: purpose,
     purposes: purposes,
     bankerId: document.getElementById('fBanker').value,
+    bankerId2: (document.getElementById('fBanker2') && document.getElementById('fBanker2').value !== document.getElementById('fBanker').value) ? document.getElementById('fBanker2').value : '',
     sourceCategory: (document.getElementById('fSourceCategory')?.value || '').trim(),
     sourceNotes: (document.getElementById('fSourceNotes')?.value || '').trim(),
     propertyValue: propVal,
@@ -15742,6 +15752,14 @@ function openEditModalOLD(id) {
         ${state.settings.bankers.map(b => `<option value="${b.id}" ${b.id===c.bankerId?'selected':''}>${escapeHtml(b.name)}${b.bank?' · '+escapeHtml(b.bank):''}${b.branch?' · סניף '+escapeHtml(b.branch):''}</option>`).join('')}
       </select>
     </div>
+    <div class="form-group">
+      <label>בנקאי שני במקביל (אופציונלי)</label>
+      <select id="fBanker2">
+        <option value="">— ללא —</option>
+        ${state.settings.bankers.map(b => `<option value="${b.id}" ${b.id===c.bankerId2?'selected':''}>${escapeHtml(b.name)}${b.bank?' · '+escapeHtml(b.bank):''}${b.branch?' · סניף '+escapeHtml(b.branch):''}</option>`).join('')}
+      </select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">כשהתיק יאושר אצל אחד מהם, יישאר רק הבנקאי שאישר.</div>
+    </div>
     <div class="modal-actions">
       <button class="btn" onclick="submitEditClient('${id}')">שמור</button>
       <button class="btn secondary" onclick="closeModal()">ביטול</button>
@@ -15764,6 +15782,7 @@ function submitEditClient(id) {
   c.employmentType = newEmp;
   c.purpose = newPurpose;
   c.bankerId = document.getElementById('fBanker').value;
+  c.bankerId2 = (document.getElementById('fBanker2') && document.getElementById('fBanker2').value !== c.bankerId) ? document.getElementById('fBanker2').value : '';
   c.propertyValue = Number(document.getElementById('fPropVal').value) || 0;
   c.loanAmount = Number(document.getElementById('fLoanAmt').value) || 0;
 
@@ -21807,7 +21826,7 @@ function removeBanker(id) {
   if (!confirm('למחוק את הבנקאי?')) return;
   state.settings.bankers = state.settings.bankers.filter(b => b.id !== id);
   // Clear from clients
-  state.clients.forEach(c => { if (c.bankerId === id) c.bankerId = ''; });
+  state.clients.forEach(c => { if (c.bankerId === id) c.bankerId = ''; if (c.bankerId2 === id) c.bankerId2 = ''; });
   save(); renderSettings();
 }
 
@@ -23210,7 +23229,7 @@ function portalSnapshot(c) {
   var bankIds = (c.submittedToBankerIds && c.submittedToBankerIds.length) ? c.submittedToBankerIds : (c.submittedToBankerId ? [c.submittedToBankerId] : []);
   var subBanks = [];
   // הבנק של הבנקאי המטפל; אם לא הוגדר בנקאי מטפל — לפי מי שסומן ב"הוגש ב:"
-  if (c.bankerId) bankIds = [c.bankerId];
+  if (c.bankerId) bankIds = c.bankerId2 ? [c.bankerId, c.bankerId2] : [c.bankerId];
   bankIds.forEach(function (id) { var b = (state.settings.bankers || []).find(function (x) { return x.id === id; }); if (b && b.bank && subBanks.indexOf(b.bank) < 0) subBanks.push(b.bank); });
   var summary = {
     types: (c.purposes && c.purposes.length) ? c.purposes : (c.purpose ? [c.purpose] : []),
