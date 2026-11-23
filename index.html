@@ -9399,7 +9399,8 @@ function openSignatureMessageDialog(clientId, recipient, channel) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
   const coordTask = (c.tasks || []).find(t => t.stage === 'signature' && t.title === 'תיאום חתימות');
-  const coord = coordTask?.coordination || {};
+  // אם אין עדיין משימת תיאום (התיק בשלב אישור) לוקחים את הזמן שהלקוח ביקש בפורטל
+  const coord = (coordTask?.coordination?.date) ? coordTask.coordination : ((c.sigReq && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(c.sigReq.at || '')) ? { date: c.sigReq.at.slice(0, 10), time: c.sigReq.at.slice(11) } : (coordTask?.coordination || {}));
   const dateStr = coord.date ? new Date(coord.date + 'T00:00:00').toLocaleDateString('he-IL') : '____';
   const timeStr = coord.time || '____';
   const days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
@@ -9491,7 +9492,7 @@ async function sendSignatureMessage(clientId, recipient, channel) {
   const c = state.clients.find(x => x.id === clientId);
   const body = document.getElementById('sigMsgBody').value;
   const coordTask = c.tasks.find(t => t.stage === 'signature' && t.title === 'תיאום חתימות');
-  const coord = coordTask?.coordination || {};
+  const coord = (coordTask?.coordination?.date) ? coordTask.coordination : ((c.sigReq && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(c.sigReq.at || '')) ? { date: c.sigReq.at.slice(0, 10), time: c.sigReq.at.slice(11) } : (coordTask?.coordination || {}));
   // Subject: for banker → "שם לקוח · ת.ז X"; for client → coordination-style
   const firstBorrower = (c.borrowers || [])[0] || {};
   const clientName = firstBorrower.name || c.name || '';
@@ -24199,8 +24200,10 @@ async function sigBankerMail(cid) {
   var v = sigRead();
   var t = sigCoordTask(c);
   if (t && /^\d{4}-\d{2}-\d{2}$/.test(v.date) && /^\d{2}:\d{2}$/.test(v.time)) {
-    t.coordination = t.coordination || {}; t.coordination.date = v.date; t.coordination.time = v.time; save();
+    t.coordination = t.coordination || {}; t.coordination.date = v.date; t.coordination.time = v.time;
   }
+  if (c.sigReq && /^\d{4}-\d{2}-\d{2}$/.test(v.date) && /^\d{2}:\d{2}$/.test(v.time)) c.sigReq.at = v.date + ' ' + v.time;
+  save();
   openSignatureMessageDialog(cid, 'banker', 'email');
 }
 async function sigApprove(cid) {
