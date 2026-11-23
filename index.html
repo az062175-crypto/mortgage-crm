@@ -13744,12 +13744,12 @@ function idScanRotate(n, i, deg) {
 }
 // Step 2: OCR on the (possibly rotated) pages.
 // ---- Gemini reader (optional; key kept only in this browser's localStorage) ----
-function _idGeminiKey() { try { return localStorage.getItem('idGeminiKey') || ''; } catch (e) { return ''; } }
+function _idGeminiKey() { try { return (state.settings && state.settings.geminiKey) || localStorage.getItem('idGeminiKey') || ''; } catch (e) { return ''; } }
 function idGeminiSetup(n) {
   var cur = _idGeminiKey();
-  var k = prompt('הדבק מפתח Gemini API (חינם ב-aistudio.google.com/apikey).\nהמפתח נשמר רק בדפדפן הזה. כשיש מפתח, התמונה נשלחת לגוגל לקריאה.\nלהסרה: השאר ריק ואשר.', cur);
+  var k = prompt('הדבק מפתח Gemini API (חינם ב-aistudio.google.com/apikey).\nהמפתח נשמר בהגדרות המערכת שלך (מסונכרן לכל המכשירים). כשיש מפתח, התמונה נשלחת לגוגל לקריאה.\nלהסרה: השאר ריק ואשר.', cur);
   if (k === null) return;
-  try { if (k.trim()) localStorage.setItem('idGeminiKey', k.trim()); else localStorage.removeItem('idGeminiKey'); } catch (e) {}
+  try { state.settings = state.settings || {}; if (k.trim()) state.settings.geminiKey = k.trim(); else delete state.settings.geminiKey; localStorage.removeItem('idGeminiKey'); save(); } catch (e) {}
   _idScanPreview(n);
 }
 async function _idGeminiRead(canvases, key) {
