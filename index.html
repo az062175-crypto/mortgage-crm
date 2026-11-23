@@ -13744,6 +13744,7 @@ function idScanRotate(n, i, deg) {
 }
 // Step 2: OCR on the (possibly rotated) pages.
 // ---- Gemini reader (optional; key kept only in this browser's localStorage) ----
+var _idGeminiOff = false;
 function _idGeminiKey() { try { return (state.settings && state.settings.geminiKey) || localStorage.getItem('idGeminiKey') || ''; } catch (e) { return ''; } }
 function idGeminiSetup(n) {
   var cur = _idGeminiKey();
@@ -13787,14 +13788,17 @@ async function idScanRead(n) {
       _idUndo[n + '_' + ci] = cc; canvases[ci] = cut; delete _idSel[n + '_' + ci];
     }
   }
-  var gkey = _idGeminiKey();
+  var gkey = _idGeminiOff ? '' : _idGeminiKey();
   if (gkey) {
     _idScanMsg(n, '⏳ קורא עם Gemini…');
     try {
       var gf = await _idGeminiRead(canvases, gkey);
       if (gf.idNumber || gf.dob || gf.issueDate || gf.firstName || gf.familyName) { _idScanFound[n] = gf; gf._note = ''; _idScanShow(n); return; }
-    } catch (ge) { _idScanMsg(n, '⚠️ Gemini נכשל (' + escapeHtml(String(ge && ge.message || ge)) + '). עובר לקריאה המקומית…', '#b91c1c'); }
+      _idScanMsg(n, '⚠️ Gemini לא זיהה פרטים בתמונה. נסי לחתוך/לסובב ולקרוא שוב. <a href="#" onclick="_idGeminiOff=true;idScanRead(' + n + ');return false">קריאה מקומית (איטית ופחות מדויקת)</a>', '#b91c1c');
+      return;
+    } catch (ge) { _idScanMsg(n, '⚠️ Gemini נכשל (' + escapeHtml(String(ge && ge.message || ge)) + '). בדקי שהמפתח נכון (🔑 חבר Gemini) ויש אינטרנט. <a href="#" onclick="_idGeminiOff=true;idScanRead(' + n + ');return false">קריאה מקומית (איטית ופחות מדויקת)</a>', '#b91c1c'); return; }
   }
+  _idGeminiOff = false;
   var w1 = null, w2 = null;
   try {
     _idScanMsg(n, '⏳ טוען מנוע קריאה (בפעם הראשונה לוקח עד דקה, אחר כך מהיר)…');
