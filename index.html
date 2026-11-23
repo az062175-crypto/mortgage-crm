@@ -5727,7 +5727,7 @@ function renderClientDetail() {
             <button class="btn secondary small" onclick="refreshClientTasks('${c.id}')" title="רענן משימות אוטומטיות לפי סוג עסקה + רישום נוכחי (לא מוחק משימות שסימנת ✓ או שהוספת ידנית)">🔄 רענן משימות</button>
             <button class="btn secondary small" onclick="openIncomesEditor('${c.id}')" title="ערוך הכנסות חודשיות של הלווים והערבים" style="background:#eef2ff;border-color:#c7d2fe;color:#3730a3">💰 ערוך הכנסות</button>
             <button class="btn secondary small" onclick="openPrepDialog('${c.id}')" title="הכנה לפגישה, מכתב לבנק והגשה לבנק" style="background:#f5f3ff;border-color:#8b5cf6;color:#5b21b6">🗂️ הכנות</button>
-            <button class="btn secondary small" onclick="orderNesach('${c.id}')" title="פותח את gov.il בדפדפן, ממלא את הפרטים אוטומטית, מחכה שתשלם, ומסמן בוצע" style="background:#fef3c7;border-color:#f59e0b;color:#78350f">📄 הזמן נסח</button>
+            <button class="btn secondary small" onclick="openOrdersDialog('${c.id}')" title="הזמנת נסח, עיונים ותשריט בית משותף" style="background:#fef3c7;border-color:#f59e0b;color:#78350f">📄 הזמנות</button>
             <button class="btn danger small" onclick="deleteClient('${c.id}')">מחק</button>
           </div>
           ${(() => {
@@ -11022,6 +11022,7 @@ window.addEventListener('message', (ev) => {
   if (!ev.data) return;
   if (ev.data.type === 'NEFAKH_HELPER_READY' || ev.data.type === 'NEFAKH_HELPER_PONG') {
     _nefakhExtensionReady = true;
+    window._nefakhExtensionVersion = ev.data.version || '';
   }
   if (ev.data.type === 'NEFAKH_HELPER_ACK') {
     // Order was accepted by the extension — gov.il tab will open
@@ -11130,6 +11131,54 @@ function openPrepDialog(cid) {
     row('openBankSubmission', '🏦', 'הכן הגשה לבנק', 'חבילת הגשה לבנק', '#fff7ed', '#f97316', '#9a3412') +
     '</div>';
   document.body.appendChild(ov);
+}
+function openOrdersDialog(cid) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
+  var old = document.getElementById('ordersDialog'); if (old) old.remove();
+  var ov = document.createElement('div'); ov.id = 'ordersDialog';
+  ov.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center';
+  ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+  var row = function (fn, ico, title, sub) {
+    return '<button onclick="document.getElementById(\'ordersDialog\').remove();' + fn + '(\'' + cid + '\')" style="display:flex;align-items:center;gap:12px;width:100%;text-align:right;padding:14px 16px;margin-top:10px;border-radius:12px;border:1.5px solid #f59e0b;background:#fffbeb;color:#78350f;cursor:pointer;font:inherit">' +
+      '<span style="font-size:26px">' + ico + '</span><span><div style="font-weight:700;font-size:16px">' + title + '</div><div style="font-size:12px;opacity:.8">' + sub + '</div></span></button>';
+  };
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:22px;max-width:420px;width:92%;direction:rtl">' +
+    '<div style="display:flex;align-items:center"><h2 style="margin:0;flex:1;font-size:18px">📄 מה להזמין? — ' + escapeHtml(c.name || '') + '</h2><button class="btn small secondary" onclick="document.getElementById(\'ordersDialog\').remove()">✕</button></div>' +
+    row('orderNesach', '📄', 'הזמן נסח', 'פותח gov.il וממלא את הפרטים אוטומטית') +
+    row('orderIyunim', '🔍', 'הזמן עיונים', 'הזמנת עיון בתיק') +
+    row('orderTashrit', '🏢', 'הזמן תשריט בית משותף', 'פותח את אתר הזמנת מסמכי בתים משותפים וממלא גוש וחלקה') +
+    '</div>';
+  document.body.appendChild(ov);
+}
+function _orderPending(cid, what) {
+  var c = state.clients.find(function (x) { return x.id === cid; }); if (!c) return;
+  var missing = [];
+  if (!c.propertyGush) missing.push('גוש');
+  if (!c.propertyHelka) missing.push('חלקה');
+  if (missing.length) { alert('חסרים נתונים ללקוח: ' + missing.join(', ') + '.\nערוך את הלקוח והוסף את הפרטים.'); return; }
+  alert('הזמנת ' + what + ' עדיין לא מחוברת לאתר ההזמנות.\nגוש ' + c.propertyGush + ' · חלקה ' + c.propertyHelka + (c.propertyTatHelka ? ' · תת חלקה ' + c.propertyTatHelka : ''));
+}
+function orderIyunim(cid) { _orderPending(cid, 'עיונים'); }
+function orderTashrit(cid) {
+  const c = state.clients.find(x => x.id === cid); if (!c) return;
+  const missing = [];
+  if (!c.propertyGush) missing.push('גוש');
+  if (!c.propertyHelka) missing.push('חלקה');
+  if (missing.length) { alert('חסרים נתונים ללקוח: ' + missing.join(', ') + '.\nערוך את הלקוח והוסף את הפרטים.'); return; }
+  _nefakhExtensionReady = false;
+  window.postMessage({ type: 'NEFAKH_HELPER_PING' }, '*');
+  setTimeout(() => {
+    if (!_nefakhExtensionReady) {
+      if (confirm('תוסף Chrome "CRM Nefakh Helper" לא מותקן או שצריך לרענן אותו (גרסה 1.3.0).\n\nלהציג הוראות?')) _showNefakhInstallInstructions();
+      return;
+    }
+    var _v = (window._nefakhExtensionVersion || '0').split('.').map(Number);
+    if (_v[0] < 1 || (_v[0] === 1 && (_v[1] || 0) < 3)) {
+      alert('התוסף שלך ישן (גרסה ' + (window._nefakhExtensionVersion || '?') + ') ולא מכיר הזמנת תשריט.\n\nפתח chrome://extensions, לחץ ⟳ על "CRM Nefakh Helper", ואז רענן את ה-CRM (F5).');
+      return;
+    }
+    window.postMessage({ type: 'ORDER_TASHRIT', payload: { clientId: c.id, clientName: c.name, gush: c.propertyGush || '', helka: c.propertyHelka || '', customerName: c.name, customerEmail: 'a035591712@gmail.com', customerPhone: '0528932640' } }, '*');
+  }, 500);
 }
 /* ---------- הכן הגשה לבנק: כל נתוני הלקוח בשורות עם העתקה ---------- */
 function openBankSubmission(cid) {
@@ -19664,6 +19713,10 @@ function renderGlobalSearchResults() {
   if (!q) { el.innerHTML = '<div class="empty" style="padding:20px">התחל להקליד לחיפוש...</div>'; return; }
   const matches = state.clients.filter(c => {
     const fields = [c.name, c.idNumber, c.phone, c.propertyAddress, c.purpose, (c.purposes||[]).join(' ')];
+    fields.push(c.propertyCity, c.propertyBuilding, c.propertyApartment, c.propertyNotes);
+    if (c.propertyGush) fields.push(c.propertyGush, 'גוש ' + c.propertyGush);
+    if (c.propertyHelka) fields.push(c.propertyHelka, 'חלקה ' + c.propertyHelka, 'גוש ' + (c.propertyGush || '') + ' חלקה ' + c.propertyHelka);
+    if (c.propertyTatHelka) fields.push(c.propertyTatHelka, 'תת חלקה ' + c.propertyTatHelka, 'תת-חלקה ' + c.propertyTatHelka);
     (c.borrowers||[]).forEach(b => fields.push(b.name, b.idNumber, b.phone));
     (c.guarantors||[]).forEach(g => fields.push(g.name, g.idNumber, g.phone));
     const dd = c.dealDetails || {};
