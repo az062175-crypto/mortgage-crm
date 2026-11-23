@@ -12661,7 +12661,9 @@ function openNewClientModal(editClient, warningMessage) {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span style="background:#3b82f6;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px">לווה 1</span>
             <span id="b1Title" style="font-weight:600;font-size:13px;color:#1e3a8a">פרטי הבעל</span>
+            <button type="button" class="btn small secondary" style="margin-inline-start:auto" onclick="idScanPick(1)" title="העלאת תמונת ת&quot;ז — חד-פעמי, התמונה לא נשמרת">📷 מלא מת"ז</button><input type="file" id="idScanFile1" accept="image/*" multiple style="display:none" onchange="idScanRun(1, this)">
           </div>
+          <div id="idScanPanel1"></div>
           <div class="form-row">
             <div class="form-group" style="flex:1"><label>שם משפחה *</label><input id="fFamily1" oninput="_mirrorFamilyNameToSpouse(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fFirst1').focus()}"></div>
             <div class="form-group" style="flex:1"><label>שם פרטי *</label><input id="fFirst1" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fId1').focus()}"></div>
@@ -12683,7 +12685,9 @@ function openNewClientModal(editClient, warningMessage) {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span style="background:#a855f7;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px">לווה 2</span>
             <span style="font-weight:600;font-size:13px;color:#6b21a8">פרטי בת הזוג</span>
+            <button type="button" class="btn small secondary" style="margin-inline-start:auto" onclick="idScanPick(2)" title="העלאת תמונת ת&quot;ז — חד-פעמי, התמונה לא נשמרת">📷 מלא מת"ז</button><input type="file" id="idScanFile2" accept="image/*" multiple style="display:none" onchange="idScanRun(2, this)">
           </div>
+          <div id="idScanPanel2"></div>
           <div class="form-row">
             <div class="form-group" style="flex:1"><label>שם משפחה</label><input id="fFamily2" oninput="this.dataset.manual='1'" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fFirst2').focus()}"></div>
             <div class="form-group" style="flex:1"><label>שם פרטי</label><input id="fFirst2" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fId2').focus()}"></div>
@@ -13278,6 +13282,108 @@ function openNewClientModal(editClient, warningMessage) {
 
 // Auto-fill the spouse's family name from the husband's — only if the user hasn't typed a different
 // value there manually. Keeping the field fully editable (user can override at any time).
+// ===== מילוי פרטי לווה מתמונת ת"ז (חד-פעמי — התמונה לא נשמרת, שדות מלאים לא נדרסים) =====
+var _idScanFound = {};
+function idScanPick(n) { var f = document.getElementById('idScanFile' + n); if (f) f.click(); }
+function _idChecksumOk(id) {
+  if (!/^\d{9}$/.test(id)) return false;
+  var sum = 0;
+  for (var i = 0; i < 9; i++) { var d = Number(id[i]) * (i % 2 ? 2 : 1); sum += d > 9 ? d - 9 : d; }
+  return sum % 10 === 0;
+}
+function _idToJpeg(file) {
+  return new Promise(function (res, rej) {
+    var url = URL.createObjectURL(file), im = new Image();
+    im.onload = function () {
+      var k = Math.min(1, 1600 / Math.max(im.width, im.height));
+      var cv = document.createElement('canvas');
+      cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+      cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      res(cv.toDataURL('image/jpeg', 0.85));
+    };
+    im.onerror = function () { URL.revokeObjectURL(url); rej(new Error('bad image')); };
+    im.src = url;
+  });
+}
+function _idFmtDate(v) { return v ? v.split('-').reverse().join('/') : ''; }
+function _idScanMsg(n, html, color) {
+  var el = document.getElementById('idScanPanel' + n);
+  if (el) el.innerHTML = '<div style="margin:0 0 8px;padding:8px 10px;border-radius:8px;font-size:12px;background:#fff;border:1px solid var(--border);color:' + (color || 'var(--text)') + '">' + html + '</div>';
+}
+async function idScanRun(n, input) {
+  var files = Array.prototype.slice.call(input.files || [], 0, 3);
+  input.value = '';
+  if (!files.length) return;
+  if (!SB || !SB.token) { _idScanMsg(n, 'צריך להיות מחובר לענן (Supabase) כדי לקרוא תעודת זהות.', '#b91c1c'); return; }
+  _idScanMsg(n, '⏳ קורא את התעודה…');
+  try {
+    var images = await Promise.all(files.map(_idToJpeg));
+    var resp = await fetch('/api/id-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SB.token },
+      body: JSON.stringify({ images: images })
+    });
+    images = null;
+    var data = await resp.json().catch(function () { return {}; });
+    if (!resp.ok) { _idScanMsg(n, '⚠️ ' + escapeHtml(data.message || ('הקריאה נכשלה (' + resp.status + ')')), '#b91c1c'); return; }
+    _idScanFound[n] = data;
+    _idScanShow(n);
+  } catch (e) {
+    _idScanMsg(n, '⚠️ לא הצלחתי לקרוא את התמונה. נסה צילום חד יותר.', '#b91c1c');
+  }
+}
+function _idScanShow(n) {
+  var d = _idScanFound[n] || {};
+  var rows = [
+    ['שם פרטי', 'fFirst' + n, d.firstName, d.firstName],
+    ['שם משפחה', 'fFamily' + n, d.familyName, d.familyName],
+    ['מספר זהות', 'fId' + n, d.idNumber, d.idNumber],
+    ['תאריך לידה', 'fDob' + n, d.dob, _idFmtDate(d.dob)],
+    ['תאריך הנפקה', 'fIdIssue' + n, d.issueDate, _idFmtDate(d.issueDate)]
+  ];
+  var warn = (d.idNumber && !_idChecksumOk(d.idNumber)) ? '<div style="color:#b45309;margin-bottom:6px">⚠️ מספר הזהות לא עובר בדיקת ספרת ביקורת — בדוק מול התעודה.</div>' : '';
+  var html = '<div style="margin:0 0 8px;padding:10px;border-radius:8px;background:#fff;border:1px solid #93c5fd;font-size:12px"><div style="font-weight:700;margin-bottom:6px">נמצא בתעודה (סמן מה למלא):</div>' + warn;
+  var any = false;
+  rows.forEach(function (row, i) {
+    var el = document.getElementById(row[1]);
+    var cur = el ? String(el.value || '').trim() : '';
+    var found = row[2];
+    var shown = row[3];
+    var state, checked = false, disabled = true;
+    if (!found) state = '<span style="color:var(--muted)">לא נמצא בתמונה</span>';
+    else if (cur && cur === found) state = '<span style="color:var(--muted)">זהה למה שקיים</span>';
+    else if (cur) state = '<span style="color:#b45309">כבר מולא (' + escapeHtml(el.type === 'date' ? _idFmtDate(cur) : cur) + ') — לא ידרס</span>';
+    else { state = '<span style="color:#16a34a">יתמלא</span>'; checked = true; disabled = false; any = true; }
+    html += '<label style="display:flex;gap:8px;align-items:center;padding:3px 0"><input type="checkbox" id="idScanChk' + n + '_' + i + '" ' + (checked ? 'checked ' : '') + (disabled ? 'disabled ' : '') + '>'
+      + '<span style="min-width:90px;font-weight:600">' + row[0] + '</span><span style="min-width:110px">' + escapeHtml(shown || '—') + '</span>' + state + '</label>';
+  });
+  html += '<div style="display:flex;gap:6px;margin-top:8px">'
+    + (any ? '<button type="button" class="btn small" onclick="idScanApply(' + n + ')">✓ מלא את המסומנים</button>' : '')
+    + '<button type="button" class="btn small secondary" onclick="idScanCancel(' + n + ')">' + (any ? 'ביטול' : 'סגור') + '</button></div></div>';
+  var el2 = document.getElementById('idScanPanel' + n);
+  if (el2) el2.innerHTML = html;
+}
+function idScanApply(n) {
+  var d = _idScanFound[n] || {};
+  var fields = [['fFirst' + n, d.firstName], ['fFamily' + n, d.familyName], ['fId' + n, d.idNumber], ['fDob' + n, d.dob], ['fIdIssue' + n, d.issueDate]];
+  fields.forEach(function (f, i) {
+    var chk = document.getElementById('idScanChk' + n + '_' + i);
+    var el = document.getElementById(f[0]);
+    if (!chk || !chk.checked || !el || !f[1]) return;
+    if (String(el.value || '').trim()) return; // never overwrite
+    el.value = f[1];
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  idScanCancel(n);
+}
+function idScanCancel(n) {
+  delete _idScanFound[n];
+  var el = document.getElementById('idScanPanel' + n);
+  if (el) el.innerHTML = '';
+}
+
 function _mirrorFamilyNameToSpouse(val) {
   const spouseEl = document.getElementById('fFamily2');
   if (!spouseEl) return;
