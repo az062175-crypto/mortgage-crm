@@ -19713,7 +19713,8 @@ function renderGlobalSearchResults() {
   if (!q) { el.innerHTML = '<div class="empty" style="padding:20px">התחל להקליד לחיפוש...</div>'; return; }
   const matches = state.clients.filter(c => {
     const fields = [c.name, c.idNumber, c.phone, c.propertyAddress, c.purpose, (c.purposes||[]).join(' ')];
-    (c.tasks||[]).forEach(t => fields.push(t.note, t.title));
+    (c.tasks||[]).forEach(t => fields.push(t.note, t.title, t.executionNotes, t.followUpNote));
+    fields.push(c.leadNotes, c.sourceNotes);
     if (typeof c.notes === 'string') fields.push(c.notes);
     fields.push(c.propertyCity, c.propertyBuilding, c.propertyApartment, c.propertyNotes);
     if (c.propertyGush) fields.push(c.propertyGush, 'גוש ' + c.propertyGush);
@@ -19726,7 +19727,10 @@ function renderGlobalSearchResults() {
     if (dd.firstHand) fields.push(dd.firstHand.contractor, dd.firstHand.buyerLawyer, dd.firstHand.contractorLawyer);
     if (dd.tenant) fields.push(dd.tenant.name, dd.tenant.phone);
     if (c.bankerId) { const b = state.settings.bankers.find(x=>x.id===c.bankerId); if(b) fields.push(b.name, b.bank); }
-    return fields.some(f => (f||'').toString().toLowerCase().includes(q));
+    const hay = fields.map(f => (f||'').toString().toLowerCase()).join(' | ');
+    if (hay.includes(q)) return true;
+    const toks = q.split(/[\s,.;:!?"'()\-–/]+/).filter(Boolean); // every word anywhere in the card
+    return toks.length > 1 && toks.every(tk => hay.includes(tk));
   }).slice(0, 30);
   _gsIds = matches.map(c => c.id); _gsIdx = 0;
   if (matches.length === 0) { el.innerHTML = '<div class="empty" style="padding:20px">לא נמצאו תוצאות</div>'; return; }
@@ -19737,7 +19741,7 @@ function renderGlobalSearchResults() {
         <span class="stage-pill" style="background:${stageInfo(c.stage).color}">${stageInfo(c.stage).label}</span>
       </div>
       <div style="font-size:12px;color:var(--muted)">📞 ${escapeHtml(c.phone||'—')} · ${escapeHtml((c.purposes||[]).join(', ')||'—')}${c.propertyAddress?' · 🏠 '+escapeHtml(c.propertyAddress):''}</div>
-      ${(() => { const tn = (c.tasks||[]).find(t => ((t.note||'')+'').toLowerCase().includes(q)); return tn ? '<div style="font-size:12px;color:#92400e;margin-top:2px">📝 ' + escapeHtml(tn.title || '') + ': ' + escapeHtml(String(tn.note).slice(0, 90)) + '</div>' : ''; })()}
+      ${(() => { const tn = (c.tasks||[]).find(t => ((t.note||'')+'').toLowerCase().includes(q.split(' ')[0])); return tn ? '<div style="font-size:12px;color:#92400e;margin-top:2px">📝 ' + escapeHtml(tn.title || '') + ': ' + escapeHtml(String(tn.note).slice(0, 90)) + '</div>' : ''; })()}
     </div>
   `).join('');
 }
