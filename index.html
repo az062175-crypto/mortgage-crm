@@ -620,7 +620,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BC</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BD</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -14028,9 +14028,11 @@ function _idScanShow(n) {
     var cur = el ? String(el.value || '').trim() : '';
     var found = row[2] || '', unsure = !!(found && row[4]);
     var state, checked = false, locked = true, repl = false;
-    if (cur && found && cur === found) state = '<span style="color:var(--muted)">זהה למה שקיים</span>';
-    else if (cur && found) { state = '<span style="color:#b45309">כבר מולא (' + escapeHtml(row[3] === 'date' ? _idFmtDate(cur) : cur) + ') — שונה מהתעודה. סמני כדי להחליף</span>'; locked = false; repl = true; }
-    else if (cur) state = '<span style="color:#b45309">כבר מולא (' + escapeHtml(row[3] === 'date' ? _idFmtDate(cur) : cur) + ') — לא ידרס</span>';
+    var fmt = function (v) { return escapeHtml(row[3] === 'date' ? _idFmtDate(v) : v); };
+    var both = '<span style="display:block;line-height:1.5">בשדה: <b>' + fmt(cur) + '</b><br>בתעודה נקרא: <b>' + (found ? fmt(found) : 'לא נקרא') + '</b></span>';
+    if (cur && found && cur === found) state = '<span style="color:#16a34a">✔ זהה</span>' + both;
+    else if (cur && found) { state = '<span style="color:#b45309;font-weight:700">⚠ שונה — סמני כדי להחליף</span>' + both; locked = false; repl = true; }
+    else if (cur) state = '<span style="color:#b45309">נשאר כמו שהוא</span>' + both;
     else if (!found) { state = '<span style="color:var(--muted)">לא נמצא — אפשר להקליד</span>'; locked = false; }
     else if (unsure) { state = '<span style="color:#b45309;font-weight:700">לבדיקה</span>'; locked = false; }
     else { state = '<span style="color:#16a34a">יתמלא</span>'; checked = true; locked = false; }
