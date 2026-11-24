@@ -620,7 +620,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BA</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BB</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -3211,11 +3211,18 @@ function bulkDeleteSelected() {
 }
 
 // ==================== Trash / Recycle bin (30 days) ====================
+// A client in the trash must not keep a live portal link: turn it off now, and back on if the client is restored.
+function _portalOffForTrash(c) {
+  if (!c || !c.portalToken || c.portalDisabled) return;
+  c._portalWasActive = true; c.portalDisabled = true;
+  if (typeof portalOn === 'function' && portalOn()) portalPush(c, true).catch(function () { c.portalDisabled = false; c._portalPending = true; });
+}
 function moveClientsToTrash(clientIds) {
   if (!Array.isArray(state.trash)) state.trash = [];
   const toMove = state.clients.filter(c => clientIds.includes(c.id));
   toMove.forEach(c => {
     c._deletedAt = now();
+    try { _portalOffForTrash(c); } catch (e) {}
     state.trash.push(c);
   });
   state.clients = state.clients.filter(c => !clientIds.includes(c.id));
@@ -3226,6 +3233,7 @@ function restoreFromTrash(clientId) {
   const c = state.trash.find(x => x.id === clientId);
   if (!c) return;
   delete c._deletedAt;
+  if (c._portalWasActive) { delete c._portalWasActive; c.portalDisabled = false; try { if (portalOn()) portalPush(c, true); } catch (e) {} }
   // Mark the restoration so cross-device sync knows this id was deliberately brought back —
   // if a remote device still has it in trash, the merge compares timestamps and lets the newer
   // _restoredAt override the stale _deletedAt instead of re-trashing the client.
@@ -24105,6 +24113,12 @@ async function portalSyncAll() {
   if (!portalOn()) return;
   var list = state.clients.filter(function (c) { return c.portalToken; });
   for (var i = 0; i < list.length; i++) { try { await portalPush(list[i]); } catch (e) {} }
+  var tr = (state.trash || []).filter(function (c) { return c.portalToken && (!c.portalDisabled || c._portalPending); }), sw = false; // trashed clients: links must be off
+  for (var j = 0; j < tr.length; j++) {
+    var tc = tr[j]; if (!tc.portalDisabled) { tc._portalWasActive = true; tc.portalDisabled = true; sw = true; }
+    try { await portalPush(tc, true); delete tc._portalPending; sw = true; } catch (e) {}
+  }
+  if (sw) save();
 }
 function portalSchedule() { clearTimeout(PORTAL.timer); PORTAL.timer = setTimeout(portalSyncAll, 2500); }
 
