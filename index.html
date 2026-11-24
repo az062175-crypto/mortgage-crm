@@ -19707,6 +19707,15 @@ function toggleVoiceSearch() {
     if (status) status.textContent = 'לא הצלחתי להתחיל: ' + e.message;
   }
 }
+// Every text/number anywhere in a client card (notes, tasks, history, deal details, contacts…), skipping files and huge blobs.
+function _gsDeepText(o, out, depth) {
+  if (o == null || depth > 8 || out.n > 60000) return;
+  const t = typeof o;
+  if (t === 'string') { if (o.length < 3000 && o.indexOf('data:') !== 0 && !/^[0-9a-f-]{20,}$/i.test(o)) { out.a.push(o); out.n += o.length; } return; }
+  if (t === 'number') { out.a.push(String(o)); return; }
+  if (Array.isArray(o)) { for (let i = 0; i < o.length && i < 400; i++) _gsDeepText(o[i], out, depth + 1); return; }
+  if (t === 'object') for (const k in o) { if (k === 'files' || k === 'attachments' || k === 'photo') continue; _gsDeepText(o[k], out, depth + 1); }
+}
 function renderGlobalSearchResults() {
   const q = document.getElementById('globalSearchInput').value.trim().toLowerCase();
   const el = document.getElementById('globalSearchResults');
@@ -19727,7 +19736,8 @@ function renderGlobalSearchResults() {
     if (dd.firstHand) fields.push(dd.firstHand.contractor, dd.firstHand.buyerLawyer, dd.firstHand.contractorLawyer);
     if (dd.tenant) fields.push(dd.tenant.name, dd.tenant.phone);
     if (c.bankerId) { const b = state.settings.bankers.find(x=>x.id===c.bankerId); if(b) fields.push(b.name, b.bank); }
-    const hay = fields.map(f => (f||'').toString().toLowerCase()).join(' | ');
+    const deep = { a: [], n: 0 }; _gsDeepText(c, deep, 0);
+    const hay = fields.map(f => (f||'').toString().toLowerCase()).join(' | ') + ' | ' + deep.a.join(' | ').toLowerCase();
     if (hay.includes(q)) return true;
     const toks = q.split(/[\s,.;:!?"'()\-–/]+/).filter(Boolean); // every word anywhere in the card
     return toks.length > 1 && toks.every(tk => hay.includes(tk));
