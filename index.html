@@ -620,7 +620,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BD</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BE</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -9820,10 +9820,14 @@ function openCustomTaskModal(clientId, taskId) {
       <label>נושא משני</label>
       <input id="ctSubTopic" placeholder="למשל: בירור מול הבנק, השלמת מסמך..." value="${escapeAttr(t?.subTopic||'')}" style="width:100%">
     </div>
-    <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
       <div class="form-group">
         <label>תאריך יעד</label>
         <input type="date" id="ctDueDate" value="${escapeAttr(t?.dueDate||'')}" style="width:100%">
+      </div>
+      <div class="form-group">
+        <label>שעת תזכורת</label>
+        <input type="time" id="ctDueTime" value="${escapeAttr(t?.dueTime||'08:00')}" style="width:100%">
       </div>
       <div class="form-group">
         <label>תזכורת (ימים לפני)</label>
@@ -9867,6 +9871,8 @@ function submitCustomTask(clientId, taskId) {
   const subTopic = document.getElementById('ctSubTopic').value.trim();
   const dueDate = document.getElementById('ctDueDate').value;
   const notifyDaysBefore = parseInt(document.getElementById('ctNotifyDays').value || '1', 10);
+  const dueTime = document.getElementById('ctDueTime').value || '08:00';
+  const _remAt = (() => { if (!dueDate) return null; const d = new Date(dueDate + 'T' + dueTime + ':00'); d.setDate(d.getDate() - (isNaN(notifyDaysBefore) ? 1 : notifyDaysBefore)); return isNaN(d) ? null : d.toISOString(); })();
   const assignee = {
     name: document.getElementById('ctAssigneeName').value.trim(),
     phone: document.getElementById('ctAssigneePhone').value.trim(),
@@ -9881,11 +9887,12 @@ function submitCustomTask(clientId, taskId) {
     t.subTopic = subTopic;
     t.dueDate = dueDate || null;
     t.notifyDaysBefore = notifyDaysBefore;
+    t.dueTime = dueTime; t.reminderAt = _remAt;
     t.assignee = (assignee.name||assignee.phone||assignee.email) ? assignee : null;
   } else {
     c.tasks.push({
       id: uid(), stage: c.stage, title, subTopic,
-      dueDate: dueDate || null, notifyDaysBefore,
+      dueDate: dueDate || null, notifyDaysBefore, dueTime, reminderAt: _remAt,
       assignee: (assignee.name||assignee.phone||assignee.email) ? assignee : null,
       custom: true,
       status: 'active', done: false, doneAt: null,
