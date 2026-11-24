@@ -19713,6 +19713,8 @@ function renderGlobalSearchResults() {
   if (!q) { el.innerHTML = '<div class="empty" style="padding:20px">התחל להקליד לחיפוש...</div>'; return; }
   const matches = state.clients.filter(c => {
     const fields = [c.name, c.idNumber, c.phone, c.propertyAddress, c.purpose, (c.purposes||[]).join(' ')];
+    (c.tasks||[]).forEach(t => fields.push(t.note, t.title));
+    if (typeof c.notes === 'string') fields.push(c.notes);
     fields.push(c.propertyCity, c.propertyBuilding, c.propertyApartment, c.propertyNotes);
     if (c.propertyGush) fields.push(c.propertyGush, 'גוש ' + c.propertyGush);
     if (c.propertyHelka) fields.push(c.propertyHelka, 'חלקה ' + c.propertyHelka, 'גוש ' + (c.propertyGush || '') + ' חלקה ' + c.propertyHelka);
@@ -19735,6 +19737,7 @@ function renderGlobalSearchResults() {
         <span class="stage-pill" style="background:${stageInfo(c.stage).color}">${stageInfo(c.stage).label}</span>
       </div>
       <div style="font-size:12px;color:var(--muted)">📞 ${escapeHtml(c.phone||'—')} · ${escapeHtml((c.purposes||[]).join(', ')||'—')}${c.propertyAddress?' · 🏠 '+escapeHtml(c.propertyAddress):''}</div>
+      ${(() => { const tn = (c.tasks||[]).find(t => ((t.note||'')+'').toLowerCase().includes(q)); return tn ? '<div style="font-size:12px;color:#92400e;margin-top:2px">📝 ' + escapeHtml(tn.title || '') + ': ' + escapeHtml(String(tn.note).slice(0, 90)) + '</div>' : ''; })()}
     </div>
   `).join('');
 }
