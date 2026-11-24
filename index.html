@@ -620,7 +620,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #AZ</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BA</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -5003,6 +5003,7 @@ function renderClientsList() {
 }
 
 function openClient(id) {
+  if (typeof _detailViewStage !== 'undefined') _detailViewStage[id] = null;
   const c = state.clients.find(x => x.id === id);
   // Leads open in the leads tab (as an expanded card) — not in the full client-detail view
   if (c && c.stage === 'lead') {
@@ -5929,7 +5930,8 @@ function renderClientDetail() {
                 <button class="btn secondary small" onclick="refreshSellerTasks('${c.id}')" title="ייצר מחדש משימות בטחונות מוכר לפי סוג עסקה">🔄 רענן משימות</button>` : ''}
             </div>
           </div>
-          ${renderTasksHtml(c, c.stage)}
+          ${(typeof _detailViewStage !== 'undefined' && _detailViewStage[c.id] && _detailViewStage[c.id] !== c.stage) ? `<div style="margin:6px 0;padding:6px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span>📌 מוצגות משימות שלב <b>${escapeHtml(stageInfo(_detailViewStage[c.id]).label)}</b> (התיק נמצא בשלב ${escapeHtml(stageInfo(c.stage).label)})</span><button class="btn small secondary" onclick="_detailViewStage['${c.id}']=null;renderClientDetail()">↩ חזרה לשלב הנוכחי</button></div>` : ''}
+          ${renderTasksHtml(c, (typeof _detailViewStage !== 'undefined' && _detailViewStage[c.id]) || c.stage)}
           <div class="add-row" style="margin-top:12px">
             <input id="newTaskInput_${c.id}" placeholder="הוסף משימה חדשה לשלב זה" onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskFromInput('${c.id}')}" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit">
             <button class="btn small" onclick="addTaskFromInput('${c.id}')">+ הוסף</button>
@@ -6080,6 +6082,7 @@ function renderClientDetail() {
   `;
 }
 
+var _detailViewStage = {}; // clientId -> stage whose tasks are shown in the client card (set when jumping to a task of another stage)
 function renderTasksHtml(c, stage) {
   const currentIdx = stageIndex(stage);
   const tasks = c.tasks.filter(t => {
@@ -10422,7 +10425,15 @@ function jumpToTask(clientId, taskId) {
     setTimeout(findAndHighlight, 200);
     return;
   }
-  // Task is in a different stage — go to the Tasks tab filtered by this client + all stages + all statuses
+  // Task is in a different stage — open the client card on that stage's task list and highlight the task
+  if (!t.custom || t.stageAdded) {
+    _detailViewStage[clientId] = t.stage;
+    currentClientId = clientId;
+    if (currentTab !== 'detail') switchTab('detail'); else renderClientDetail();
+    setTimeout(() => { if (!findAndHighlight()) { _detailViewStage[clientId] = null; renderClientDetail(); } }, 250);
+    return;
+  }
+  // Manual (custom) task — go to the Tasks tab filtered by this client + all stages + all statuses
   tasksFilter = tasksFilter || {};
   tasksFilter.tab = 'todo';
   tasksFilter.status = 'all';
