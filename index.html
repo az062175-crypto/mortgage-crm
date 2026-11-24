@@ -620,7 +620,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #AY</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #AZ</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -23866,8 +23866,11 @@ function portalProgress(c) {
     var past = later || Math.max.apply(null, g.st.map(function (k) { return ids.indexOf(k); })) < cur;
     return { label: g.label, sub: g.sub, w: g.w, f: t ? Math.round(d / t * 1000) / 1000 : (past ? 1 : 0) };
   });
-  var pct = Math.round(segs.reduce(function (a, g) { return a + g.w * g.f; }, 0));
-  return { pct: pct, segs: segs, open: openList };
+  // A client with ANY recorded execution (even a partial amount) is 100% — unmarked tasks do not count against it.
+  var executed = (c.tasks || []).some(function (t) { return (t.executions || []).some(function (e) { return e && (Number(e.amount) || 0) > 0; }); });
+  if (executed) segs.forEach(function (g) { g.f = 1; });
+  var pct = executed ? 100 : Math.round(segs.reduce(function (a, g) { return a + g.w * g.f; }, 0));
+  return { pct: pct, segs: segs, open: openList, executed: executed };
 }
 var PORTAL_PIE_COLORS = ['#22c55e', '#0ea5e9', '#f97316', '#8b5cf6'];
 function portalDonutSvg(p, size) {
@@ -23885,7 +23888,8 @@ function portalProgressWidget(c) {
   var leg = p.segs.map(function (g, i) {
     return `<div style="font-size:12px;line-height:1.3"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PORTAL_PIE_COLORS[i % 4]};margin-inline-end:5px"></span><b>${escapeHtml(g.label)}</b> <span style="color:#16a34a;font-weight:700">${Math.round(g.w * g.f)}/${g.w}%</span><div style="color:var(--muted);font-size:11px">${escapeHtml(g.sub)}</div></div>`;
   }).join('');
-  return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:10px 0;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:12px;max-width:560px">
+  return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:10px 0;padding:10px 12px;background:${p.executed ? '#f0fdf4' : '#fff'};border:${p.executed ? '2px solid #16a34a' : '1px solid var(--border)'};${p.executed ? 'box-shadow:0 0 0 3px rgba(22,163,74,.18),0 0 14px rgba(22,163,74,.35);' : ''}border-radius:12px;max-width:560px">
+    ${p.executed ? '<div style="flex-basis:100%;font-weight:800;color:#15803d;font-size:13px">✅ בוצע — התיק נחשב 100%' + '</div>' : ''}
     ${portalDonutSvg(p, 84)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;flex:1;min-width:200px">${leg}</div>
     <button class="btn small secondary" onclick="portalOpenMissing('${c.id}')">🔍 מה עוד חסר</button>
