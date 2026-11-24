@@ -620,7 +620,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BE</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BF</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -9809,6 +9809,8 @@ function openCustomTaskModal(clientId, taskId) {
   const isEdit = !!taskId;
   const t = isEdit ? c.tasks.find(x => x.id === taskId) : null;
   const assignee = t?.assignee || {};
+  const _tm = new Date(); _tm.setDate(_tm.getDate() + 1);
+  const _defDue = _tm.getFullYear() + '-' + String(_tm.getMonth() + 1).padStart(2, '0') + '-' + String(_tm.getDate()).padStart(2, '0');
   showModal(`
     <h2 class="modal-title">${isEdit?'עריכת משימה':'משימה חדשה — '+escapeHtml(c.name)}</h2>
     <div class="form-group">
@@ -9823,7 +9825,7 @@ function openCustomTaskModal(clientId, taskId) {
     <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
       <div class="form-group">
         <label>תאריך יעד</label>
-        <input type="date" id="ctDueDate" value="${escapeAttr(t?.dueDate||'')}" style="width:100%">
+        <input type="date" id="ctDueDate" value="${escapeAttr(isEdit ? (t?.dueDate||'') : _defDue)}" style="width:100%">
       </div>
       <div class="form-group">
         <label>שעת תזכורת</label>
