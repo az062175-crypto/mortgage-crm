@@ -620,7 +620,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BB</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BC</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -3253,6 +3253,7 @@ function permanentlyDelete(clientId) {
   const name = target ? (target.name || '—') : clientId;
   if (!confirm('למחוק לצמיתות את "' + name + '"? הפעולה בלתי הפיכה.')) return;
   _markPurged([clientId]);
+  if (target && target.portalToken && !target.portalDisabled) { target.portalDisabled = true; try { portalPush(target, true).catch(function () {}); } catch (e) {} } // kill the public link before the card disappears
   state.trash = state.trash.filter(x => x.id !== clientId);
   const removed = beforeCount - state.trash.length;
   saveNow();
@@ -3265,6 +3266,7 @@ function emptyTrash() {
   if (!Array.isArray(state.trash) || !state.trash.length) return;
   if (!confirm('לרוקן את הפח? כל ' + state.trash.length + ' התיקים יימחקו לצמיתות.')) return;
   _markPurged(state.trash.map(c => c.id));
+  state.trash.forEach(function (c) { if (c.portalToken && !c.portalDisabled) { c.portalDisabled = true; try { portalPush(c, true).catch(function () {}); } catch (e) {} } });
   state.trash = [];
   saveNow();
   renderTrashPanel();
