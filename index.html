@@ -621,7 +621,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-25 #BJ</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-25 #BK</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -4236,9 +4236,16 @@ function renderDashboard() {
       appraiserCount[id] = (appraiserCount[id] || 0) + 1;
     });
   });
-  const topAppraisers = Object.entries(appraiserCount).sort((a,b) => b[1]-a[1]).slice(0, 5).map(([id, cnt]) => {
+  (state.settings.appraisers || []).forEach(a => { if (!(a.id in appraiserCount)) appraiserCount[a.id] = 0; });
+  // "Active" = sent to this appraiser, not archived, appraisal not received yet
+  const appraiserActive = {};
+  state.clients.forEach(c => {
+    if (c.stage === 'archive' || _appraisalReceived(c)) return;
+    new Set(c.sentToAppraiserIds || []).forEach(id => { appraiserActive[id] = (appraiserActive[id] || 0) + 1; });
+  });
+  const topAppraisers = Object.entries(appraiserCount).sort((a,b) => ((appraiserActive[b[0]]||0) - (appraiserActive[a[0]]||0)) || (b[1]-a[1])).map(([id, cnt]) => {
     const a = state.settings.appraisers.find(x => x.id === id);
-    return { id, name: a?a.name:'—', email: a?a.email:'', count: cnt };
+    return { id, name: a?a.name:'—', email: a?a.email:'', count: cnt, active: appraiserActive[id] || 0 };
   });
 
   const _dashSubTabsHtml = `
@@ -4592,9 +4599,9 @@ function renderDashboard() {
           <div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border);cursor:pointer" onclick="openAppraiserClientsDialog('${a.id}')" title="הצג תיקים ששלחת לשמאי זה">
             <span style="width:24px;font-weight:700;color:var(--muted)">${i+1}.</span>
             <span style="flex:1"><strong style="color:var(--accent)">${escapeHtml(a.name)}</strong>${a.email?' · '+escapeHtml(a.email):''}</span>
-            <span style="background:#14b8a6;color:white;padding:2px 10px;border-radius:999px;font-weight:700">${a.count} תיקים</span>
+            <span style="background:#14b8a6;color:white;padding:2px 10px;border-radius:999px;font-weight:700">${a.active} פעילים</span>
           </div>
-        `).join('') : '<div class="empty" style="padding:12px">אין תיקים ששלחת לשמאים</div>'}
+        `).join('') : '<div class="empty" style="padding:12px">אין שמאים ברשימה</div>'}
       </div>
     </div>
   `;
@@ -18600,12 +18607,16 @@ function openBankerClientsDialog(bankerId) {
   `);
 }
 
+// Appraisal received = a value was entered, or the "appraiser value" task is marked done
+function _appraisalReceived(c) {
+  return Number(c.appraiserValue) > 0 || (c.tasks || []).some(t => t.source === 'appraisal-value-check' && (t.done || t.status === 'done'));
+}
+
 function openAppraiserClientsDialog(appraiserId) {
   const a = state.settings.appraisers.find(x => x.id === appraiserId);
   if (!a) return;
   const all = state.clients.filter(c => Array.isArray(c.sentToAppraiserIds) && c.sentToAppraiserIds.includes(appraiserId));
-  // Appraisal received = a value was entered, or the "appraiser value" task is marked done
-  const gotIt = c => Number(c.appraiserValue) > 0 || (c.tasks || []).some(t => t.source === 'appraisal-value-check' && (t.done || t.status === 'done'));
+  const gotIt = _appraisalReceived;
   const active = all.filter(c => c.stage !== 'archive' && !gotIt(c));
   const received = all.filter(c => c.stage !== 'archive' && gotIt(c));
   const archived = all.filter(c => c.stage === 'archive');
