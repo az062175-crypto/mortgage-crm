@@ -621,7 +621,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-24 #BG</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-25 #BH</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -9875,7 +9875,7 @@ function submitCustomTask(clientId, taskId) {
   const dueDate = document.getElementById('ctDueDate').value;
   const notifyDaysBefore = parseInt(document.getElementById('ctNotifyDays').value || '1', 10);
   const dueTime = document.getElementById('ctDueTime').value || '08:00';
-  const _remAt = (() => { if (!dueDate) return null; const d = new Date(dueDate + 'T' + dueTime + ':00'); d.setDate(d.getDate() - (isNaN(notifyDaysBefore) ? 1 : notifyDaysBefore)); return isNaN(d) ? null : d.toISOString(); })();
+  const _remAt = (() => { if (!dueDate) return null; const d = new Date(dueDate + 'T' + dueTime + ':00'); return isNaN(d) ? null : d.toISOString(); })();
   const assignee = {
     name: document.getElementById('ctAssigneeName').value.trim(),
     phone: document.getElementById('ctAssigneePhone').value.trim(),
