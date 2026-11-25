@@ -621,7 +621,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-25 #BK</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-25 #BL</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -18563,9 +18563,9 @@ function openExecutedByBankDialog(bankName) {
 // (it's the handling banker, and confirmApprovingBanker overwrites it with the final one after approval);
 // only a file with no banker set is credited to everyone it was submitted to.
 function _bankerCreditOf(c) {
-  if (c.bankerId) {
+  if (c.bankerId || c.bankerId2) {
     const isFinal = (c.approvals || []).some(a => a.accepted) || (c.stageHistory || []).some(h => h.stage === 'bank');
-    return { ids: [c.bankerId], kind: isFinal ? 'final' : 'handling' };
+    return { ids: [...new Set([c.bankerId, c.bankerId2].filter(Boolean))], kind: isFinal ? 'final' : 'handling' };
   }
   const sub = Array.isArray(c.submittedToBankerIds) ? [...new Set(c.submittedToBankerIds.filter(Boolean))] : [];
   return { ids: sub, kind: 'submitted' };
@@ -18580,7 +18580,7 @@ function openBankerClientsDialog(bankerId) {
   const archived = all.filter(c => c.stage === 'archive');
   const renderClientRow = (c) => {
     const missing = c.requirements.filter(r => r.status === 'pending').length;
-    const [tagLabel, tagColor] = kindTag[_bankerCreditOf(c).kind];
+    const [tagLabel, tagColor] = (c.bankerId2 === bankerId && c.bankerId !== bankerId) ? ['בנקאי שני', '#a16207'] : kindTag[_bankerCreditOf(c).kind];
     return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px">
       <div style="flex:1;cursor:pointer" onclick="closeModal();openClient('${c.id}')">
         <div style="font-weight:700">${escapeHtml(c.name)} <span style="background:${tagColor};color:white;padding:1px 7px;border-radius:6px;font-size:10px;font-weight:700">${tagLabel}</span></div>
