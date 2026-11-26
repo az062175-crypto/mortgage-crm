@@ -15677,6 +15677,11 @@ function renderDealSections(purposes) {
 }
 // A name saved before its contact had a phone/email (or before it was in the contacts list) never
 // re-triggers onchange — fill the empty phone/email from the contacts list when the form opens.
+// Mobile + landline together ("נייד / טלפון"), whichever exist
+function _contactPhones(m) {
+  const a = String(m.mobile || '').trim(), b = String(m.phone || '').trim();
+  return a && b && a.replace(/\D/g, '') !== b.replace(/\D/g, '') ? a + ' / ' + b : (a || b);
+}
 function _backfillPickedContacts() {
   const contacts = (state.settings && state.settings.contacts) || [];
   document.querySelectorAll('input[onchange^="onContactPicked("]').forEach(nameEl => {
@@ -15686,7 +15691,7 @@ function _backfillPickedContacts() {
     const match = contacts.find(x => (x.name || '').trim() === name && (!cat || x.category === cat)) || contacts.find(x => (x.name || '').trim() === name);
     if (!match) return;
     const ph = document.getElementById(ids[1]), em = document.getElementById(ids[2]);
-    if (ph && !ph.value && (match.phone || match.mobile)) ph.value = match.phone || match.mobile;
+    if (ph && !ph.value && _contactPhones(match)) ph.value = _contactPhones(match);
     if (em && !em.value && match.email) em.value = match.email;
   });
 }
@@ -15744,7 +15749,7 @@ function addSellerRow(data) {
     }
     const match = ((state.settings && state.settings.contacts) || []).find(x => (x.name || '').trim() === name);
     if (match) {
-      if (phoneEl) phoneEl.value = match.phone || '';
+      if (phoneEl) phoneEl.value = _contactPhones(match);
       if (emailEl) emailEl.value = match.email || '';
     } else {
       if (phoneEl) phoneEl.value = '';
@@ -15779,7 +15784,7 @@ function onContactPicked(nameId, phoneId, emailId, category) {
     || contacts.find(x => (x.name || '').trim() === name);
   if (match) {
     // Replace phone/email with the matched contact's values — stale data from a previous name is wrong.
-    if (phoneEl) phoneEl.value = match.phone || '';
+    if (phoneEl) phoneEl.value = _contactPhones(match);
     if (emailEl) emailEl.value = match.email || '';
     return;
   }
