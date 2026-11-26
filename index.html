@@ -1368,8 +1368,20 @@ try {
   if (!Array.isArray(state.settings.emailTemplates) || state.settings.emailTemplates.length === 0) {
     state.settings.emailTemplates = JSON.parse(JSON.stringify(DEFAULT_DATA.settings.emailTemplates || []));
   }
-  // Mirror email templates → WhatsApp so every email template is also available as a WhatsApp template
-  syncEmailTemplatesToWhatsApp();
+  // One unified client-message list (whatsappTemplates) serves both WhatsApp and email.
+  // One-time merge of the old separate email list into it (26.11.2026).
+  if (!state.settings._clientTplUnified) {
+    const wa = state.settings.whatsappTemplates;
+    (state.settings.emailTemplates || []).forEach(et => {
+      const mirror = wa.find(t => t.id === 'wa-mirror-' + et.id);
+      if (!mirror) { wa.push({ id: et.id, title: et.title || 'תבנית', subject: et.subject || '', body: et.body || '' }); return; }
+      mirror.title = String(mirror.title || '').replace(/\s*📧\s*$/, '');
+      if (wa.some(t => t !== mirror && (t.title || '').trim() === mirror.title.trim())) mirror.title += ' (נוסח מייל)';
+      if ((mirror.body || '') !== (et.body || '') || (mirror.subject || '') !== (et.subject || ''))
+        wa.push({ id: et.id, title: (et.title || 'תבנית') + ' (נוסח מייל)', subject: et.subject || '', body: et.body || '' });
+    });
+    state.settings._clientTplUnified = true;
+  }
   // One-time migration: revert req-docs & approved templates if they were auto-updated with ID/branch text
   const _reqDocsAutoBody = 'שלום {name},\nמצרף רשימת מסמכים חסרים לתיק:\n{missingDocs}\n\n⚠️ אנא הצטייד/י בתעודת זהות + ספח מקוריים.\n\nאשמח לקבל בהקדם.\nתודה,\nיצחק';
   const _approvedAutoBody = 'שלום {name},\nהאישור התקבל מהבנק ({bank} · סניף {branch}) בסכום המבוקש.\nכתובת הסניף: {branchAddress}\nנתאם המשך.\n\n⚠️ אנא הצטייד/י בתעודת זהות + ספח מקוריים.\n\nתודה,\nיצחק';
@@ -19201,7 +19213,8 @@ function fillTemplate(text, client) {
     .replace(/\{bank\}/g, banker ? (banker.bank||'') : '')
     .replace(/\{branch\}/g, banker ? (banker.branch||'') : '')
     .replace(/\{branchAddress\}/g, banker ? (banker.branchAddress||'') : '')
-    .replace(/\{bankerFullBranch\}/g, bankerParts);
+    .replace(/\{bankerFullBranch\}/g, bankerParts)
+    .replace(/\{purpose\}/g, (c.purposes && c.purposes.length) ? c.purposes.join(', ') : (c.purpose || ''));
 }
 
 function openClientEmail(clientId) {
@@ -19215,7 +19228,7 @@ function openClientEmail(clientId) {
     alert('אין מייל שמור ללקוח. עדכן ב"ערוך".');
     return;
   }
-  const templates = state.settings.emailTemplates || [];
+  const templates = state.settings.whatsappTemplates || [];
   showModal(`
     <h2 class="modal-title">📧 שליחת מייל ללקוח</h2>
     <p style="color:var(--muted);font-size:13px;margin:0 0 10px">אל: <strong>${escapeHtml(c.name||'')}</strong></p>
@@ -19233,6 +19246,13 @@ function openClientEmail(clientId) {
         <option value="">— בחר תבנית —</option>
         ${templates.map(t => `<option value="${escapeAttr(t.id)}">${escapeHtml(t.title)}</option>`).join('')}
       </select>
+    </div>
+    <div id="emMeetingRow" style="display:none;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+      <div style="font-size:12px;color:#4338ca;font-weight:700;margin-bottom:4px">🗓️ מועד הפגישה</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;color:var(--muted)">תאריך</label><input type="date" id="emMeetingDate" oninput="applyEmailTemplate('${clientId}')" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:6px"></div>
+        <div><label style="font-size:11px;color:var(--muted)">שעה</label><input type="text" id="emMeetingTime" placeholder="HH:MM" maxlength="5" oninput="applyEmailTemplate('${clientId}')" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:6px;text-align:center"></div>
+      </div>
     </div>
     <div class="form-group">
       <label>נושא</label>
@@ -19255,12 +19275,21 @@ function applyEmailTemplate(clientId) {
   if (!c) return;
   const tid = document.getElementById('emailTemplate').value;
   if (!tid) return;
-  const t = (state.settings.emailTemplates || []).find(x => x.id === tid);
+  const t = (state.settings.whatsappTemplates || []).find(x => x.id === tid);
   if (!t) return;
-  const subject = replaceTemplateVars(t.subject || '', c);
-  const body = replaceTemplateVars(t.body || '', c);
-  document.getElementById('emailSubject').value = subject;
-  document.getElementById('emailBody').value = body;
+  // Meeting date/time (e.g. sig-reminder) — same as the WhatsApp dialog
+  const needsMeeting = /\{meeting(Date|Time)\}/.test((t.subject || '') + (t.body || ''));
+  const row = document.getElementById('emMeetingRow'); if (row) row.style.display = needsMeeting ? '' : 'none';
+  const dv = document.getElementById('emMeetingDate')?.value || '';
+  const tv = (document.getElementById('emMeetingTime')?.value || '').trim();
+  let ds = '';
+  if (dv) { const dt = new Date(dv + 'T00:00:00'); ds = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][dt.getDay()] + ' ' + dt.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
+  // Shared template: WhatsApp *bold* markers are dropped in email
+  const fill = s => fillTemplate(replaceTemplateVars(s || '', c), c)
+    .replace(/\{meetingDate\}/g, ds || '____').replace(/\{meetingTime\}/g, tv || '____')
+    .replace(/\*([^\*\n]+?)\*/g, '$1');
+  document.getElementById('emailSubject').value = fill(t.subject) || 'בנוגע לתיק המשכנתא';
+  document.getElementById('emailBody').value = fill(t.body);
 }
 
 function replaceTemplateVars(text, c) {
@@ -19887,7 +19916,8 @@ function applyMeetingDateTime() {
     dateStr = days[dt.getDay()] + ' ' + dt.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
   // Re-fill template with new date/time
-  const filled = fillTemplate(t.body, c)
+  const _subj = (t.subject && t.subject.trim()) ? ('*' + t.subject.trim() + '*\n\n') : '';
+  const filled = fillTemplate(_subj + (t.body || ''), c)
     .replace(/\{meetingDate\}/g, dateStr || '____')
     .replace(/\{meetingTime\}/g, timeStr || '____');
   document.getElementById('waMessage').value = filled;
@@ -19913,7 +19943,8 @@ function applyWhatsAppTemplate(clientId) {
   const tid = document.getElementById('waTemplate').value;
   const t = (state.settings.whatsappTemplates || []).find(x => x.id === tid);
   const meetingRow = document.getElementById('waMeetingRow');
-  if (meetingRow) meetingRow.style.display = (tid === 'sig-reminder') ? '' : 'none';
+  const _needsMeeting = tid === 'sig-reminder' || (!!t && /\{meeting(Date|Time)\}/.test((t.subject || '') + (t.body || '')));
+  if (meetingRow) meetingRow.style.display = _needsMeeting ? '' : 'none';
   if (!t) { document.getElementById('waMessage').value = ''; updateWaPreview(); return; }
   const c = state.clients.find(x => x.id === clientId);
   window._waCurrentClient = c;
@@ -19921,7 +19952,7 @@ function applyWhatsAppTemplate(clientId) {
   const subjectLine = (t.subject && t.subject.trim()) ? ('*' + t.subject.trim() + '*\n\n') : '';
   let filled = fillTemplate(subjectLine + (t.body || ''), c);
   // If sig-reminder template, use current date+time inputs (leave blanks if empty)
-  if (tid === 'sig-reminder') {
+  if (_needsMeeting) {
     applyMeetingDateTime();
     return;
   }
@@ -21472,7 +21503,7 @@ function renderSettings() {
     { id: 'dealTypes', label: '📋 סוגי תיקים', icon: '📋' },
     { id: 'sourceCategories', label: '📣 מקורות הגעה', icon: '📣' },
     { id: 'contacts', label: '👥 אנשי קשר', icon: '👥' },
-    { id: 'whatsapp', label: '💬 תבניות WhatsApp', icon: '💬' },
+    { id: 'whatsapp', label: '💬📧 תבניות הודעה ללקוח', icon: '💬' },
     { id: 'emailTemplates', label: '📧 תבניות מייל', icon: '📧' },
     { id: 'reminders', label: '📌 תזכורות ללקוח חדש', icon: '📌' },
     { id: 'dealDocs', label: '📄 מסמכים לפי סוג עסקה', icon: '📄' },
@@ -21517,12 +21548,11 @@ function renderSettings() {
   renderActiveSettingsSection();
 }
 
-let activeEmailTplTab = 'emailTemplatesGeneral';
+let activeEmailTplTab = 'shtarEmail';
 function setEmailTplTab(id) { activeEmailTplTab = id; renderActiveSettingsSection(); }
 function renderEmailTemplatesHub() {
   const groups = [
     { title: '📤 נשלחות ללקוח', items: [
-      ['emailTemplatesGeneral', 'תבניות כלליות (מסמכים, אישור, ליד...)'],
       ['shtarEmail', 'רישום שטרות בטאבו'],
       ['executionSummary', 'סיכום ביצוע'],
       ['zechiaInstructions', 'אישור זכיה — הוראות']
@@ -21628,15 +21658,16 @@ function renderSettingsSection(id) {
 
   if (id === 'whatsapp') return `
     <div class="panel">
-      <h2 class="panel-title">💬 תבניות WhatsApp (${(state.settings.whatsappTemplates||[]).length})</h2>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">משתני החלפה זמינים: <code>{name}</code>, <code>{phone}</code>, <code>{propertyAddress}</code>, <code>{stage}</code>, <code>{missingDocs}</code>, <code>{docsStatus}</code>,<code>{bankerName}</code>, <code>{bank}</code>, <code>{branch}</code>, <code>{branchAddress}</code>, <code>{bankerFullBranch}</code></div>
+      <h2 class="panel-title">💬📧 תבניות הודעה ללקוח (${(state.settings.whatsappTemplates||[]).length})</h2>
+      <div style="background:#eff6ff;border:1px solid #93c5fd;padding:8px 12px;border-radius:6px;font-size:12px;color:#1e3a8a;margin-bottom:10px">💡 כל תבנית כאן זמינה גם ב-💬 WhatsApp וגם ב-📧 מייל. בוואטסאפ הנושא מופיע מודגש בראש ההודעה; במייל הוא שורת הנושא.</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">משתני החלפה זמינים: <code>{name}</code>, <code>{phone}</code>, <code>{propertyAddress}</code>, <code>{stage}</code>, <code>{missingDocs}</code>, <code>{docsStatus}</code>,<code>{bankerName}</code>, <code>{bank}</code>, <code>{branch}</code>, <code>{branchAddress}</code>, <code>{bankerFullBranch}</code>, <code>{purpose}</code>, <code>{meetingDate}</code>, <code>{meetingTime}</code></div>
       ${(state.settings.whatsappTemplates||[]).map((t, i) => {
         const canReset = ['req-docs','approved','sig-reminder','appraiser-visit'].includes(t.id);
         return `
         <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
           <div class="form-row">
             <div class="form-group" style="margin:0;flex:1"><label style="font-size:12px">כותרת (שם התבנית)</label><input value="${escapeAttr(t.title||'')}" onchange="updateWaTemplate(${i},'title',this.value)"></div>
-            <div class="form-group" style="margin:0;flex:2"><label style="font-size:12px">נושא ההודעה (יופיע מודגש בראש)</label><input value="${escapeAttr(t.subject||'')}" placeholder="לדוגמא: מסמכים חסרים לתיק" onchange="updateWaTemplate(${i},'subject',this.value)"></div>
+            <div class="form-group" style="margin:0;flex:2"><label style="font-size:12px">נושא (WhatsApp: מודגש בראש · מייל: שורת נושא)</label><input value="${escapeAttr(t.subject||'')}" placeholder="לדוגמא: מסמכים חסרים לתיק" onchange="updateWaTemplate(${i},'subject',this.value)"></div>
             <div style="align-self:flex-end;display:flex;gap:6px">
               ${canReset ? `<button class="btn secondary small" onclick="resetWaTemplate('${t.id}')" title="שחזר תוכן ברירת מחדל">🔄 שחזר</button>` : ''}
               <button class="btn danger small" onclick="removeWaTemplate(${i})">✕ מחק</button>
