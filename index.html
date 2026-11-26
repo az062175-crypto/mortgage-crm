@@ -1370,18 +1370,7 @@ try {
   }
   // One unified client-message list (whatsappTemplates) serves both WhatsApp and email.
   // One-time merge of the old separate email list into it (26.11.2026).
-  if (!state.settings._clientTplUnified) {
-    const wa = state.settings.whatsappTemplates;
-    (state.settings.emailTemplates || []).forEach(et => {
-      const mirror = wa.find(t => t.id === 'wa-mirror-' + et.id);
-      if (!mirror) { wa.push({ id: et.id, title: et.title || 'תבנית', subject: et.subject || '', body: et.body || '' }); return; }
-      mirror.title = String(mirror.title || '').replace(/\s*📧\s*$/, '');
-      if (wa.some(t => t !== mirror && (t.title || '').trim() === mirror.title.trim())) mirror.title += ' (נוסח מייל)';
-      if ((mirror.body || '') !== (et.body || '') || (mirror.subject || '') !== (et.subject || ''))
-        wa.push({ id: et.id, title: (et.title || 'תבנית') + ' (נוסח מייל)', subject: et.subject || '', body: et.body || '' });
-    });
-    state.settings._clientTplUnified = true;
-  }
+  _unifyClientTemplates();
   // One-time migration: revert req-docs & approved templates if they were auto-updated with ID/branch text
   const _reqDocsAutoBody = 'שלום {name},\nמצרף רשימת מסמכים חסרים לתיק:\n{missingDocs}\n\n⚠️ אנא הצטייד/י בתעודת זהות + ספח מקוריים.\n\nאשמח לקבל בהקדם.\nתודה,\nיצחק';
   const _approvedAutoBody = 'שלום {name},\nהאישור התקבל מהבנק ({bank} · סניף {branch}) בסכום המבוקש.\nכתובת הסניף: {branchAddress}\nנתאם המשך.\n\n⚠️ אנא הצטייד/י בתעודת זהות + ספח מקוריים.\n\nתודה,\nיצחק';
@@ -19228,6 +19217,7 @@ function openClientEmail(clientId) {
     alert('אין מייל שמור ללקוח. עדכן ב"ערוך".');
     return;
   }
+  _unifyClientTemplates();
   const templates = state.settings.whatsappTemplates || [];
   showModal(`
     <h2 class="modal-title">📧 שליחת מייל ללקוח</h2>
@@ -19841,6 +19831,7 @@ function openWhatsAppDialog(clientId) {
   const c = state.clients.find(x => x.id === clientId);
   if (!c) return;
   const phone = (c.phone||'').replace(/[^0-9]/g, '');
+  _unifyClientTemplates();
   const templates = state.settings.whatsappTemplates || [];
   showModal(`
     <h2 class="modal-title">💬 שליחת הודעת WhatsApp</h2>
@@ -21656,6 +21647,7 @@ function renderSettingsSection(id) {
       <button class="btn secondary small" style="margin-top:8px" onclick="showCreationReminders()">🔍 תצוגה מקדימה</button>
     </div>`;
 
+  if (id === 'whatsapp') _unifyClientTemplates();
   if (id === 'whatsapp') return `
     <div class="panel">
       <h2 class="panel-title">💬📧 תבניות הודעה ללקוח (${(state.settings.whatsappTemplates||[]).length})</h2>
@@ -22878,6 +22870,22 @@ function addEmailTemplate() {
   save(); renderSettings();
 }
 
+// Merge the old separate email list into the unified client-message list (whatsappTemplates), once.
+// Runs at load AND when the send dialogs / settings open, because cloud data can replace settings after load.
+function _unifyClientTemplates() {
+  const st = state && state.settings; if (!st || st._clientTplUnified) return;
+  if (!Array.isArray(st.whatsappTemplates)) st.whatsappTemplates = [];
+  const wa = st.whatsappTemplates;
+  (st.emailTemplates || []).forEach(et => {
+    const mirror = wa.find(t => t.id === 'wa-mirror-' + et.id);
+    if (!mirror) { if (!wa.some(t => t.id === et.id)) wa.push({ id: et.id, title: et.title || 'תבנית', subject: et.subject || '', body: et.body || '' }); return; }
+    mirror.title = String(mirror.title || '').replace(/\s*📧\s*$/, '');
+    if (wa.some(t => t !== mirror && (t.title || '').trim() === mirror.title.trim())) mirror.title += ' (נוסח מייל)';
+    if (((mirror.body || '') !== (et.body || '') || (mirror.subject || '') !== (et.subject || '')) && !wa.some(t => t.id === et.id))
+      wa.push({ id: et.id, title: (et.title || 'תבנית') + ' (מקור מייל)', subject: et.subject || '', body: et.body || '' });
+  });
+  st._clientTplUnified = true; // persisted by the next normal save — never save from here (may run before cloud load)
+}
 // Ensure every email template has a matching WhatsApp template so they're usable in both channels.
 // Mirrored templates carry id "wa-mirror-<emailId>". Only NEW mirrors are added — existing ones keep any user edits.
 function syncEmailTemplatesToWhatsApp() {
