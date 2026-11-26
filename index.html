@@ -15677,6 +15677,24 @@ function renderDealSections(purposes) {
 }
 // A name saved before its contact had a phone/email (or before it was in the contacts list) never
 // re-triggers onchange — fill the empty phone/email from the contacts list when the form opens.
+// Pick-list fields (input[list]) filter their options by the current text, so a field that already
+// holds a picked name shows only that name. On click: if the value is one of the options, clear it
+// (shown as placeholder) so the full list opens; if nothing new is picked, restore it on blur.
+(function () {
+  const isPicked = el => el && el.matches && el.matches('input[list]') && el.value &&
+    el.list && Array.from(el.list.options).some(o => o.value === el.value);
+  const open = el => {
+    if (!isPicked(el) || el.dataset.prevPick) return;
+    el.dataset.prevPick = el.value; el.dataset.prevPh = el.placeholder || '';
+    el.placeholder = el.value; el.value = '';
+  };
+  document.addEventListener('mousedown', e => open(e.target), true);
+  document.addEventListener('focusout', e => {
+    const el = e.target; if (!el || !el.dataset || el.dataset.prevPick === undefined) return;
+    if (!el.value) el.value = el.dataset.prevPick;
+    el.placeholder = el.dataset.prevPh; delete el.dataset.prevPick; delete el.dataset.prevPh;
+  }, true);
+})();
 // Mobile + landline together ("נייד / טלפון"), whichever exist
 function _contactPhones(m) {
   const a = String(m.mobile || '').trim(), b = String(m.phone || '').trim();
