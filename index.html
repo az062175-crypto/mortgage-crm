@@ -11256,6 +11256,7 @@ function orderNesach(clientId) {
       return;
     }
     // Extension is here — send the order
+    if (_payerBlocked()) return;
     window.postMessage({
       type: 'ORDER_NESACH',
       payload: {
@@ -11267,7 +11268,8 @@ function orderNesach(clientId) {
         driveFolderUrl: c.driveFolderUrl || '',     // for auto-uploading the PDF to the client folder
         // Form fields on gov.il:
         customerName: c.name,                       // the client's name goes in "פרטי המבקש"
-        customerEmail: 'a035591712@gmail.com'       // your email (receives the nefakh)
+        customerEmail: 'a035591712@gmail.com',      // your email (receives the nefakh)
+        payer: window._orderPayer || 'office'       // 'client' = stop at the card form
         // customerPhone intentionally omitted — user doesn't want it filled
       }
     }, '*');
@@ -11333,13 +11335,35 @@ function openOrdersDialog(cid) {
     return '<button onclick="document.getElementById(\'ordersDialog\').remove();' + fn + '(\'' + cid + '\')" style="display:flex;align-items:center;gap:12px;width:100%;text-align:right;padding:14px 16px;margin-top:10px;border-radius:12px;border:1.5px solid #f59e0b;background:#fffbeb;color:#78350f;cursor:pointer;font:inherit">' +
       '<span style="font-size:26px">' + ico + '</span><span><div style="font-weight:700;font-size:16px">' + title + '</div><div style="font-size:12px;opacity:.8">' + sub + '</div></span></button>';
   };
-  ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:22px;max-width:420px;width:92%;direction:rtl">' +
-    '<div style="display:flex;align-items:center"><h2 style="margin:0;flex:1;font-size:18px">📄 מה להזמין? — ' + escapeHtml(c.name || '') + '</h2><button class="btn small secondary" onclick="document.getElementById(\'ordersDialog\').remove()">✕</button></div>' +
+  var head = function (t) { return '<div style="display:flex;align-items:center"><h2 style="margin:0;flex:1;font-size:18px">' + t + ' — ' + escapeHtml(c.name || '') + '</h2><button class="btn small secondary" onclick="document.getElementById(\'ordersDialog\').remove()">✕</button></div>'; };
+  var box = '<div style="background:#fff;border-radius:16px;padding:22px;max-width:420px;width:92%;direction:rtl">';
+  // First question: whose card pays
+  window._orderPayer = null;
+  ov.innerHTML = box + head('💳 חיוב בכרטיס של מי?') +
+    '<button data-payer="office" style="display:flex;align-items:center;gap:12px;width:100%;text-align:right;padding:14px 16px;margin-top:10px;border-radius:12px;border:1.5px solid #3b82f6;background:#eff6ff;color:#1e40af;cursor:pointer;font:inherit"><span style="font-size:26px">🏢</span><span><div style="font-weight:700;font-size:16px">כרטיס המשרד</div><div style="font-size:12px;opacity:.8">התוסף ממלא את הכרטיס השמור</div></span></button>' +
+    '<button data-payer="client" style="display:flex;align-items:center;gap:12px;width:100%;text-align:right;padding:14px 16px;margin-top:10px;border-radius:12px;border:1.5px solid #22c55e;background:#f0fdf4;color:#166534;cursor:pointer;font:inherit"><span style="font-size:26px">👤</span><span><div style="font-weight:700;font-size:16px">כרטיס הלקוח</div><div style="font-size:12px;opacity:.8">עוצר בדף התשלום — אתה מקליד את האשראי</div></span></button></div>';
+  ov.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-payer]'); if (!b) return;
+    window._orderPayer = b.dataset.payer;
+    showMenu();
+  });
+  document.body.appendChild(ov);
+  function showMenu() {
+  ov.innerHTML = box + head('📄 מה להזמין?') +
+    '<div style="margin-top:8px;font-size:13px;color:#475569">חיוב: <b>' + (window._orderPayer === 'client' ? '👤 כרטיס הלקוח' : '🏢 כרטיס המשרד') + '</b></div>' +
     row('orderNesach', '📄', 'הזמן נסח', 'פותח gov.il וממלא את הפרטים אוטומטית') +
     row('orderIyunim', '🔍', 'הזמן עיונים', 'רשם המשכונות — עיון לכל לווה לפי ת״ז') +
     row('orderTashrit', '🏢', 'הזמן תשריט בית משותף', 'פותח את אתר הזמנת מסמכי בתים משותפים וממלא גוש וחלקה') +
     '</div>';
-  document.body.appendChild(ov);
+  }
+}
+// Client-paid orders need extension ≥1.6 (older versions would fill the office card)
+function _payerBlocked() {
+  if (window._orderPayer !== 'client') return false;
+  const v = (window._nefakhExtensionVersion || '0').split('.').map(Number);
+  if (v[0] > 1 || (v[0] === 1 && (v[1] || 0) >= 6)) return false;
+  alert('כדי לחייב בכרטיס הלקוח צריך תוסף גרסה 1.6 (יש לך ' + (window._nefakhExtensionVersion || '?') + ').\n\nפתח chrome://extensions, לחץ ⟳ על "CRM Nefakh Helper", ואז רענן את ה-CRM (F5).');
+  return true;
 }
 function orderIyunim(cid) {
   const c = state.clients.find(x => x.id === cid); if (!c) return;
@@ -11384,7 +11408,8 @@ function _sendIyunim(c, people) {
       alert('התוסף שלך ישן (גרסה ' + (window._nefakhExtensionVersion || '?') + ') ולא מכיר הזמנת עיונים.\n\nפתח chrome://extensions, לחץ ⟳ על "CRM Nefakh Helper", ואז רענן את ה-CRM (F5).');
       return;
     }
-    window.postMessage({ type: 'ORDER_IYUNIM', payload: { clientId: c.id, clientName: c.name, people: people, customerName: c.name, customerEmail: 'a035591712@gmail.com', customerPhone: '0528932640' } }, '*');
+    if (_payerBlocked()) return;
+    window.postMessage({ type: 'ORDER_IYUNIM', payload: { clientId: c.id, clientName: c.name, people: people, customerName: c.name, customerEmail: 'a035591712@gmail.com', customerPhone: '0528932640', payer: window._orderPayer || 'office' } }, '*');
   }, 500);
 }
 function orderTashrit(cid) {
@@ -11405,7 +11430,8 @@ function orderTashrit(cid) {
       alert('התוסף שלך ישן (גרסה ' + (window._nefakhExtensionVersion || '?') + ') ולא מכיר הזמנת תשריט.\n\nפתח chrome://extensions, לחץ ⟳ על "CRM Nefakh Helper", ואז רענן את ה-CRM (F5).');
       return;
     }
-    window.postMessage({ type: 'ORDER_TASHRIT', payload: { clientId: c.id, clientName: c.name, gush: c.propertyGush || '', helka: c.propertyHelka || '', customerName: c.name, customerEmail: 'a035591712@gmail.com', customerPhone: '0528932640' } }, '*');
+    if (_payerBlocked()) return;
+    window.postMessage({ type: 'ORDER_TASHRIT', payload: { clientId: c.id, clientName: c.name, gush: c.propertyGush || '', helka: c.propertyHelka || '', customerName: c.name, customerEmail: 'a035591712@gmail.com', customerPhone: '0528932640', payer: window._orderPayer || 'office' } }, '*');
   }, 500);
 }
 /* ---------- הכן הגשה לבנק: כל נתוני הלקוח בשורות עם העתקה ---------- */
