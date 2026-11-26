@@ -15673,6 +15673,22 @@ function renderDealSections(purposes) {
       }
     }
   }
+  _backfillPickedContacts();
+}
+// A name saved before its contact had a phone/email (or before it was in the contacts list) never
+// re-triggers onchange — fill the empty phone/email from the contacts list when the form opens.
+function _backfillPickedContacts() {
+  const contacts = (state.settings && state.settings.contacts) || [];
+  document.querySelectorAll('input[onchange^="onContactPicked("]').forEach(nameEl => {
+    const ids = (nameEl.getAttribute('onchange').match(/'([^']*)'/g) || []).map(s => s.slice(1, -1));
+    const name = (nameEl.value || '').trim(); if (!name) return;
+    const cat = ids[3];
+    const match = contacts.find(x => (x.name || '').trim() === name && (!cat || x.category === cat)) || contacts.find(x => (x.name || '').trim() === name);
+    if (!match) return;
+    const ph = document.getElementById(ids[1]), em = document.getElementById(ids[2]);
+    if (ph && !ph.value && (match.phone || match.mobile)) ph.value = match.phone || match.mobile;
+    if (em && !em.value && match.email) em.value = match.email;
+  });
 }
 
 function dealSectionHtml(id, title, fields) {
