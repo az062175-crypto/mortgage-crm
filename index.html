@@ -621,7 +621,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-25 #BL</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-26 #LK</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -3917,6 +3917,8 @@ function renderControlBoard() {
         <div style="font-size:15px;line-height:1.6;color:#e2e8f0">${briefing}</div>
       </div>
 
+      ${linksPanelHtml()}
+
       ${typeof sigPendingPanelHtml === 'function' ? sigPendingPanelHtml() : ''}
       <div class="ctl-two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
 
@@ -4100,7 +4102,147 @@ function renderControlBoard() {
       </div>
     </div>
   `;
+  linksRender();
   if (typeof signDashLoad === 'function') signDashLoad();
+}
+
+// ============================================================
+// לינקים רלוונטיים (לוח בקרה)
+// state.links keeps only what the user changed, keyed by id. The seed list below fills the rest,
+// so an edit or delete always beats the seed, and sync merges item by item (newest `at` wins).
+// ============================================================
+const LINK_TYPES = ['בנק', 'משרד ממשלתי', 'עירייה', 'אחר'];
+const LINK_SEED = [
+  [0,'מזרחי-טפחות','הגשת בקשה למשכנתא'], [0,'פועלים','משכנתא בדיגיטל'], [0,'לאומי','משכנתא דיגיטלית'],
+  [0,'דיסקונט','לקחת משכנתא בקלות'], [0,'מרכנתיל','משכנתא'], [0,'הבינלאומי','בקשה למשכנתא'],
+  [0,'לשיוך','בקשת משכנתא - יועצים'], [3,'SNOW.ORG.IL','חיפוש שותפים'],
+  [1,'טאבו','הזמנת תשריט בית משותף'], [1,'טאבו','אגרות טאבו'], [1,'טאבו','מקרקעין ברשת'], [1,'טאבו','איתור גוש חלקה'],
+  [1,'רשם המשכונות','רשם המשכונות'], [1,'רשם המשכונות','בקשת עיון במשכון - תאגידים Online'],
+  [1,'לשיוך','בקשה לאישור זכויות / הודעה על רישום זכות בנכס'], [1,'מחיר למשתכן','מחיר למשתכן'],
+  [2,'לשיוך','טופס בקשה לאישור העדר חובות'], [3,'לשיוך','ניהול טפסים מקוונים'],
+  [2,'עיריית ירושלים','מעקב אישור עירייה'], [2,'עיריית אשקלון','אישור עירייה'],
+].map((r, i) => ({ id: 'lk' + (i + 1), type: LINK_TYPES[r[0]], name: r[1], topic: r[2], url: '' }));
+let linksFilter = { type: '', name: '', q: '' };
+
+function linksAll() {
+  const saved = Object.assign({}, state.links || {});
+  const seeded = LINK_SEED.map(s => { const o = saved[s.id]; delete saved[s.id]; return o || s; });
+  const added = Object.values(saved).sort((a, b) => String(b.id).localeCompare(String(a.id)));
+  return added.concat(seeded).filter(l => l && !l.deleted);
+}
+function linksMerge(local, remote) {
+  const out = Object.assign({}, remote || {});
+  Object.keys(local || {}).forEach(id => {
+    if (!out[id] || String(local[id].at || '') >= String(out[id].at || '')) out[id] = local[id];
+  });
+  return out;
+}
+function linksStore(item) {
+  if (!state.links) state.links = {};
+  state.links[item.id] = Object.assign({}, item, { at: new Date().toISOString() });
+  save();
+}
+// Only web addresses are accepted. Returns '' for empty, null for invalid.
+function linksCleanUrl(raw) {
+  let u = String(raw || '').trim();
+  if (!u) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = 'https://' + u;
+  try {
+    const p = new URL(u);
+    return (p.protocol === 'http:' || p.protocol === 'https:') && p.hostname.includes('.') ? p.href : null;
+  } catch (e) { return null; }
+}
+function linksPanelHtml() {
+  return `
+    <div class="panel" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <h2 class="panel-title" style="margin:0">🔗 לינקים רלוונטיים</h2>
+        <button class="btn small" onclick="linksEdit('')">➕ הוסף לינק</button>
+      </div>
+      <div id="linksChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <select id="linksName" class="filter" aria-label="סינון לפי בנק או גוף" onchange="linksFilter.name=this.value;linksRender()"></select>
+        <input id="linksQ" type="search" placeholder="🔍 חיפוש נושא או שם" value="${escapeHtml(linksFilter.q)}" oninput="linksFilter.q=this.value;linksRender()" style="flex:1;min-width:180px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
+      </div>
+      <div id="linksRows" style="max-height:420px;overflow:auto"></div>
+    </div>`;
+}
+function linksRender() {
+  const box = document.getElementById('linksRows');
+  if (!box) return;
+  const all = linksAll();
+  document.getElementById('linksChips').innerHTML = [''].concat(LINK_TYPES).map((t, i) => {
+    const count = all.filter(l => !t || l.type === t).length;
+    return `<div class="chip ${linksFilter.type === t ? 'active' : ''}" onclick="linksSetType(${i - 1})">${t || 'הכל'} (${count})</div>`;
+  }).join('');
+  const names = [...new Set(all.filter(l => !linksFilter.type || l.type === linksFilter.type).map(l => l.name))].sort((a, b) => a.localeCompare(b, 'he'));
+  if (!names.includes(linksFilter.name)) linksFilter.name = '';
+  document.getElementById('linksName').innerHTML = '<option value="">כל הבנקים והגופים</option>' +
+    names.map(n => `<option value="${escapeHtml(n)}" ${n === linksFilter.name ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('');
+  const q = linksFilter.q.trim().toLowerCase();
+  const rows = all.filter(l => (!linksFilter.type || l.type === linksFilter.type)
+    && (!linksFilter.name || l.name === linksFilter.name)
+    && (!q || (l.name + ' ' + l.topic).toLowerCase().includes(q)));
+  if (!rows.length) { box.innerHTML = '<div class="empty" style="padding:16px">אין לינקים שמתאימים לסינון.</div>'; return; }
+  const th = 'style="text-align:right;padding:6px 8px;font-size:12px;color:var(--muted);position:sticky;top:0;background:#fff"';
+  const td = 'style="padding:6px 8px;border-top:1px solid var(--border)"';
+  box.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr><th ${th}>בנק / גוף</th><th ${th}>נושא</th><th ${th}>קישור</th><th ${th}></th></tr></thead>
+    <tbody>${rows.map(l => {
+      const url = linksCleanUrl(l.url);
+      return `<tr>
+        <td ${td}><b>${escapeHtml(l.name)}</b><div style="font-size:11px;color:var(--muted)">${escapeHtml(l.type)}</div></td>
+        <td ${td}>${escapeHtml(l.topic)}</td>
+        <td ${td}>${url
+          ? `<a class="btn small" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(url)}" style="text-decoration:none">פתח ↗</a>`
+          : `<input type="url" dir="ltr" placeholder="הדבק כתובת + Enter" aria-label="כתובת עבור ${escapeHtml(l.topic)}" onchange="linksSetUrl('${escapeHtml(l.id)}', this)" style="width:100%;min-width:150px;padding:5px 8px;border:1px dashed var(--border);border-radius:6px">`}</td>
+        <td ${td} style="white-space:nowrap">
+          <button class="btn small secondary" onclick="linksEdit('${escapeHtml(l.id)}')" title="עריכה" style="padding:2px 8px">✏️</button>
+          <button class="btn small secondary" onclick="linksDelete('${escapeHtml(l.id)}')" title="מחיקה" style="padding:2px 8px">🗑️</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+function linksSetType(i) { linksFilter.type = LINK_TYPES[i] || ''; linksFilter.name = ''; linksRender(); }
+function linksSetUrl(id, input) {
+  const item = linksAll().find(l => l.id === id);
+  const url = linksCleanUrl(input.value);
+  if (!item || url === '') return;
+  if (url === null) { input.style.borderColor = '#dc2626'; alert('הכתובת לא תקינה. הדבק כתובת אתר מלאה.'); return; }
+  linksStore(Object.assign({}, item, { url }));
+  linksRender();
+}
+function linksEdit(id) {
+  const l = linksAll().find(x => x.id === id) || { type: linksFilter.type || LINK_TYPES[0], name: linksFilter.name, topic: '', url: '' };
+  const field = 'style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin:4px 0 12px;box-sizing:border-box"';
+  showModal(`
+    <h2 style="margin-top:0">${id ? 'עריכת לינק' : 'לינק חדש'}</h2>
+    <label>סוג<select id="lkType" ${field}>${LINK_TYPES.map(t => `<option ${t === l.type ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <label>שם הבנק / הגוף<input id="lkName" list="lkNames" value="${escapeHtml(l.name)}" ${field}></label>
+    <datalist id="lkNames">${[...new Set(linksAll().map(x => x.name))].map(n => `<option value="${escapeHtml(n)}">`).join('')}</datalist>
+    <label>נושא<input id="lkTopic" value="${escapeHtml(l.topic)}" ${field}></label>
+    <label>קישור<input id="lkUrl" dir="ltr" placeholder="https://" value="${escapeHtml(l.url)}" ${field}></label>
+    <div id="lkErr" style="color:#dc2626;font-size:13px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" onclick="linksSave('${escapeHtml(id)}')">שמור</button>
+      <button class="btn secondary" onclick="closeModal()">ביטול</button>
+    </div>`);
+}
+function linksSave(id) {
+  const val = k => document.getElementById(k).value.trim();
+  const url = linksCleanUrl(val('lkUrl'));
+  const fail = m => { document.getElementById('lkErr').textContent = m; };
+  if (!val('lkName') || !val('lkTopic')) return fail('מלא שם ונושא.');
+  if (url === null) return fail('הכתובת לא תקינה.');
+  linksStore({ id: id || 'lku' + uid(), type: val('lkType'), name: val('lkName'), topic: val('lkTopic'), url });
+  closeModal();
+  linksRender();
+}
+function linksDelete(id) {
+  const item = linksAll().find(l => l.id === id);
+  if (!item || !confirm('למחוק את הלינק "' + item.topic + '" (' + item.name + ')?')) return;
+  linksStore({ id, deleted: true });
+  linksRender();
 }
 
 // The dashboard's filter scope. Tiles and the dialogs they open both read from here,
@@ -23075,6 +23217,7 @@ async function sbMergeFromServer(){
       if (Array.isArray(merged.clients)) state.clients = merged.clients;
       if (Array.isArray(merged.trash))   state.trash   = merged.trash;
       if (merged.purged) state.purged = merged.purged;
+      if (merged.links) state.links = merged.links;
     }
   } catch(e){ console.warn('[sync] merge-from-server failed:', e && e.message); }
 }
@@ -23274,6 +23417,7 @@ function _buildMergedStateFromRemote(remote) {
     const _lp = _pobj(state && state.purged);
     Object.keys(_lp).forEach(id => { if (!purged[id] || _lp[id] > purged[id]) purged[id] = _lp[id]; });
     merged.purged = purged;
+    merged.links = linksMerge(state && state.links, remote.links);
     // Find the newest restore time per id across both alive copies — if newer than the delete time
     // of the trash entry, the restoration wins and the client stays alive on both devices.
     const latestRestoreAtById = {};
