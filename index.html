@@ -11537,15 +11537,15 @@ function openBankSubmission(cid) {
     var sellers = Array.isArray(sh.sellers) && sh.sellers.length ? sh.sellers : [{ name: sh.sellerName, phone: sh.sellerPhone, email: sh.sellerEmail }];
     deal.push(H('יד שנייה — צדדים'));
     sellers.forEach(function (x, i) { add('מוכר ' + (i + 1), contact(x.name, x.phone, x.email)); });
-    add('עו"ד קונה', contact(sh.buyerLawyer, sh.buyerLawyerPhone, sh.buyerLawyerEmail));
-    add('עו"ד מוכר', contact(sh.sellerLawyer, sh.sellerLawyerPhone, sh.sellerLawyerEmail));
+    add('עו"ד קונה', contact(sh.buyerLawyer, _ph(sh.buyerLawyerMobile, sh.buyerLawyerPhone), sh.buyerLawyerEmail));
+    add('עו"ד מוכר', contact(sh.sellerLawyer, _ph(sh.sellerLawyerMobile, sh.sellerLawyerPhone), sh.sellerLawyerEmail));
   }
   [['firstHand', 'יד ראשונה — צדדים'], ['mchirLm', 'מחיר למשתכן — צדדים']].forEach(function (k) {
     var f = dd[k[0]]; if (!f) return;
     deal.push(H(k[1]));
-    add('קבלן', contact(f.contractor, f.contractorPhone, ''));
-    add('עו"ד קונה', contact(f.buyerLawyer, f.buyerLawyerPhone, f.buyerLawyerEmail));
-    add('עו"ד קבלן', contact(f.contractorLawyer, f.contractorLawyerPhone, f.contractorLawyerEmail));
+    add('קבלן', contact(f.contractor, _ph(f.contractorMobile, f.contractorPhone), ''));
+    add('עו"ד קונה', contact(f.buyerLawyer, _ph(f.buyerLawyerMobile, f.buyerLawyerPhone), f.buyerLawyerEmail));
+    add('עו"ד קבלן', contact(f.contractorLawyer, _ph(f.contractorLawyerMobile, f.contractorLawyerPhone), f.contractorLawyerEmail));
   });
   var tracks = c.loanComposition && c.loanComposition.tracks ? c.loanComposition.tracks : {};
   var filled = LOAN_TRACKS.filter(function (tr) { return tracks[tr.id] && Number(tracks[tr.id].amount) > 0; });
@@ -11771,24 +11771,24 @@ function openBankLetter(clientId) {
       const sellersLine = sellers.filter(x => x.name || x.phone).map(x => escapeHtml(x.name || '') + (x.phone ? ' · ' + escapeHtml(x.phone) : '')).join('; ') || '—';
       dealHtml += `
         <tr><th>מוכר/ים</th><td>${sellersLine}</td></tr>
-        <tr><th>עו"ד קונה</th><td>${escapeHtml(s.buyerLawyer || '—')}${s.buyerLawyerPhone ? ' · ' + escapeHtml(s.buyerLawyerPhone) : ''}${s.buyerLawyerEmail ? ' · ' + escapeHtml(s.buyerLawyerEmail) : ''}</td></tr>
-        <tr><th>עו"ד מוכר</th><td>${escapeHtml(s.sellerLawyer || '—')}${s.sellerLawyerPhone ? ' · ' + escapeHtml(s.sellerLawyerPhone) : ''}${s.sellerLawyerEmail ? ' · ' + escapeHtml(s.sellerLawyerEmail) : ''}</td></tr>
+        <tr><th>עו"ד קונה</th><td>${escapeHtml(s.buyerLawyer || '—')}${_ph(s.buyerLawyerMobile, s.buyerLawyerPhone) ? ' · ' + escapeHtml(_ph(s.buyerLawyerMobile, s.buyerLawyerPhone)) : ''}${s.buyerLawyerEmail ? ' · ' + escapeHtml(s.buyerLawyerEmail) : ''}</td></tr>
+        <tr><th>עו"ד מוכר</th><td>${escapeHtml(s.sellerLawyer || '—')}${_ph(s.sellerLawyerMobile, s.sellerLawyerPhone) ? ' · ' + escapeHtml(_ph(s.sellerLawyerMobile, s.sellerLawyerPhone)) : ''}${s.sellerLawyerEmail ? ' · ' + escapeHtml(s.sellerLawyerEmail) : ''}</td></tr>
       `;
     }
     if (dd.firstHand) {
       const f = dd.firstHand;
       dealHtml += `
-        <tr><th>קבלן</th><td>${escapeHtml(f.contractor || '—')}${f.contractorPhone ? ' · ' + escapeHtml(f.contractorPhone) : ''}</td></tr>
-        <tr><th>עו"ד קונה</th><td>${escapeHtml(f.buyerLawyer || '—')}${f.buyerLawyerPhone ? ' · ' + escapeHtml(f.buyerLawyerPhone) : ''}${f.buyerLawyerEmail ? ' · ' + escapeHtml(f.buyerLawyerEmail) : ''}</td></tr>
-        <tr><th>עו"ד קבלן</th><td>${escapeHtml(f.contractorLawyer || '—')}${f.contractorLawyerPhone ? ' · ' + escapeHtml(f.contractorLawyerPhone) : ''}${f.contractorLawyerEmail ? ' · ' + escapeHtml(f.contractorLawyerEmail) : ''}</td></tr>
+        <tr><th>קבלן</th><td>${escapeHtml(f.contractor || '—')}${_ph(f.contractorMobile, f.contractorPhone) ? ' · ' + escapeHtml(_ph(f.contractorMobile, f.contractorPhone)) : ''}</td></tr>
+        <tr><th>עו"ד קונה</th><td>${escapeHtml(f.buyerLawyer || '—')}${_ph(f.buyerLawyerMobile, f.buyerLawyerPhone) ? ' · ' + escapeHtml(_ph(f.buyerLawyerMobile, f.buyerLawyerPhone)) : ''}${f.buyerLawyerEmail ? ' · ' + escapeHtml(f.buyerLawyerEmail) : ''}</td></tr>
+        <tr><th>עו"ד קבלן</th><td>${escapeHtml(f.contractorLawyer || '—')}${_ph(f.contractorLawyerMobile, f.contractorLawyerPhone) ? ' · ' + escapeHtml(_ph(f.contractorLawyerMobile, f.contractorLawyerPhone)) : ''}${f.contractorLawyerEmail ? ' · ' + escapeHtml(f.contractorLawyerEmail) : ''}</td></tr>
       `;
     }
     if (dd.mchirLm) {
       const m = dd.mchirLm;
       dealHtml += `
-        <tr><th>קבלן</th><td>${escapeHtml(m.contractor || '—')}${m.contractorPhone ? ' · ' + escapeHtml(m.contractorPhone) : ''}</td></tr>
-        <tr><th>עו"ד קונה</th><td>${escapeHtml(m.buyerLawyer || '—')}${m.buyerLawyerPhone ? ' · ' + escapeHtml(m.buyerLawyerPhone) : ''}${m.buyerLawyerEmail ? ' · ' + escapeHtml(m.buyerLawyerEmail) : ''}</td></tr>
-        <tr><th>עו"ד קבלן</th><td>${escapeHtml(m.contractorLawyer || '—')}${m.contractorLawyerPhone ? ' · ' + escapeHtml(m.contractorLawyerPhone) : ''}${m.contractorLawyerEmail ? ' · ' + escapeHtml(m.contractorLawyerEmail) : ''}</td></tr>
+        <tr><th>קבלן</th><td>${escapeHtml(m.contractor || '—')}${_ph(m.contractorMobile, m.contractorPhone) ? ' · ' + escapeHtml(_ph(m.contractorMobile, m.contractorPhone)) : ''}</td></tr>
+        <tr><th>עו"ד קונה</th><td>${escapeHtml(m.buyerLawyer || '—')}${_ph(m.buyerLawyerMobile, m.buyerLawyerPhone) ? ' · ' + escapeHtml(_ph(m.buyerLawyerMobile, m.buyerLawyerPhone)) : ''}${m.buyerLawyerEmail ? ' · ' + escapeHtml(m.buyerLawyerEmail) : ''}</td></tr>
+        <tr><th>עו"ד קבלן</th><td>${escapeHtml(m.contractorLawyer || '—')}${_ph(m.contractorLawyerMobile, m.contractorLawyerPhone) ? ' · ' + escapeHtml(_ph(m.contractorLawyerMobile, m.contractorLawyerPhone)) : ''}${m.contractorLawyerEmail ? ' · ' + escapeHtml(m.contractorLawyerEmail) : ''}</td></tr>
       `;
     }
   }
@@ -13518,7 +13518,7 @@ function openNewClientModal(editClient, warningMessage) {
     if (dd.secondHand) {
       const s = dd.secondHand;
       // Lawyer + tenant fields — set via IDs
-      ['buyerLawyer','buyerLawyerPhone','buyerLawyerEmail','sellerLawyer','sellerLawyerPhone','sellerLawyerEmail','tenantName','tenantPhone','tenantEmail'].forEach(k => {
+      ['buyerLawyer','buyerLawyerPhone','buyerLawyerMobile','buyerLawyerEmail','sellerLawyer','sellerLawyerPhone','sellerLawyerMobile','sellerLawyerEmail','tenantName','tenantPhone','tenantEmail'].forEach(k => {
         const el = document.getElementById('sh_'+k);
         if (el) el.value = s[k] || '';
       });
@@ -13550,14 +13550,14 @@ function openNewClientModal(editClient, warningMessage) {
     }
     if (dd.firstHand) {
       const f = dd.firstHand;
-      ['contractor','contractorPhone','contractorEmail','buyerLawyer','buyerLawyerPhone','buyerLawyerEmail','contractorLawyer','contractorLawyerPhone','contractorLawyerEmail'].forEach(k => {
+      ['contractor','contractorPhone','contractorMobile','contractorEmail','buyerLawyer','buyerLawyerPhone','buyerLawyerMobile','buyerLawyerEmail','contractorLawyer','contractorLawyerPhone','contractorLawyerMobile','contractorLawyerEmail'].forEach(k => {
         const el = document.getElementById('fh_'+k);
         if (el) el.value = f[k] || '';
       });
     }
     if (dd.mchirLm) {
       const m = dd.mchirLm;
-      ['contractor','contractorPhone','contractorEmail','buyerLawyer','buyerLawyerPhone','buyerLawyerEmail','contractorLawyer','contractorLawyerPhone','contractorLawyerEmail'].forEach(k => {
+      ['contractor','contractorPhone','contractorMobile','contractorEmail','buyerLawyer','buyerLawyerPhone','buyerLawyerMobile','buyerLawyerEmail','contractorLawyer','contractorLawyerPhone','contractorLawyerMobile','contractorLawyerEmail'].forEach(k => {
         const el = document.getElementById('ml_'+k);
         if (el) el.value = m[k] || '';
       });
@@ -15547,15 +15547,15 @@ function renderDealSections(purposes) {
       <div id="shSellersList"></div>
       <button type="button" class="btn secondary small" onclick="addSellerRow()" style="margin-bottom:12px">+ עוד מוכר</button>
       <div style="font-weight:600;color:#334155;font-size:12px;margin:6px 0">עו"ד קונה</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1.3fr;gap:8px;margin-bottom:10px">
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">שם (בחר או הקלד)</label><input id="sh_buyerLawyer" list="dl_lawyers" onchange="onContactPicked('sh_buyerLawyer','sh_buyerLawyerPhone','sh_buyerLawyerEmail','עורך דין')"></div>
-        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="sh_buyerLawyerPhone"></div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">נייד</label><input id="sh_buyerLawyerMobile"></div><div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="sh_buyerLawyerPhone"></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">אימייל</label><input id="sh_buyerLawyerEmail"></div>
       </div>
       <div style="font-weight:600;color:#334155;font-size:12px;margin:6px 0">עו"ד מוכר</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1.3fr;gap:8px">
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">שם (בחר או הקלד)</label><input id="sh_sellerLawyer" list="dl_lawyers" onchange="onContactPicked('sh_sellerLawyer','sh_sellerLawyerPhone','sh_sellerLawyerEmail','עורך דין')"></div>
-        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="sh_sellerLawyerPhone"></div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">נייד</label><input id="sh_sellerLawyerMobile"></div><div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="sh_sellerLawyerPhone"></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">אימייל</label><input id="sh_sellerLawyerEmail"></div>
       </div>
     </div>`;
@@ -15564,21 +15564,21 @@ function renderDealSections(purposes) {
     html += `<div class="deal-section" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:12px">
       <div style="font-weight:700;color:#1e40af;font-size:13px;margin-bottom:10px">פרטי עסקה — יד ראשונה</div>
       <div style="font-weight:600;color:#334155;font-size:12px;margin:6px 0">קבלן</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1.3fr;gap:8px;margin-bottom:10px">
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">שם הקבלן (בחר או הקלד)</label><input id="fh_contractor" list="dl_contractors" onchange="onContactPicked('fh_contractor','fh_contractorPhone','fh_contractorEmail','קבלן')"></div>
-        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון הקבלן</label><input id="fh_contractorPhone"></div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">נייד הקבלן</label><input id="fh_contractorMobile"></div><div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון הקבלן</label><input id="fh_contractorPhone"></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">אימייל הקבלן</label><input id="fh_contractorEmail"></div>
       </div>
       <div style="font-weight:600;color:#334155;font-size:12px;margin:6px 0">עו"ד קונה</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1.3fr;gap:8px;margin-bottom:10px">
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">שם (בחר או הקלד)</label><input id="fh_buyerLawyer" list="dl_lawyers" onchange="onContactPicked('fh_buyerLawyer','fh_buyerLawyerPhone','fh_buyerLawyerEmail','עורך דין')"></div>
-        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="fh_buyerLawyerPhone"></div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">נייד</label><input id="fh_buyerLawyerMobile"></div><div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="fh_buyerLawyerPhone"></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">אימייל</label><input id="fh_buyerLawyerEmail"></div>
       </div>
       <div style="font-weight:600;color:#334155;font-size:12px;margin:6px 0">עו"ד הקבלן</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1.3fr;gap:8px">
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">שם (בחר או הקלד)</label><input id="fh_contractorLawyer" list="dl_lawyers" onchange="onContactPicked('fh_contractorLawyer','fh_contractorLawyerPhone','fh_contractorLawyerEmail','עורך דין')"></div>
-        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="fh_contractorLawyerPhone"></div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">נייד</label><input id="fh_contractorLawyerMobile"></div><div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="fh_contractorLawyerPhone"></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">אימייל</label><input id="fh_contractorLawyerEmail"></div>
       </div>
     </div>`;
@@ -15587,21 +15587,21 @@ function renderDealSections(purposes) {
     html += `<div class="deal-section" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:12px">
       <div style="font-weight:700;color:#1e40af;font-size:13px;margin-bottom:10px">פרטי עסקה — מחיר למשתכן</div>
       <div style="font-weight:600;color:#334155;font-size:12px;margin:6px 0">קבלן</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1.3fr;gap:8px;margin-bottom:10px">
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">שם הקבלן (בחר או הקלד)</label><input id="ml_contractor" list="dl_contractors" onchange="onContactPicked('ml_contractor','ml_contractorPhone','ml_contractorEmail','קבלן')"></div>
-        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון הקבלן</label><input id="ml_contractorPhone"></div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">נייד הקבלן</label><input id="ml_contractorMobile"></div><div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון הקבלן</label><input id="ml_contractorPhone"></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">אימייל הקבלן</label><input id="ml_contractorEmail"></div>
       </div>
       <div style="font-weight:600;color:#334155;font-size:12px;margin:6px 0">עו"ד קונה</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1.3fr;gap:8px;margin-bottom:10px">
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">שם (בחר או הקלד)</label><input id="ml_buyerLawyer" list="dl_lawyers" onchange="onContactPicked('ml_buyerLawyer','ml_buyerLawyerPhone','ml_buyerLawyerEmail','עורך דין')"></div>
-        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="ml_buyerLawyerPhone"></div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">נייד</label><input id="ml_buyerLawyerMobile"></div><div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="ml_buyerLawyerPhone"></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">אימייל</label><input id="ml_buyerLawyerEmail"></div>
       </div>
       <div style="font-weight:600;color:#334155;font-size:12px;margin:6px 0">עו"ד הקבלן</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1.3fr;gap:8px">
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">שם (בחר או הקלד)</label><input id="ml_contractorLawyer" list="dl_lawyers" onchange="onContactPicked('ml_contractorLawyer','ml_contractorLawyerPhone','ml_contractorLawyerEmail','עורך דין')"></div>
-        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="ml_contractorLawyerPhone"></div>
+        <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">נייד</label><input id="ml_contractorLawyerMobile"></div><div class="form-group" style="margin-bottom:0"><label style="font-size:12px">טלפון</label><input id="ml_contractorLawyerPhone"></div>
         <div class="form-group" style="margin-bottom:0"><label style="font-size:12px">אימייל</label><input id="ml_contractorLawyerEmail"></div>
       </div>
     </div>`;
@@ -15634,7 +15634,7 @@ function renderDealSections(purposes) {
     if (_editDD) {
       if (_editDD.secondHand) {
         const s = _editDD.secondHand;
-        ['buyerLawyer','buyerLawyerPhone','buyerLawyerEmail','sellerLawyer','sellerLawyerPhone','sellerLawyerEmail'].forEach(k => {
+        ['buyerLawyer','buyerLawyerPhone','buyerLawyerMobile','buyerLawyerEmail','sellerLawyer','sellerLawyerPhone','sellerLawyerMobile','sellerLawyerEmail'].forEach(k => {
           const el = document.getElementById('sh_'+k);
           if (el && !el.value && s[k]) el.value = s[k];
         });
@@ -15659,14 +15659,14 @@ function renderDealSections(purposes) {
       }
       if (_editDD.firstHand) {
         const f = _editDD.firstHand;
-        ['contractor','contractorPhone','contractorEmail','buyerLawyer','buyerLawyerPhone','buyerLawyerEmail','contractorLawyer','contractorLawyerPhone','contractorLawyerEmail'].forEach(k => {
+        ['contractor','contractorPhone','contractorMobile','contractorEmail','buyerLawyer','buyerLawyerPhone','buyerLawyerMobile','buyerLawyerEmail','contractorLawyer','contractorLawyerPhone','contractorLawyerMobile','contractorLawyerEmail'].forEach(k => {
           const el = document.getElementById('fh_'+k);
           if (el && !el.value && f[k]) el.value = f[k];
         });
       }
       if (_editDD.mchirLm) {
         const m = _editDD.mchirLm;
-        ['contractor','contractorPhone','contractorEmail','buyerLawyer','buyerLawyerPhone','buyerLawyerEmail','contractorLawyer','contractorLawyerPhone','contractorLawyerEmail'].forEach(k => {
+        ['contractor','contractorPhone','contractorMobile','contractorEmail','buyerLawyer','buyerLawyerPhone','buyerLawyerMobile','buyerLawyerEmail','contractorLawyer','contractorLawyerPhone','contractorLawyerMobile','contractorLawyerEmail'].forEach(k => {
           const el = document.getElementById('ml_'+k);
           if (el && !el.value && m[k]) el.value = m[k];
         });
@@ -15695,6 +15695,7 @@ function renderDealSections(purposes) {
     el.placeholder = el.dataset.prevPh; delete el.dataset.prevPick; delete el.dataset.prevPh;
   }, true);
 })();
+function _ph(a, b) { a = String(a || '').trim(); b = String(b || '').trim(); return a && b && a !== b ? a + ' / ' + b : (a || b); }
 // Mobile + landline together ("נייד / טלפון"), whichever exist
 function _contactPhones(m) {
   const a = String(m.mobile || '').trim(), b = String(m.phone || '').trim();
@@ -15709,7 +15710,9 @@ function _backfillPickedContacts() {
     const match = contacts.find(x => (x.name || '').trim() === name && (!cat || x.category === cat)) || contacts.find(x => (x.name || '').trim() === name);
     if (!match) return;
     const ph = document.getElementById(ids[1]), em = document.getElementById(ids[2]);
-    if (ph && !ph.value && _contactPhones(match)) ph.value = _contactPhones(match);
+    const mo = document.getElementById(ids[1].replace(/Phone$/, 'Mobile'));
+    if (mo) { if (!mo.value && match.mobile) mo.value = match.mobile; if (ph && !ph.value && match.phone) ph.value = match.phone; }
+    else if (ph && !ph.value && _contactPhones(match)) ph.value = _contactPhones(match);
     if (em && !em.value && match.email) em.value = match.email;
   });
 }
@@ -15791,8 +15794,10 @@ function onContactPicked(nameId, phoneId, emailId, category) {
   const name = (nameEl.value || '').trim();
   const phoneEl = document.getElementById(phoneId);
   const emailEl = document.getElementById(emailId);
+  const mobileEl = document.getElementById(String(phoneId).replace(/Phone$/, 'Mobile'));
   if (!name) {
     // Name cleared — also clear phone/email
+    if (mobileEl) mobileEl.value = '';
     if (phoneEl) phoneEl.value = '';
     if (emailEl) emailEl.value = '';
     return;
@@ -15802,12 +15807,14 @@ function onContactPicked(nameId, phoneId, emailId, category) {
     || contacts.find(x => (x.name || '').trim() === name);
   if (match) {
     // Replace phone/email with the matched contact's values — stale data from a previous name is wrong.
-    if (phoneEl) phoneEl.value = _contactPhones(match);
+    if (mobileEl) { mobileEl.value = match.mobile || ''; if (phoneEl) phoneEl.value = match.phone || ''; }
+    else if (phoneEl) phoneEl.value = _contactPhones(match);
     if (emailEl) emailEl.value = match.email || '';
     return;
   }
   // Name was changed to one that doesn't match any contact — clear phone/email so stale values
   // from the previous name don't stick around.
+  if (mobileEl) mobileEl.value = '';
   if (phoneEl) phoneEl.value = '';
   if (emailEl) emailEl.value = '';
 }
@@ -15873,22 +15880,22 @@ function collectDealDetails() {
       sellers,
       // Backward-compat legacy fields — first seller
       sellerName: primary.name, sellerPhone: primary.phone, sellerEmail: primary.email,
-      buyerLawyer: getVal('sh_buyerLawyer'), buyerLawyerPhone: getVal('sh_buyerLawyerPhone'), buyerLawyerEmail: getVal('sh_buyerLawyerEmail'),
-      sellerLawyer: getVal('sh_sellerLawyer'), sellerLawyerPhone: getVal('sh_sellerLawyerPhone'), sellerLawyerEmail: getVal('sh_sellerLawyerEmail')
+      buyerLawyer: getVal('sh_buyerLawyer'), buyerLawyerPhone: getVal('sh_buyerLawyerPhone'), buyerLawyerMobile: getVal('sh_buyerLawyerMobile'), buyerLawyerEmail: getVal('sh_buyerLawyerEmail'),
+      sellerLawyer: getVal('sh_sellerLawyer'), sellerLawyerPhone: getVal('sh_sellerLawyerPhone'), sellerLawyerMobile: getVal('sh_sellerLawyerMobile'), sellerLawyerEmail: getVal('sh_sellerLawyerEmail')
     };
   }
   if (document.getElementById('fh_contractor')) {
     dd.firstHand = {
-      contractor: getVal('fh_contractor'), contractorPhone: getVal('fh_contractorPhone'), contractorEmail: getVal('fh_contractorEmail'),
-      buyerLawyer: getVal('fh_buyerLawyer'), buyerLawyerPhone: getVal('fh_buyerLawyerPhone'), buyerLawyerEmail: getVal('fh_buyerLawyerEmail'),
-      contractorLawyer: getVal('fh_contractorLawyer'), contractorLawyerPhone: getVal('fh_contractorLawyerPhone'), contractorLawyerEmail: getVal('fh_contractorLawyerEmail')
+      contractor: getVal('fh_contractor'), contractorPhone: getVal('fh_contractorPhone'), contractorMobile: getVal('fh_contractorMobile'), contractorEmail: getVal('fh_contractorEmail'),
+      buyerLawyer: getVal('fh_buyerLawyer'), buyerLawyerPhone: getVal('fh_buyerLawyerPhone'), buyerLawyerMobile: getVal('fh_buyerLawyerMobile'), buyerLawyerEmail: getVal('fh_buyerLawyerEmail'),
+      contractorLawyer: getVal('fh_contractorLawyer'), contractorLawyerPhone: getVal('fh_contractorLawyerPhone'), contractorLawyerMobile: getVal('fh_contractorLawyerMobile'), contractorLawyerEmail: getVal('fh_contractorLawyerEmail')
     };
   }
   if (document.getElementById('ml_contractor')) {
     dd.mchirLm = {
-      contractor: getVal('ml_contractor'), contractorPhone: getVal('ml_contractorPhone'), contractorEmail: getVal('ml_contractorEmail'),
-      buyerLawyer: getVal('ml_buyerLawyer'), buyerLawyerPhone: getVal('ml_buyerLawyerPhone'), buyerLawyerEmail: getVal('ml_buyerLawyerEmail'),
-      contractorLawyer: getVal('ml_contractorLawyer'), contractorLawyerPhone: getVal('ml_contractorLawyerPhone'), contractorLawyerEmail: getVal('ml_contractorLawyerEmail')
+      contractor: getVal('ml_contractor'), contractorPhone: getVal('ml_contractorPhone'), contractorMobile: getVal('ml_contractorMobile'), contractorEmail: getVal('ml_contractorEmail'),
+      buyerLawyer: getVal('ml_buyerLawyer'), buyerLawyerPhone: getVal('ml_buyerLawyerPhone'), buyerLawyerMobile: getVal('ml_buyerLawyerMobile'), buyerLawyerEmail: getVal('ml_buyerLawyerEmail'),
+      contractorLawyer: getVal('ml_contractorLawyer'), contractorLawyerPhone: getVal('ml_contractorLawyerPhone'), contractorLawyerMobile: getVal('ml_contractorLawyerMobile'), contractorLawyerEmail: getVal('ml_contractorLawyerEmail')
     };
   }
   if (document.getElementById('mgList')) {
