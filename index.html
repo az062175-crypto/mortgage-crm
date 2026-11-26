@@ -621,7 +621,7 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-26 #LK</span></div>
+  <div class="brand">🏦 CRM משכנתאות <span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;margin-inline-start:6px">v2026-11-26 #LK2</span></div>
   <button class="tab-btn" data-tab="leads">📞 לידים</button>
   <button class="tab-btn" data-tab="clients">👥 לקוחות</button>
   <div class="topbar-sep"></div>
@@ -4123,6 +4123,7 @@ const LINK_SEED = [
   [2,'עיריית ירושלים','מעקב אישור עירייה'], [2,'עיריית אשקלון','אישור עירייה'],
 ].map((r, i) => ({ id: 'lk' + (i + 1), type: LINK_TYPES[r[0]], name: r[1], topic: r[2], url: '' }));
 let linksFilter = { type: '', name: '', q: '' };
+let linksOpen = false;
 
 function linksAll() {
   const saved = Object.assign({}, state.links || {});
@@ -4155,17 +4156,26 @@ function linksCleanUrl(raw) {
 function linksPanelHtml() {
   return `
     <div class="panel" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        <h2 class="panel-title" style="margin:0">🔗 לינקים רלוונטיים</h2>
-        <button class="btn small" onclick="linksEdit('')">➕ הוסף לינק</button>
-      </div>
+      <button type="button" id="linksToggle" aria-expanded="${linksOpen}" aria-controls="linksBody" onclick="linksTogglePanel()" style="display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;background:none;border:none;padding:0;cursor:pointer;font-family:inherit;color:inherit;text-align:right">
+        <span class="panel-title" style="margin:0">🔗 לינקים רלוונטיים</span>
+        <span id="linksToggleLabel" style="font-size:13px;color:var(--accent);font-weight:700">${linksOpen ? 'סגור ▲' : 'פתח ▼'}</span>
+      </button>
+      <div id="linksBody" style="display:${linksOpen ? 'block' : 'none'};margin-top:12px">
+      <button class="btn small" onclick="linksEdit('')" style="margin-bottom:10px">➕ הוסף לינק</button>
       <div id="linksChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <select id="linksName" class="filter" aria-label="סינון לפי בנק או גוף" onchange="linksFilter.name=this.value;linksRender()"></select>
         <input id="linksQ" type="search" placeholder="🔍 חיפוש נושא או שם" value="${escapeHtml(linksFilter.q)}" oninput="linksFilter.q=this.value;linksRender()" style="flex:1;min-width:180px;padding:7px 10px;border:1px solid var(--border);border-radius:8px">
       </div>
       <div id="linksRows" style="max-height:420px;overflow:auto"></div>
+      </div>
     </div>`;
+}
+function linksTogglePanel() {
+  linksOpen = !linksOpen;
+  document.getElementById('linksBody').style.display = linksOpen ? 'block' : 'none';
+  document.getElementById('linksToggle').setAttribute('aria-expanded', linksOpen);
+  document.getElementById('linksToggleLabel').textContent = linksOpen ? 'סגור ▲' : 'פתח ▼';
 }
 function linksRender() {
   const box = document.getElementById('linksRows');
